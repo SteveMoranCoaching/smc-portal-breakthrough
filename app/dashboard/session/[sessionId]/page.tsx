@@ -1,270 +1,111 @@
-"use client"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import Link from "next/link"
+import { createSupabaseServerClient } from "@/lib/supabaseServer"
+import WorkoutSessionForm from "@/components/WorkoutSessionForm"
 
-type SetEntry = {
-  weight: string
-  reps: string
-  rpe: string
-}
+export default async function SessionPage({
+  params,
+}: {
+  params: Promise<{ sessionId: string }>
+}) {
+  const { sessionId } = await params
 
-type ExerciseEntry = {
-  sets: SetEntry[]
-  notes: string
-  video: File | null
-}
+  const supabase = await createSupabaseServerClient()
 
-export default function WorkoutSessionForm({
-  session,
-  programmeId,
-  userId,
-}: any) {
-  const router = useRouter()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  const [formData, setFormData] = useState<ExerciseEntry[]>(
-    session.exercises.map(() => ({
-      sets: [{ weight: "", reps: "", rpe: "" }],
-      notes: "",
-      video: null,
-    }))
-  )
-
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState("")
-
-  function updateSetField(
-    exerciseIndex: number,
-    setIndex: number,
-    field: keyof SetEntry,
-    value: string
-  ) {
-    const updated = [...formData]
-    updated[exerciseIndex].sets[setIndex][field] = value
-    setFormData(updated)
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-black p-6 text-white">
+        You must be logged in.
+      </main>
+    )
   }
 
-  function addSet(exerciseIndex: number) {
-    const updated = [...formData]
-    updated[exerciseIndex].sets.push({ weight: "", reps: "", rpe: "" })
-    setFormData(updated)
-  }
+  const { data: programmes, error } = await supabase
+    .from("programmes")
+    .select(`
+      id,
+      title,
+      week_number,
+      notes,
+      programme_sessions (
+        id,
+        day,
+        title,
+        exercises
+      )
+    `)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
 
-  function removeSet(exerciseIndex: number, setIndex: number) {
-    const updated = [...formData]
-    if (updated[exerciseIndex].sets.length === 1) return
-    updated[exerciseIndex].sets.splice(setIndex, 1)
-    setFormData(updated)
-  }
+  let matchedProgramme: any = null
+  let matchedSession: any = null
 
-  function updateNotes(exerciseIndex: number, value: string) {
-    const updated = [...formData]
-    updated[exerciseIndex].notes = value
-    setFormData(updated)
-  }
+  programmes?.forEach((programme: any) => {
+    const foundSession = programme.programme_sessions?.find(
+      (session: any) => String(session.id) === String(sessionId)
+    )
 
-  function updateVideo(exerciseIndex: number, file: File | null) {
-    const updated = [...formData]
-    updated[exerciseIndex].video = file
-    setFormData(updated)
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    setMessage("Saving workout...")
-
-    try {
-      for (let i = 0; i < formData.length; i++) {
-        const ex = session.exercises[i]
-        const data = formData[i]
-
-        const completedSets = data.sets.filter(
-          (set) => set.weight || set.reps || set.rpe
-        )
-
-        if (completedSets.length > 0 || data.notes) {
-          const { error: logError } = await supabase
-            .from("workout_logs")
-            .insert({
-              user_id: userId,
-              programme_id: programmeId,
-              session_id: session.id,
-              exercise_name: ex.name,
-              sets_completed: completedSets,
-              notes: data.notes,
-            })
-
-          if (logError) throw logError
-        }
-
-        if (data.video) {
-          const filePath = `${userId}/${Date.now()}-${data.video.name}`
-
-          const { error: uploadError } = await supabase.storage
-            .from("exercise-videos")
-            .upload(filePath, data.video)
-
-          if (uploadError) throw uploadError
-
-          const { error: videoError } = await supabase
-            .from("exercise_videos")
-            .insert({
-              user_id: userId,
-              programme_id: programmeId,
-              session_id: session.id,
-              exercise_name: ex.name,
-              exercise_index: i,
-              video_path: filePath,
-            })
-
-          if (videoError) throw videoError
-        }
-      }
-
-      setMessage("Workout saved successfully ✅")
-
-      setTimeout(() => {
-        router.push("/dashboard")
-      }, 900)
-
-    } catch (err: any) {
-      setMessage(`Error: ${err.message}`)
-      setSaving(false)
+    if (foundSession) {
+      matchedProgramme = programme
+      matchedSession = foundSession
     }
+  })
+
+  if (error || !matchedProgramme || !matchedSession) {
+    return (
+      <main className="min-h-screen bg-black p-6 text-white">
+        <div className="mx-auto max-w-3xl space-y-4">
+          <h1 className="text-2xl font-bold">Session not found</h1>
+
+          <p className="text-sm text-zinc-400">
+            This session could not be loaded. Go back to your dashboard and try again.
+          </p>
+
+          <p className="text-xs text-zinc-600">
+            Debug session ID: {sessionId || "No session ID found"}
+          </p>
+
+          <Link
+            href="/dashboard"
+            className="inline-block rounded-xl bg-yellow-500 px-4 py-3 text-sm font-bold text-black"
+          >
+            Back to dashboard
+          </Link>
+        </div>
+      </main>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      {session.exercises.map((ex: any, exerciseIndex: number) => (
-        <div
-          key={exerciseIndex}
-          className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
-        >
-          <h3 className="text-lg font-semibold text-white">{ex.name}</h3>
+    <main className="min-h-screen bg-black px-4 py-6 text-white">
+      <div className="mx-auto max-w-3xl space-y-6">
+        <Link href="/dashboard" className="text-sm text-yellow-400">
+          ← Back to dashboard
+        </Link>
 
-          <p className="text-sm text-yellow-400">
-            {ex.prescription || "No prescription"}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+          <p className="text-xs uppercase tracking-widest text-zinc-500">
+            Week {matchedProgramme.week_number} · {matchedSession.day}
           </p>
 
-          {ex.notes && (
-            <p className="mt-2 text-sm leading-6 text-zinc-500">
-              {ex.notes}
-            </p>
-          )}
+          <h1 className="mt-1 text-2xl font-bold">
+            {matchedSession.title}
+          </h1>
 
-          <div className="mt-4 space-y-3">
-            {formData[exerciseIndex].sets.map((set, setIndex) => (
-              <div
-                key={setIndex}
-                className="rounded-xl border border-zinc-800 bg-black p-3"
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-                    Set {setIndex + 1}
-                  </p>
+          <p className="mt-2 text-sm text-zinc-400">
+            Log your full workout below, then save everything at the end.
+          </p>
+        </section>
 
-                  {formData[exerciseIndex].sets.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeSet(exerciseIndex, setIndex)}
-                      className="text-xs text-red-400"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    placeholder="Kg"
-                    value={set.weight}
-                    onChange={(e) =>
-                      updateSetField(
-                        exerciseIndex,
-                        setIndex,
-                        "weight",
-                        e.target.value
-                      )
-                    }
-                    className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-white"
-                  />
-
-                  <input
-                    placeholder="Reps"
-                    value={set.reps}
-                    onChange={(e) =>
-                      updateSetField(
-                        exerciseIndex,
-                        setIndex,
-                        "reps",
-                        e.target.value
-                      )
-                    }
-                    className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-white"
-                  />
-
-                  <input
-                    placeholder="RPE"
-                    value={set.rpe}
-                    onChange={(e) =>
-                      updateSetField(
-                        exerciseIndex,
-                        setIndex,
-                        "rpe",
-                        e.target.value
-                      )
-                    }
-                    className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-white"
-                  />
-                </div>
-              </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => addSet(exerciseIndex)}
-              className="w-full rounded-xl border border-zinc-700 bg-black px-4 py-3 text-sm font-semibold text-white"
-            >
-              + Add set
-            </button>
-          </div>
-
-          <textarea
-            placeholder="Exercise notes..."
-            value={formData[exerciseIndex].notes}
-            onChange={(e) => updateNotes(exerciseIndex, e.target.value)}
-            className="mt-4 w-full rounded-xl border border-zinc-800 bg-black p-3 text-sm text-white placeholder:text-zinc-600"
-            rows={3}
-          />
-
-          <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
-              Upload video
-            </p>
-
-            <input
-              type="file"
-              accept="video/*"
-              onChange={(e) =>
-                updateVideo(exerciseIndex, e.target.files?.[0] || null)
-              }
-              className="w-full text-sm text-zinc-300"
-            />
-          </div>
-        </div>
-      ))}
-
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="w-full rounded-xl bg-yellow-500 py-4 text-base font-bold text-black disabled:opacity-60"
-      >
-        {saving ? "Saving..." : "Save Workout"}
-      </button>
-
-      {message && (
-        <p className="text-center text-sm text-zinc-400">{message}</p>
-      )}
-    </div>
+        <WorkoutSessionForm
+          session={matchedSession}
+          programmeId={matchedProgramme.id}
+          userId={user.id}
+        />
+      </div>
+    </main>
   )
 }
