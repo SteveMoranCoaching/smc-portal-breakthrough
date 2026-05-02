@@ -1,9 +1,6 @@
+import Link from "next/link"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
-import VideoUploadButton from "@/components/VideoUploadButton"
-import FeedbackBox from "@/components/FeedbackBox"
-import WorkoutLogBox from "@/components/WorkoutLogBox"
 import FeedbackReadMarker from "@/components/FeedbackReadMarker"
-import SessionCompleteButton from "@/components/SessionCompleteButton"
 
 export default async function Dashboard() {
   const supabase = await createSupabaseServerClient()
@@ -47,32 +44,14 @@ export default async function Dashboard() {
     .from("workout_logs")
     .select(`
       id,
-      user_id,
-      programme_id,
       session_id,
       exercise_name,
-      sets_completed,
-      notes,
-      reviewed,
       coach_feedback,
       feedback_read,
       created_at
     `)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-
-  const videosWithUrls = await Promise.all(
-    (videos || []).map(async (video: any) => {
-      const { data } = await supabase.storage
-        .from("exercise-videos")
-        .createSignedUrl(video.video_path, 60 * 60)
-
-      return {
-        ...video,
-        signedUrl: data?.signedUrl,
-      }
-    })
-  )
 
   if (error) {
     return (
@@ -87,16 +66,6 @@ export default async function Dashboard() {
   const uploadedVideoCount = videos?.length || 0
   const loggedWorkoutCount = workoutLogs?.length || 0
 
-  const unreadLogFeedbackCount =
-    workoutLogs?.filter((log: any) => log.coach_feedback && !log.feedback_read)
-      .length || 0
-
-  const unreadVideoFeedbackCount =
-    videos?.filter((video: any) => video.feedback && !video.feedback_read)
-      .length || 0
-
-  const unreadFeedbackCount = unreadLogFeedbackCount + unreadVideoFeedbackCount
-
   const unreadLogFeedbackIds =
     workoutLogs
       ?.filter((log: any) => log.coach_feedback && !log.feedback_read)
@@ -106,6 +75,9 @@ export default async function Dashboard() {
     videos
       ?.filter((video: any) => video.feedback && !video.feedback_read)
       .map((video: any) => video.id) || []
+
+  const unreadFeedbackCount =
+    unreadLogFeedbackIds.length + unreadVideoFeedbackIds.length
 
   const latestLogFeedback =
     workoutLogs?.filter((log: any) => log.coach_feedback)?.[0] || null
@@ -170,7 +142,7 @@ export default async function Dashboard() {
                 Your Programme
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                View your sessions, log your work, upload training videos, and check coach feedback.
+                Pick your session, check what’s planned, then start the workout when you’re ready.
               </p>
             </div>
 
@@ -284,6 +256,7 @@ export default async function Dashboard() {
               <p className="text-sm text-yellow-400">
                 Week {programme.week_number}
               </p>
+
               <h2 className="text-xl font-bold sm:text-2xl">
                 {programme.title}
               </h2>
@@ -296,272 +269,92 @@ export default async function Dashboard() {
             </div>
 
             <div className="space-y-4">
-              {programme.programme_sessions?.map((session: any) => (
-                <div
-                  key={session.id}
-                  className="rounded-2xl border border-zinc-800 bg-black p-4"
-                >
-                  <div className="mb-4">
-                    <p className="text-xs uppercase tracking-widest text-zinc-500">
-                      {session.day}
-                    </p>
-                    <h3 className="mt-1 text-lg font-semibold">
-                      {session.title}
-                    </h3>
-                  </div>
+              {programme.programme_sessions?.map((session: any) => {
+                const sessionLogs =
+                  workoutLogs?.filter(
+                    (log: any) => log.session_id === session.id
+                  ) || []
 
-                  <div className="space-y-4">
-                    {session.exercises?.map((ex: any, i: number) => {
-                      const matchingVideos = videosWithUrls.filter(
-                        (video: any) =>
-                          video.session_id === session.id &&
-                          video.exercise_index === i
-                      )
+                const sessionVideos =
+                  videos?.filter((video: any) => video.session_id === session.id) ||
+                  []
 
-                      const matchingLogs = (workoutLogs || []).filter(
-                        (log: any) =>
-                          log.programme_id === programme.id &&
-                          log.session_id === session.id &&
-                          log.exercise_name === ex.name
-                      )
+                const hasUnreadFeedback =
+                  sessionLogs.some(
+                    (log: any) => log.coach_feedback && !log.feedback_read
+                  ) ||
+                  sessionVideos.some(
+                    (video: any) => video.feedback && !video.feedback_read
+                  )
 
-                      const hasCoachFeedback =
-                        matchingLogs.some((log: any) => log.coach_feedback) ||
-                        matchingVideos.some((video: any) => video.feedback)
+                return (
+                  <div
+                    key={session.id}
+                    className="rounded-2xl border border-zinc-800 bg-black p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-zinc-500">
+                          {session.day}
+                        </p>
 
-                      const hasUnreadFeedback =
-                        matchingLogs.some(
-                          (log: any) => log.coach_feedback && !log.feedback_read
-                        ) ||
-                        matchingVideos.some(
-                          (video: any) => video.feedback && !video.feedback_read
-                        )
+                        <h3 className="mt-1 text-lg font-semibold text-white">
+                          {session.title}
+                        </h3>
 
-                      return (
-                        <div
-                          key={i}
-                          className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
-                        >
-                          <div className="space-y-3">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h4 className="text-base font-semibold text-white">
-                                  {ex.name}
-                                </h4>
+                        <p className="mt-1 text-sm text-zinc-500">
+                          {session.exercises?.length || 0} exercises
+                        </p>
+                      </div>
 
-                                {hasCoachFeedback && (
-                                  <span className="rounded-full bg-yellow-500 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                                    {hasUnreadFeedback
-                                      ? "New feedback"
-                                      : "Feedback"}
-                                  </span>
-                                )}
-                              </div>
+                      {hasUnreadFeedback && (
+                        <span className="shrink-0 rounded-full bg-yellow-500 px-2 py-1 text-[10px] font-bold uppercase text-black">
+                          New feedback
+                        </span>
+                      )}
+                    </div>
 
-                              <p className="mt-1 text-sm font-medium text-yellow-400">
-                                {ex.prescription || "No prescription"}
+                    {session.exercises?.length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        {session.exercises.map((ex: any, i: number) => (
+                          <div
+                            key={i}
+                            className="rounded-xl border border-zinc-800 bg-zinc-950 p-3"
+                          >
+                            <p className="text-sm font-semibold text-white">
+                              {ex.name}
+                            </p>
+
+                            <p className="mt-1 text-sm text-yellow-400">
+                              {ex.prescription || "No prescription"}
+                            </p>
+
+                            {ex.notes && (
+                              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                                {ex.notes}
                               </p>
-
-                              {ex.notes && (
-                                <p className="mt-2 text-sm leading-6 text-zinc-500">
-                                  {ex.notes}
-                                </p>
-                              )}
-                            </div>
-
-                            <VideoUploadButton
-                              programmeId={programme.id}
-                              sessionId={session.id}
-                              exerciseName={ex.name}
-                              exerciseIndex={i}
-                            />
+                            )}
                           </div>
+                        ))}
+                      </div>
+                    )}
 
-                          <div className="mt-4">
-                            <WorkoutLogBox
-                              programmeId={programme.id}
-                              sessionId={session.id}
-                              exerciseName={ex.name}
-                            />
-                          </div>
+                    <Link
+                      href={`/dashboard/session/${session.id}?programmeId=${programme.id}`}
+                      className="mt-4 block rounded-xl bg-yellow-500 px-4 py-3 text-center text-sm font-bold text-black transition hover:bg-yellow-400"
+                    >
+                      Start Workout
+                    </Link>
 
-                          {matchingLogs.length > 0 && (
-                            <div className="mt-4 border-t border-zinc-800 pt-4">
-                              <p className="mb-3 text-sm font-semibold text-zinc-300">
-                                Submitted logs
-                              </p>
-
-                              <div className="space-y-3">
-                                {matchingLogs.map((log: any) => (
-                                  <div
-                                    key={log.id}
-                                    className="rounded-xl border border-zinc-800 bg-black p-4"
-                                  >
-                                    <div className="mb-3 flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-white">
-                                          {log.exercise_name}
-                                        </p>
-                                        <p className="text-xs text-zinc-500">
-                                          {log.created_at
-                                            ? new Date(
-                                                log.created_at
-                                              ).toLocaleString("en-GB")
-                                            : "No date"}
-                                        </p>
-                                      </div>
-
-                                      <span
-                                        className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${
-                                          log.reviewed
-                                            ? "bg-green-500 text-black"
-                                            : "bg-yellow-500 text-black"
-                                        }`}
-                                      >
-                                        {log.reviewed ? "Reviewed" : "New"}
-                                      </span>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      {log.sets_completed?.map(
-                                        (set: any, index: number) => (
-                                          <div
-                                            key={index}
-                                            className="grid grid-cols-1 gap-2 rounded-lg bg-zinc-950 p-3 text-sm sm:grid-cols-3"
-                                          >
-                                            <p>
-                                              <span className="text-zinc-500">
-                                                Weight:
-                                              </span>{" "}
-                                              {set.weight || "-"}kg
-                                            </p>
-
-                                            <p>
-                                              <span className="text-zinc-500">
-                                                Reps:
-                                              </span>{" "}
-                                              {set.reps || "-"}
-                                            </p>
-
-                                            <p>
-                                              <span className="text-zinc-500">
-                                                RPE:
-                                              </span>{" "}
-                                              {set.rpe || "-"}
-                                            </p>
-                                          </div>
-                                        )
-                                      )}
-                                    </div>
-
-                                    {log.notes && (
-                                      <div className="mt-3 rounded-lg bg-zinc-950 p-3">
-                                        <p className="mb-1 text-xs font-semibold text-zinc-500">
-                                          Your notes
-                                        </p>
-                                        <p className="text-sm leading-6 text-zinc-300">
-                                          {log.notes}
-                                        </p>
-                                      </div>
-                                    )}
-
-                                    {log.coach_feedback ? (
-                                      <div className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
-                                        <div className="mb-1 flex items-center justify-between gap-2">
-                                          <p className="text-xs font-semibold text-yellow-400">
-                                            Coach feedback
-                                          </p>
-
-                                          {!log.feedback_read && (
-                                            <span className="rounded-full bg-yellow-500 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                                              New
-                                            </span>
-                                          )}
-                                        </div>
-
-                                        <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-                                          {log.coach_feedback}
-                                        </p>
-                                      </div>
-                                    ) : (
-                                      <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                                        <p className="text-sm text-zinc-500">
-                                          No coach feedback yet.
-                                        </p>
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {matchingVideos.length > 0 && (
-                            <div className="mt-4 border-t border-zinc-800 pt-4">
-                              <p className="mb-3 text-sm font-semibold text-zinc-300">
-                                Uploaded videos
-                              </p>
-
-                              <div className="grid gap-4 md:grid-cols-2">
-                                {matchingVideos.map((video: any) => (
-                                  <div
-                                    key={video.id}
-                                    className="rounded-xl border border-zinc-800 bg-black p-3"
-                                  >
-                                    <video
-                                      src={video.signedUrl}
-                                      controls
-                                      className="max-h-80 w-full rounded-lg object-contain"
-                                    />
-
-                                    {video.feedback && !video.feedback_read && (
-                                      <div className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
-                                        <div className="mb-1 flex items-center justify-between gap-2">
-                                          <p className="text-xs font-semibold text-yellow-400">
-                                            Video feedback
-                                          </p>
-
-                                          <span className="rounded-full bg-yellow-500 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                                            New
-                                          </span>
-                                        </div>
-
-                                        <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-                                          {video.feedback}
-                                        </p>
-                                      </div>
-                                    )}
-
-                                    <div className="mt-3">
-                                      <FeedbackBox
-                                        videoId={video.id}
-                                        initialFeedback={video.feedback}
-                                        initialReviewed={video.reviewed}
-                                      />
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
+                    {(sessionLogs.length > 0 || sessionVideos.length > 0) && (
+                      <p className="mt-3 text-center text-xs text-zinc-500">
+                        Previous activity: {sessionLogs.length} logs ·{" "}
+                        {sessionVideos.length} videos
+                      </p>
+                    )}
                   </div>
-
-                  <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-                    <p className="mb-2 text-xs uppercase tracking-widest text-zinc-500">
-                      Finished this session?
-                    </p>
-
-                    <SessionCompleteButton
-                      userId={user.id}
-                      programmeId={programme.id}
-                      sessionId={session.id}
-                    />
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </section>
         ))}
