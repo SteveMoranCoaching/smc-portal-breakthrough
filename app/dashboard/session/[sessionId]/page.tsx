@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import WorkoutSessionForm from "@/components/WorkoutSessionForm"
 
@@ -6,7 +7,7 @@ export default async function SessionPage({
   searchParams,
 }: {
   params: { sessionId: string }
-  searchParams: { programmeId: string }
+  searchParams: { programmeId?: string }
 }) {
   const supabase = await createSupabaseServerClient()
 
@@ -22,16 +23,44 @@ export default async function SessionPage({
     )
   }
 
-  const { data: session } = await supabase
-    .from("programme_sessions")
-    .select("*")
-    .eq("id", params.sessionId)
+  const { data: programme, error } = await supabase
+    .from("programmes")
+    .select(`
+      id,
+      title,
+      week_number,
+      notes,
+      programme_sessions (
+        id,
+        day,
+        title,
+        exercises
+      )
+    `)
+    .eq("id", searchParams.programmeId)
+    .eq("user_id", user.id)
     .single()
 
-  if (!session) {
+  const session = programme?.programme_sessions?.find(
+    (item: any) => item.id === params.sessionId
+  )
+
+  if (error || !programme || !session) {
     return (
       <main className="min-h-screen bg-black p-6 text-white">
-        Session not found.
+        <div className="mx-auto max-w-3xl space-y-4">
+          <h1 className="text-2xl font-bold">Session not found</h1>
+          <p className="text-sm text-zinc-400">
+            This session could not be loaded. Go back to your dashboard and try again.
+          </p>
+
+          <Link
+            href="/dashboard"
+            className="inline-block rounded-xl bg-yellow-500 px-4 py-3 text-sm font-bold text-black"
+          >
+            Back to dashboard
+          </Link>
+        </div>
       </main>
     )
   }
@@ -39,14 +68,25 @@ export default async function SessionPage({
   return (
     <main className="min-h-screen bg-black px-4 py-6 text-white">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div>
-          <p className="text-xs uppercase text-zinc-500">{session.day}</p>
-          <h1 className="text-2xl font-bold">{session.title}</h1>
-        </div>
+        <Link href="/dashboard" className="text-sm text-yellow-400">
+          ← Back to dashboard
+        </Link>
+
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+          <p className="text-xs uppercase tracking-widest text-zinc-500">
+            Week {programme.week_number} · {session.day}
+          </p>
+
+          <h1 className="mt-1 text-2xl font-bold">{session.title}</h1>
+
+          <p className="mt-2 text-sm text-zinc-400">
+            Log your full workout below, then save everything at the end.
+          </p>
+        </section>
 
         <WorkoutSessionForm
           session={session}
-          programmeId={searchParams.programmeId}
+          programmeId={programme.id}
           userId={user.id}
         />
       </div>
