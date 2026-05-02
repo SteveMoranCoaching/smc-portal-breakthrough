@@ -4,10 +4,8 @@ import WorkoutSessionForm from "@/components/WorkoutSessionForm"
 
 export default async function SessionPage({
   params,
-  searchParams,
 }: {
   params: { sessionId: string }
-  searchParams: { programmeId?: string }
 }) {
   const supabase = await createSupabaseServerClient()
 
@@ -23,7 +21,7 @@ export default async function SessionPage({
     )
   }
 
-  const { data: programme, error } = await supabase
+  const { data: programmes, error } = await supabase
     .from("programmes")
     .select(`
       id,
@@ -37,15 +35,24 @@ export default async function SessionPage({
         exercises
       )
     `)
-    .eq("id", searchParams.programmeId)
     .eq("user_id", user.id)
-    .single()
+    .order("created_at", { ascending: false })
 
-  const session = programme?.programme_sessions?.find(
-    (item: any) => item.id === params.sessionId
-  )
+  let matchedProgramme: any = null
+  let matchedSession: any = null
 
-  if (error || !programme || !session) {
+  programmes?.forEach((programme: any) => {
+    const foundSession = programme.programme_sessions?.find(
+      (session: any) => session.id === params.sessionId
+    )
+
+    if (foundSession) {
+      matchedProgramme = programme
+      matchedSession = foundSession
+    }
+  })
+
+  if (error || !matchedProgramme || !matchedSession) {
     return (
       <main className="min-h-screen bg-black p-6 text-white">
         <div className="mx-auto max-w-3xl space-y-4">
@@ -74,10 +81,12 @@ export default async function SessionPage({
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
           <p className="text-xs uppercase tracking-widest text-zinc-500">
-            Week {programme.week_number} · {session.day}
+            Week {matchedProgramme.week_number} · {matchedSession.day}
           </p>
 
-          <h1 className="mt-1 text-2xl font-bold">{session.title}</h1>
+          <h1 className="mt-1 text-2xl font-bold">
+            {matchedSession.title}
+          </h1>
 
           <p className="mt-2 text-sm text-zinc-400">
             Log your full workout below, then save everything at the end.
@@ -85,8 +94,8 @@ export default async function SessionPage({
         </section>
 
         <WorkoutSessionForm
-          session={session}
-          programmeId={programme.id}
+          session={matchedSession}
+          programmeId={matchedProgramme.id}
           userId={user.id}
         />
       </div>
