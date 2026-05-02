@@ -5,8 +5,10 @@ import WorkoutSessionForm from "@/components/WorkoutSessionForm"
 export default async function SessionPage({
   params,
 }: {
-  params: { sessionId: string }
+  params: Promise<{ sessionId: string }>
 }) {
+  const { sessionId } = await params
+
   const supabase = await createSupabaseServerClient()
 
   const {
@@ -43,7 +45,7 @@ export default async function SessionPage({
 
   programmes?.forEach((programme: any) => {
     const foundSession = programme.programme_sessions?.find(
-      (session: any) => session.id === params.sessionId
+      (session: any) => String(session.id) === String(sessionId)
     )
 
     if (foundSession) {
@@ -57,8 +59,13 @@ export default async function SessionPage({
       <main className="min-h-screen bg-black p-6 text-white">
         <div className="mx-auto max-w-3xl space-y-4">
           <h1 className="text-2xl font-bold">Session not found</h1>
+
           <p className="text-sm text-zinc-400">
             This session could not be loaded. Go back to your dashboard and try again.
+          </p>
+
+          <p className="text-xs text-zinc-600">
+            Debug session ID: {sessionId || "No session ID found"}
           </p>
 
           <Link
