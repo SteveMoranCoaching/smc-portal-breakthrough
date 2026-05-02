@@ -1,4 +1,5 @@
 "use client"
+
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -22,8 +23,10 @@ export default function WorkoutSessionForm({
 }: any) {
   const router = useRouter()
 
+  const exercises = Array.isArray(session?.exercises) ? session.exercises : []
+
   const [formData, setFormData] = useState<ExerciseEntry[]>(
-    session.exercises.map(() => ({
+    exercises.map(() => ({
       sets: [{ weight: "", reps: "", rpe: "" }],
       notes: "",
       video: null,
@@ -75,7 +78,7 @@ export default function WorkoutSessionForm({
 
     try {
       for (let i = 0; i < formData.length; i++) {
-        const ex = session.exercises[i]
+        const ex = exercises[i]
         const data = formData[i]
 
         const completedSets = data.sets.filter(
@@ -126,16 +129,23 @@ export default function WorkoutSessionForm({
       setTimeout(() => {
         router.push("/dashboard")
       }, 900)
-
     } catch (err: any) {
       setMessage(`Error: ${err.message}`)
       setSaving(false)
     }
   }
 
+  if (exercises.length === 0) {
+    return (
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-white">
+        No exercises found for this session.
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      {session.exercises.map((ex: any, exerciseIndex: number) => (
+      {exercises.map((ex: any, exerciseIndex: number) => (
         <div
           key={exerciseIndex}
           className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
