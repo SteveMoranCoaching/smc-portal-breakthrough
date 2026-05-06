@@ -1,6 +1,106 @@
-import Link from "next/link"
+import { revalidatePath } from "next/cache"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
-import FeedbackReadMarker from "@/components/FeedbackReadMarker"
+
+export const dynamic = "force-dynamic"
+
+const softBorder = "border-[rgba(255,255,255,0.06)]"
+
+const premiumCard =
+  "relative overflow-hidden rounded-3xl border border-[rgba(255,255,255,0.06)] bg-gradient-to-b from-[#111111] to-[#050505] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.75)] before:pointer-events-none before:absolute before:inset-0 before:rounded-3xl before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)]"
+
+const innerPanel =
+  "rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#080808] shadow-inner"
+
+const reactionOptions = [
+  { type: "strong", emoji: "💪" },
+  { type: "fire", emoji: "🔥" },
+  { type: "congrats", emoji: "👏" },
+  { type: "smc", emoji: "🖤" },
+]
+
+function getTagStyle(type: string) {
+  if (type === "PB") return "bg-green-500 text-black"
+  if (type === "Competition") return "bg-smc-gold text-black"
+  return "bg-smc-card-soft text-smc-muted"
+}
+
+function formatTimestamp(dateString: string) {
+  const date = new Date(dateString)
+
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+  })
+}
+
+async function toggleReaction(formData: FormData) {
+  "use server"
+
+  const postId = String(formData.get("postId") || "")
+  const reactionType = String(formData.get("reactionType") || "")
+
+  if (!postId || !reactionType) return
+
+  const supabase = await createSupabaseServerClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return
+
+  const { data: existingReaction } = await supabase
+    .from("team_feed_reactions")
+    .select("id, reaction_type")
+    .eq("post_id", postId)
+    .eq("user_id", user.id)
+    .maybeSingle()
+
+  if (existingReaction?.reaction_type === reactionType) {
+    await supabase
+      .from("team_feed_reactions")
+      .delete()
+      .eq("id", existingReaction.id)
+  } else if (existingReaction) {
+    await supabase
+      .from("team_feed_reactions")
+      .update({ reaction_type: reactionType })
+      .eq("id", existingReaction.id)
+  } else {
+    await supabase.from("team_feed_reactions").insert({
+      post_id: postId,
+      user_id: user.id,
+      reaction_type: reactionType,
+    })
+  }
+
+  revalidatePath("/dashboard")
+}
+
+async function addComment(formData: FormData) {
+  "use server"
+
+  const postId = String(formData.get("postId") || "")
+  const body = String(formData.get("body") || "").trim()
+
+  if (!postId || !body) return
+
+  const supabase = await createSupabaseServerClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return
+
+  await supabase.from("team_feed_comments").insert({
+    post_id: postId,
+    user_id: user.id,
+    body,
+  })
+
+  revalidatePath("/dashboard")
+}
 
 export default async function Dashboard() {
   const supabase = await createSupabaseServerClient()
@@ -9,362 +109,249 @@ export default async function Dashboard() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        You must be logged in.
-      </main>
-    )
-  }
-
-  const { data: programmes, error } = await supabase
-    .from("programmes")
-    .select(`
-      id,
-      title,
-      week_number,
-      notes,
-      programme_sessions (
-        id,
-        day,
-        title,
-        exercises
-      )
-    `)
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-
-  const { data: videos } = await supabase
-    .from("exercise_videos")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-
-  const { data: workoutLogs } = await supabase
-    .from("workout_logs")
-    .select(`
-      id,
-      session_id,
-      exercise_name,
-      coach_feedback,
-      feedback_read,
-      created_at
-    `)
-    .eq("user_id", user.id)
+  const { data: feedPosts, error } = await supabase
+    .from("team_feed_posts")
+    .select("id, title, body, type, created_at")
     .order("created_at", { ascending: false })
 
   if (error) {
     return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        <h1>Error loading programme</h1>
-        <pre>{JSON.stringify(error, null, 2)}</pre>
-      </main>
+      <div className="rounded-3xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-200">
+        <h2 className="mb-3 font-bold">Could not load team feed</h2>
+        <pre className="whitespace-pre-wrap text-xs">
+          {JSON.stringify(error, null, 2)}
+        </pre>
+      </div>
     )
   }
 
-  const currentProgramme = programmes?.[0]
-  const uploadedVideoCount = videos?.length || 0
-  const loggedWorkoutCount = workoutLogs?.length || 0
+  const postIds = feedPosts?.map((post) => post.id) || []
 
-  const unreadLogFeedbackIds =
-    workoutLogs
-      ?.filter((log: any) => log.coach_feedback && !log.feedback_read)
-      .map((log: any) => log.id) || []
+  const { data: reactions } =
+    postIds.length > 0
+      ? await supabase
+          .from("team_feed_reactions")
+          .select("id, post_id, user_id, reaction_type")
+          .in("post_id", postIds)
+      : { data: [] }
 
-  const unreadVideoFeedbackIds =
-    videos
-      ?.filter((video: any) => video.feedback && !video.feedback_read)
-      .map((video: any) => video.id) || []
+  const { data: comments } =
+    postIds.length > 0
+      ? await supabase
+          .from("team_feed_comments")
+          .select("id, post_id, user_id, body, created_at")
+          .in("post_id", postIds)
+          .order("created_at", { ascending: true })
+      : { data: [] }
 
-  const unreadFeedbackCount =
-    unreadLogFeedbackIds.length + unreadVideoFeedbackIds.length
+  const commenterUserIds = Array.from(
+    new Set(comments?.map((comment) => comment.user_id) || [])
+  )
 
-  const latestLogFeedback =
-    workoutLogs?.filter((log: any) => log.coach_feedback)?.[0] || null
+  const { data: clients } =
+    commenterUserIds.length > 0
+      ? await supabase
+          .from("clients")
+          .select("user_id, name")
+          .in("user_id", commenterUserIds)
+      : { data: [] }
 
-  const latestVideoFeedback =
-    videos?.filter((video: any) => video.feedback)?.[0] || null
+  const clientNames = new Map<string, string>()
 
-  const latestFeedbackItems = [
-    ...(latestLogFeedback
-      ? [
-          {
-            type: "Workout log",
-            exerciseName: latestLogFeedback.exercise_name,
-            feedback: latestLogFeedback.coach_feedback,
-            feedbackRead: latestLogFeedback.feedback_read,
-            createdAt: latestLogFeedback.created_at,
-          },
-        ]
-      : []),
-    ...(latestVideoFeedback
-      ? [
-          {
-            type: "Video review",
-            exerciseName: latestVideoFeedback.exercise_name,
-            feedback: latestVideoFeedback.feedback,
-            feedbackRead: latestVideoFeedback.feedback_read,
-            createdAt: latestVideoFeedback.created_at,
-          },
-        ]
-      : []),
-  ]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-    .slice(0, 3)
+  clients?.forEach((client) => {
+    clientNames.set(client.user_id, client.name)
+  })
 
-  function formatDate(dateString: string) {
-    const date = new Date(dateString)
-    const day = date.getDate().toString().padStart(2, "0")
-    const month = date.toLocaleString("en-GB", { month: "short" })
+  const reactionsByPost = new Map<string, typeof reactions>()
+  const userReactionByPost = new Map<string, string>()
+  const commentsByPost = new Map<string, typeof comments>()
 
-    return `${day} ${month}`
-  }
+  reactions?.forEach((reaction) => {
+    const existingReactions = reactionsByPost.get(reaction.post_id) || []
+    reactionsByPost.set(reaction.post_id, [...existingReactions, reaction])
+
+    if (reaction.user_id === user?.id) {
+      userReactionByPost.set(reaction.post_id, reaction.reaction_type)
+    }
+  })
+
+  comments?.forEach((comment) => {
+    const existingComments = commentsByPost.get(comment.post_id) || []
+    commentsByPost.set(comment.post_id, [...existingComments, comment])
+  })
 
   return (
-    <main className="min-h-screen bg-black px-3 py-4 text-white sm:px-4 sm:py-6">
-      <FeedbackReadMarker
-        unreadLogIds={unreadLogFeedbackIds}
-        unreadVideoIds={unreadVideoFeedbackIds}
-      />
+    <div className="flex flex-col gap-4">
+      <section className={premiumCard}>
+        <div className="mb-4 h-1 w-16 rounded-full bg-smc-gold shadow-[0_0_18px_rgba(212,175,55,0.35)]" />
 
-      <div className="mx-auto max-w-5xl space-y-5 sm:space-y-8">
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 shadow-xl sm:p-5">
-          <p className="text-xs uppercase tracking-[0.25em] text-yellow-400 sm:text-sm">
-            Steve Moran Coaching
-          </p>
+        <p className="text-xs uppercase tracking-[0.25em] text-smc-gold">
+          Steve Moran Coaching
+        </p>
 
-          <div className="mt-3 space-y-4 md:flex md:items-end md:justify-between md:gap-6 md:space-y-0">
-            <div>
-              <h1 className="text-2xl font-bold sm:text-3xl">
-                Your Programme
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                Pick your session, check what’s planned, then start the workout when you’re ready.
-              </p>
-            </div>
+        <h1 className="mt-4 text-2xl font-bold text-smc-text">SMC Home</h1>
 
-            {currentProgramme && (
-              <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 sm:px-4 sm:py-3">
-                <p className="text-[10px] uppercase tracking-widest text-yellow-400 sm:text-xs">
-                  Current block
-                </p>
-                <p className="mt-1 text-sm font-semibold text-white sm:text-base">
-                  Week {currentProgramme.week_number} · {currentProgramme.title}
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
+        <p className="mt-2 text-sm leading-6 text-smc-muted">
+          Team updates, PBs, competitions, records and announcements.
+        </p>
+      </section>
 
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-400 sm:text-sm">Workout logs</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-400">
-              {loggedWorkoutCount}
-            </p>
-          </div>
+      <section className="flex flex-col gap-4">
+        {feedPosts?.map((post) => {
+          const postReactions = reactionsByPost.get(post.id) || []
+          const userReaction = userReactionByPost.get(post.id) || ""
+          const postComments = commentsByPost.get(post.id) || []
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-400 sm:text-sm">Videos</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-400">
-              {uploadedVideoCount}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-400 sm:text-sm">Feedback</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-400">
-              {unreadFeedbackCount}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-400 sm:text-sm">Week</p>
-            <p className="mt-1 text-2xl font-bold text-white">
-              {currentProgramme ? currentProgramme.week_number : "-"}
-            </p>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 sm:p-5">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-white sm:text-xl">
-                Latest Coach Feedback
-              </h2>
-              <p className="mt-1 text-sm text-zinc-300">
-                Your newest feedback from Steve will show here first.
-              </p>
-            </div>
-
-            {unreadFeedbackCount > 0 && (
-              <span className="shrink-0 rounded-full bg-yellow-500 px-3 py-1 text-xs font-bold text-black">
-                {unreadFeedbackCount} NEW
-              </span>
-            )}
-          </div>
-
-          {latestFeedbackItems.length === 0 ? (
-            <p className="text-sm text-zinc-400">
-              No coach feedback yet. Once Steve reviews your logs or videos, it’ll appear here.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {latestFeedbackItems.map((item, index) => (
-                <div
-                  key={`${item.type}-${index}`}
-                  className="rounded-xl border border-yellow-500/20 bg-black p-4"
-                >
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-yellow-500 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                      {item.type}
-                    </span>
-
-                    {!item.feedbackRead && (
-                      <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold uppercase text-black">
-                        New
-                      </span>
-                    )}
-
-                    <span className="text-xs text-zinc-500">
-                      {formatDate(item.createdAt)}
-                    </span>
-                  </div>
-
-                  <p className="text-sm font-semibold text-white">
-                    {item.exerciseName}
-                  </p>
-
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">
-                    {item.feedback}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {programmes?.map((programme) => (
-          <section
-            key={programme.id}
-            className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 shadow-xl sm:p-5"
-          >
-            <div className="mb-5 border-b border-zinc-800 pb-4">
-              <p className="text-sm text-yellow-400">
-                Week {programme.week_number}
-              </p>
-
-              <h2 className="text-xl font-bold sm:text-2xl">
-                {programme.title}
-              </h2>
-
-              {programme.notes && (
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
-                  {programme.notes}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              {programme.programme_sessions?.map((session: any) => {
-                const sessionLogs =
-                  workoutLogs?.filter(
-                    (log: any) => log.session_id === session.id
-                  ) || []
-
-                const sessionVideos =
-                  videos?.filter((video: any) => video.session_id === session.id) ||
-                  []
-
-                const hasUnreadFeedback =
-                  sessionLogs.some(
-                    (log: any) => log.coach_feedback && !log.feedback_read
-                  ) ||
-                  sessionVideos.some(
-                    (video: any) => video.feedback && !video.feedback_read
-                  )
-
-                return (
-                  <div
-                    key={session.id}
-                    className="rounded-2xl border border-zinc-800 bg-black p-4"
+          return (
+            <article key={post.id} className={premiumCard}>
+              <div className="relative z-10">
+                <div className="flex items-center justify-between gap-3">
+                  <span
+                    className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide ${getTagStyle(
+                      post.type
+                    )}`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-widest text-zinc-500">
-                          {session.day}
-                        </p>
+                    {post.type}
+                  </span>
 
-                        <h3 className="mt-1 text-lg font-semibold text-white">
-                          {session.title}
-                        </h3>
+                  <span className="text-xs text-smc-muted-soft">
+                    {formatTimestamp(post.created_at)}
+                  </span>
+                </div>
 
-                        <p className="mt-1 text-sm text-zinc-500">
-                          {session.exercises?.length || 0} exercises
-                        </p>
-                      </div>
+                <h2 className="mt-4 text-xl font-bold text-smc-text">
+                  {post.title}
+                </h2>
 
-                      {hasUnreadFeedback && (
-                        <span className="shrink-0 rounded-full bg-yellow-500 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                          New feedback
-                        </span>
-                      )}
-                    </div>
+                <p className="mt-3 text-sm leading-6 text-zinc-300">
+                  {post.body}
+                </p>
 
-                    {session.exercises?.length > 0 && (
-                      <div className="mt-4 space-y-2">
-                        {session.exercises.map((ex: any, i: number) => (
-                          <div
-                            key={i}
-                            className="rounded-xl border border-zinc-800 bg-zinc-950 p-3"
-                          >
-                            <p className="text-sm font-semibold text-white">
-                              {ex.name}
-                            </p>
+                <div className={`mt-5 ${innerPanel} p-3`}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-xs text-smc-muted-soft">
+                      {postReactions.length}{" "}
+                      {postReactions.length === 1 ? "reaction" : "reactions"}
+                    </p>
 
-                            <p className="mt-1 text-sm text-yellow-400">
-                              {ex.prescription || "No prescription"}
-                            </p>
-
-                            {ex.notes && (
-                              <p className="mt-1 text-xs leading-5 text-zinc-500">
-                                {ex.notes}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <Link
-                      href={`/dashboard/session/${session.id}?programmeId=${programme.id}`}
-                      className="mt-4 block rounded-xl bg-yellow-500 px-4 py-3 text-center text-sm font-bold text-black transition hover:bg-yellow-400"
-                    >
-                      Start Workout
-                    </Link>
-
-                    {(sessionLogs.length > 0 || sessionVideos.length > 0) && (
-                      <p className="mt-3 text-center text-xs text-zinc-500">
-                        Previous activity: {sessionLogs.length} logs ·{" "}
-                        {sessionVideos.length} videos
+                    {userReaction && (
+                      <p className="text-xs font-bold text-smc-gold">
+                        You reacted:{" "}
+                        {
+                          reactionOptions.find(
+                            (reaction) => reaction.type === userReaction
+                          )?.emoji
+                        }
                       </p>
                     )}
                   </div>
-                )
-              })}
-            </div>
-          </section>
-        ))}
 
-        {(!programmes || programmes.length === 0) && (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-center text-zinc-400">
-            No programme assigned yet.
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {reactionOptions.map((reactionOption) => {
+                      const count = postReactions.filter(
+                        (reaction) =>
+                          reaction.reaction_type === reactionOption.type
+                      ).length
+
+                      const isSelected = userReaction === reactionOption.type
+
+                      return (
+                        <form key={reactionOption.type} action={toggleReaction}>
+                          <input type="hidden" name="postId" value={post.id} />
+                          <input
+                            type="hidden"
+                            name="reactionType"
+                            value={reactionOption.type}
+                          />
+
+                          <button
+                            type="submit"
+                            className={`flex w-full items-center justify-center gap-2 rounded-full border px-3 py-2 text-xs font-bold transition ${
+                              isSelected
+                                ? "border-smc-gold bg-smc-gold/90 text-black shadow-[0_0_12px_rgba(212,175,55,0.35)]"
+                                : `border ${softBorder} bg-smc-card text-smc-muted hover:border-smc-gold hover:text-smc-text`
+                            }`}
+                          >
+                            <span>{reactionOption.emoji}</span>
+                            <span>{count}</span>
+                          </button>
+                        </form>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className={`mt-4 ${innerPanel} p-4`}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-smc-text">
+                      Comments
+                    </h3>
+
+                    <span className="text-xs text-smc-muted-soft">
+                      {postComments.length}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    {postComments.map((comment) => (
+                      <div
+                        key={comment.id}
+                        className={`rounded-2xl border ${softBorder} bg-[#111111] p-3 shadow-[0_8px_24px_rgba(0,0,0,0.35)]`}
+                      >
+                        <div className="mb-1 flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold text-smc-gold">
+                            {clientNames.get(comment.user_id) || "Team SMC"}
+                          </p>
+
+                          <p className="text-[10px] text-smc-muted-soft">
+                            {formatTimestamp(comment.created_at)}
+                          </p>
+                        </div>
+
+                        <p className="text-sm leading-6 text-zinc-300">
+                          {comment.body}
+                        </p>
+                      </div>
+                    ))}
+
+                    {postComments.length === 0 && (
+                      <p className="text-xs text-smc-muted-soft">
+                        No comments yet. Be the first.
+                      </p>
+                    )}
+                  </div>
+
+                  <form action={addComment} className="mt-4 flex flex-col gap-2">
+                    <input type="hidden" name="postId" value={post.id} />
+
+                    <textarea
+                      name="body"
+                      rows={2}
+                      placeholder="Add a comment..."
+                      className={`w-full rounded-2xl border ${softBorder} bg-[#111111] p-3 text-sm text-smc-text outline-none placeholder:text-smc-muted-soft focus:border-smc-gold`}
+                    />
+
+                    <button
+                      type="submit"
+                      className="rounded-2xl bg-smc-gold/90 px-4 py-3 text-sm font-bold text-black transition hover:bg-smc-gold-soft"
+                    >
+                      Post comment
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </article>
+          )
+        })}
+
+        {(!feedPosts || feedPosts.length === 0) && (
+          <div
+            className={`rounded-3xl border ${softBorder} bg-smc-card p-5 text-center text-sm text-smc-muted`}
+          >
+            No team posts yet.
           </div>
         )}
-      </div>
-    </main>
+      </section>
+    </div>
   )
 }

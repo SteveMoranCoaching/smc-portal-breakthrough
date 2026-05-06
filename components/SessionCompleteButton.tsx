@@ -61,15 +61,21 @@ export default function SessionCompleteButton({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="block w-full rounded-xl border border-green-400 bg-green-500 px-4 py-3 text-center text-sm font-bold text-black shadow-lg"
+          className="block w-full rounded-2xl border border-emerald-400/25 bg-emerald-400 px-4 py-3 text-center text-sm font-extrabold text-black shadow-[0_0_24px_rgba(52,211,153,0.18)] transition hover:brightness-110 active:scale-[0.98]"
         >
           Mark session complete
         </button>
       ) : (
-        <div className="space-y-3 rounded-xl border border-zinc-800 bg-black p-4">
-          <p className="text-sm font-semibold text-white">
-            How did the session feel?
-          </p>
+        <div className="space-y-3 rounded-3xl border border-[rgba(255,255,255,0.06)] bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.025))] p-4 shadow-2xl">
+          <div className="rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.24)] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-smc-gold/75">
+              Finish session
+            </p>
+
+            <p className="mt-2 text-lg font-extrabold tracking-tight text-white">
+              How did the session feel?
+            </p>
+          </div>
 
           <input
             type="number"
@@ -80,18 +86,18 @@ export default function SessionCompleteButton({
             onChange={(e) =>
               setRating(e.target.value ? Number(e.target.value) : null)
             }
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm text-white placeholder:text-zinc-500"
+            className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[rgba(0,0,0,0.24)] p-4 text-sm font-semibold text-white outline-none placeholder:text-white/25 focus:border-smc-gold/70 focus:shadow-[0_0_18px_rgba(212,175,55,0.12)]"
           />
 
           <textarea
             placeholder="Optional notes..."
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="min-h-24 w-full rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm text-white placeholder:text-zinc-500"
+            className="min-h-24 w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[rgba(0,0,0,0.24)] p-4 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/70 focus:shadow-[0_0_18px_rgba(212,175,55,0.12)]"
           />
 
           {message && (
-            <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-300">
+            <p className="rounded-2xl border border-smc-gold/25 bg-smc-gold/[0.08] p-3 text-sm font-medium text-smc-gold">
               {message}
             </p>
           )}
@@ -100,7 +106,7 @@ export default function SessionCompleteButton({
             type="button"
             onClick={handleSubmit}
             disabled={loading}
-            className="block w-full rounded-xl border border-green-400 bg-green-500 px-4 py-3 text-center text-sm font-bold text-black disabled:opacity-50"
+            className="block w-full rounded-2xl bg-smc-gold px-4 py-3 text-center text-sm font-extrabold text-black shadow-[0_0_24px_rgba(212,175,55,0.22)] transition hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading ? "Saving..." : "Confirm session complete"}
           </button>
@@ -108,7 +114,7 @@ export default function SessionCompleteButton({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="block w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-sm font-semibold text-zinc-300"
+            className="block w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-center text-sm font-bold text-white/70 transition hover:bg-[rgba(255,255,255,0.07)] active:scale-[0.98]"
           >
             Cancel
           </button>

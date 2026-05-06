@@ -62,8 +62,8 @@ export default function VideoUploadButton({
   }
 
   return (
-    <div className="mt-2">
-      <label className="inline-block cursor-pointer rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-white hover:border-yellow-400 hover:text-yellow-400">
+    <div className="mt-3">
+      <label className="inline-flex w-full cursor-pointer items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm font-extrabold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:border-smc-gold/40 hover:bg-smc-gold/[0.08] hover:text-smc-gold active:scale-[0.98]">
         {uploading ? "Uploading..." : "Upload video"}
         <input
           type="file"
@@ -74,7 +74,9 @@ export default function VideoUploadButton({
         />
       </label>
 
-      {message && <p className="mt-1 text-xs text-zinc-500">{message}</p>}
+      {message && (
+        <p className="mt-2 text-xs font-medium text-white/45">{message}</p>
+      )}
     </div>
   )
 }

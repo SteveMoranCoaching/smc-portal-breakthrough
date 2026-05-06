@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #000000;
+  --foreground: #ffffff;
+
+  --smc-bg: #000000;
+  --smc-card: #0a0a0a;
+  --smc-card-soft: #111111;
+  --smc-panel: #050505;
+  --smc-border: #242424;
+
+  --smc-text: #ffffff;
+  --smc-muted: #9ca3af;
+  --smc-muted-soft: #71717a;
+
+  --smc-gold: #d4af37;
+  --smc-gold-soft: #e6c65c;
+  --smc-gold-dark: #b8962e;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --color-smc-bg: var(--smc-bg);
+  --color-smc-card: var(--smc-card);
+  --color-smc-card-soft: var(--smc-card-soft);
+  --color-smc-panel: var(--smc-panel);
+  --color-smc-border: var(--smc-border);
+
+  --color-smc-text: var(--smc-text);
+  --color-smc-muted: var(--smc-muted);
+  --color-smc-muted-soft: var(--smc-muted-soft);
+
+  --color-smc-gold: var(--smc-gold);
+  --color-smc-gold-soft: var(--smc-gold-soft);
+  --color-smc-gold-dark: var(--smc-gold-dark);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--smc-bg);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background:
+    radial-gradient(circle at top, rgba(212,175,55,0.08), transparent 40rem),
+    radial-gradient(circle at bottom, rgba(255,255,255,0.03), transparent 50rem),
+    var(--smc-bg);
+  color: var(--smc-text);
   font-family: Arial, Helvetica, sans-serif;
 }
