@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import CoachActivityFeed from "@/components/CoachActivityFeed"
 import RealtimeUnreadMessageCount from "@/components/RealtimeUnreadMessageCount"
+import GlobalMessageNotifications from "@/components/GlobalMessageNotifications"
 
 export const dynamic = "force-dynamic"
 
@@ -311,6 +312,8 @@ export default async function CoachDashboard({
 
   return (
     <main className="min-h-screen bg-black p-6 text-white">
+        <GlobalMessageNotifications currentUserId={user.id} />
+        
       <div className="mx-auto max-w-5xl space-y-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>

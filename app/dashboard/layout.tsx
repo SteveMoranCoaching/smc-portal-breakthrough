@@ -1,6 +1,7 @@
 import { ReactNode } from "react"
 import BottomNav from "@/components/BottomNav"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
+import GlobalMessageNotifications from "@/components/GlobalMessageNotifications"
 
 export const dynamic = "force-dynamic"
 
@@ -37,6 +38,8 @@ export default async function DashboardLayout({
         unreadMessages={unreadClientMessages}
         currentUserId={user?.id}
       />
+
+      <GlobalMessageNotifications currentUserId={user?.id} />
     </main>
   )
 }
