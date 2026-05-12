@@ -1,9 +1,11 @@
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import RealtimeMessageThread from "@/components/RealtimeMessageThread"
 import MessageComposer from "@/components/MessageComposer"
-import NotificationPermissionButton from "@/components/NotificationPermissionButton"
 
 export const dynamic = "force-dynamic"
+
+const shellCard =
+  "relative overflow-hidden rounded-[1.35rem] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.016))] p-3.5 shadow-[0_14px_34px_rgba(0,0,0,0.68)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[1.35rem] before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)]"
 
 export default async function ClientMessagesPage() {
   const supabase = await createSupabaseServerClient()
@@ -14,8 +16,12 @@ export default async function ClientMessagesPage() {
 
   if (!user) {
     return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        You must be logged in.
+      <main className="min-h-screen bg-black px-3 py-4 text-white">
+        <div className={`${shellCard} mx-auto w-full max-w-2xl`}>
+          <div className="relative z-10 text-sm text-white/50">
+            You must be logged in.
+          </div>
+        </div>
       </main>
     )
   }
@@ -29,8 +35,12 @@ export default async function ClientMessagesPage() {
 
   if (!coach) {
     return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        Coach account not found.
+      <main className="min-h-screen bg-black px-3 py-4 text-white">
+        <div className={`${shellCard} mx-auto w-full max-w-2xl`}>
+          <div className="relative z-10 text-sm text-white/50">
+            Coach account not found.
+          </div>
+        </div>
       </main>
     )
   }
@@ -49,23 +59,36 @@ export default async function ClientMessagesPage() {
     .order("created_at", { ascending: true })
 
   return (
-    <main className="min-h-screen bg-black px-4 py-6 text-white">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-2xl flex-col">
-        <header className="mb-5">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-yellow-400">
-            SMC Messages
-          </p>
-          <h1 className="mt-2 text-3xl font-bold">Coach Chat</h1>
-          <p className="mt-2 text-sm text-gray-400">
-            Message your coach directly from here.
-          </p>
-        </header>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.08),transparent_30%),#050505] px-3 py-4 pb-28 text-white">
+      <div className="mx-auto flex min-h-[calc(100vh-7rem)] w-full max-w-2xl flex-col gap-3">
+        <section className={shellCard}>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/45 to-transparent" />
 
-        <div className="mb-4">
-          <NotificationPermissionButton />
-        </div>
+          <div className="relative z-10">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+                  SMC Messages
+                </p>
 
-        <section className="flex-1 space-y-3 rounded-3xl border border-gray-800 bg-gray-950 p-4">
+                <h1 className="mt-1.5 text-xl font-black leading-tight tracking-tight text-white">
+                  Coach Chat
+                </h1>
+
+                <p className="mt-1 text-xs leading-5 text-white/45">
+                  Your direct line to Steve for training questions, feedback and
+                  support.
+                </p>
+              </div>
+
+              <span className="shrink-0 rounded-full border border-green-500/20 bg-green-500/10 px-2.5 py-1 text-[9px] font-black uppercase text-green-400">
+                Direct
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className="max-h-[52vh] min-h-[34vh] flex-1 overflow-y-auto rounded-[1.35rem] border border-white/[0.06] bg-[#05070c]/80 p-3 shadow-[0_14px_34px_rgba(0,0,0,0.62)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <RealtimeMessageThread
             initialMessages={messages || []}
             currentUserId={user.id}

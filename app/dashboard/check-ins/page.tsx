@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import SubmitButton from "@/components/SubmitButton"
+import { checkCheckInAchievements } from "@/lib/achievements"
 
 export const dynamic = "force-dynamic"
 
@@ -13,6 +14,24 @@ const innerPanel =
 
 const inputClass =
   "w-full rounded-2xl border border-zinc-800 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-zinc-600 focus:border-yellow-500/70"
+
+function getWeekWindow() {
+  const now = new Date()
+  const day = now.getDay()
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1)
+
+  const monday = new Date(now)
+  monday.setDate(diff)
+  monday.setHours(0, 0, 0, 0)
+
+  const nextMonday = new Date(monday)
+  nextMonday.setDate(monday.getDate() + 7)
+
+  return {
+    weekStart: monday.toISOString(),
+    weekEnd: nextMonday.toISOString(),
+  }
+}
 
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString("en-GB", {
@@ -33,6 +52,20 @@ async function submitCheckIn(formData: FormData) {
 
   if (!user) {
     redirect("/dashboard/check-ins?error=not-logged-in")
+  }
+
+  const { weekStart, weekEnd } = getWeekWindow()
+
+  const { data: existingThisWeek } = await supabase
+    .from("check_ins")
+    .select("id")
+    .eq("user_id", user.id)
+    .gte("created_at", weekStart)
+    .lt("created_at", weekEnd)
+    .maybeSingle()
+
+  if (existingThisWeek) {
+    redirect("/dashboard/check-ins?alreadySubmitted=true")
   }
 
   const { error } = await supabase.from("check_ins").insert({
@@ -59,6 +92,9 @@ async function submitCheckIn(formData: FormData) {
     redirect(`/dashboard/check-ins?error=${message}`)
   }
 
+  await checkCheckInAchievements(supabase, user.id)
+
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/check-ins")
   revalidatePath("/coach")
 
@@ -69,8 +105,8 @@ export default async function CheckInsPage({
   searchParams,
 }: {
   searchParams?:
-    | { submitted?: string; error?: string }
-    | Promise<{ submitted?: string; error?: string }>
+    | { submitted?: string; error?: string; alreadySubmitted?: string }
+    | Promise<{ submitted?: string; error?: string; alreadySubmitted?: string }>
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {}
 
@@ -88,17 +124,28 @@ export default async function CheckInsPage({
     )
   }
 
+  const { weekStart, weekEnd } = getWeekWindow()
+
   const { data: checkIns } = await supabase
     .from("check_ins")
     .select("*")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
 
+  const thisWeeksCheckIn =
+    checkIns?.find(
+      (checkIn) =>
+        new Date(checkIn.created_at).getTime() >=
+          new Date(weekStart).getTime() &&
+        new Date(checkIn.created_at).getTime() < new Date(weekEnd).getTime()
+    ) || null
+
+  const hasSubmittedThisWeek = Boolean(thisWeeksCheckIn)
+
   const unseenFeedbackIds =
     checkIns
       ?.filter(
-        (checkIn) =>
-          checkIn.coach_feedback && checkIn.feedback_seen === false
+        (checkIn) => checkIn.coach_feedback && checkIn.feedback_seen === false
       )
       .map((checkIn) => checkIn.id) || []
 
@@ -127,6 +174,24 @@ export default async function CheckInsPage({
           </p>
         </div>
 
+        {hasSubmittedThisWeek && (
+          <div className="rounded-2xl border border-green-500/30 bg-green-500/10 p-4">
+            <p className="text-sm font-black text-green-400">
+              This week’s check-in is complete.
+            </p>
+            <p className="mt-1 text-sm text-zinc-300">
+              You’ve already submitted your check-in for this Monday–Sunday
+              period.
+            </p>
+
+            {thisWeeksCheckIn && (
+              <p className="mt-2 text-xs text-zinc-500">
+                Submitted: {formatDate(thisWeeksCheckIn.created_at)}
+              </p>
+            )}
+          </div>
+        )}
+
         {hasUnseenFeedback && (
           <div className="rounded-2xl border border-yellow-500/40 bg-yellow-500/10 p-4">
             <p className="text-sm font-black text-yellow-500">
@@ -145,6 +210,12 @@ export default async function CheckInsPage({
           </div>
         )}
 
+        {resolvedSearchParams?.alreadySubmitted === "true" && (
+          <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm font-bold text-yellow-400">
+            You’ve already completed this week’s check-in.
+          </div>
+        )}
+
         {resolvedSearchParams?.error && (
           <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm font-bold text-red-400">
             <p>Check-in could not be submitted.</p>
@@ -154,100 +225,115 @@ export default async function CheckInsPage({
           </div>
         )}
 
-        <form action={submitCheckIn} className={`${premiumCard} p-5`}>
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm font-bold text-yellow-500">
-                  Bodyweight
-                </span>
-                <input
-                  name="bodyweight"
-                  type="number"
-                  step="0.1"
-                  placeholder="e.g. 89.5"
-                  className={inputClass}
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm font-bold text-yellow-500">
-                  Steps / Cardio
-                </span>
-                <input
-                  name="cardio_steps"
-                  type="text"
-                  placeholder="e.g. 8k steps daily"
-                  className={inputClass}
-                />
-              </label>
-            </div>
-
-            <div className={`${innerPanel} p-4`}>
-              <p className="mb-4 text-sm font-bold text-zinc-300">
-                Rate your week
-              </p>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {!hasSubmittedThisWeek ? (
+          <form action={submitCheckIn} className={`${premiumCard} p-5`}>
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
-                    Training
+                  <span className="text-sm font-bold text-yellow-500">
+                    Bodyweight
                   </span>
                   <input
-                    name="training_rating"
+                    name="bodyweight"
                     type="number"
-                    min="1"
-                    max="10"
-                    placeholder="/10"
+                    step="0.1"
+                    placeholder="e.g. 89.5"
                     className={inputClass}
                   />
                 </label>
 
                 <label className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
-                    Recovery
+                  <span className="text-sm font-bold text-yellow-500">
+                    Steps / Cardio
                   </span>
                   <input
-                    name="recovery_rating"
-                    type="number"
-                    min="1"
-                    max="10"
-                    placeholder="/10"
-                    className={inputClass}
-                  />
-                </label>
-
-                <label className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
-                    Nutrition
-                  </span>
-                  <input
-                    name="nutrition_rating"
-                    type="number"
-                    min="1"
-                    max="10"
-                    placeholder="/10"
+                    name="cardio_steps"
+                    type="text"
+                    placeholder="e.g. 8k steps daily"
                     className={inputClass}
                   />
                 </label>
               </div>
+
+              <div className={`${innerPanel} p-4`}>
+                <p className="mb-4 text-sm font-bold text-zinc-300">
+                  Rate your week
+                </p>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
+                      Training
+                    </span>
+                    <input
+                      name="training_rating"
+                      type="number"
+                      min="1"
+                      max="10"
+                      placeholder="/10"
+                      className={inputClass}
+                    />
+                  </label>
+
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
+                      Recovery
+                    </span>
+                    <input
+                      name="recovery_rating"
+                      type="number"
+                      min="1"
+                      max="10"
+                      placeholder="/10"
+                      className={inputClass}
+                    />
+                  </label>
+
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
+                      Nutrition
+                    </span>
+                    <input
+                      name="nutrition_rating"
+                      type="number"
+                      min="1"
+                      max="10"
+                      placeholder="/10"
+                      className={inputClass}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-yellow-500">
+                  Notes / anything to highlight?
+                </span>
+                <textarea
+                  name="notes"
+                  rows={5}
+                  placeholder="Wins, struggles, missed sessions, sleep, stress, niggles, anything useful..."
+                  className={inputClass}
+                />
+              </label>
+
+              <SubmitButton />
             </div>
-
-            <label className="block space-y-2">
-              <span className="text-sm font-bold text-yellow-500">
-                Notes / anything to highlight?
-              </span>
-              <textarea
-                name="notes"
-                rows={5}
-                placeholder="Wins, struggles, missed sessions, sleep, stress, niggles, anything useful..."
-                className={inputClass}
-              />
-            </label>
-
-            <SubmitButton />
+          </form>
+        ) : (
+          <div className={`${premiumCard} p-5`}>
+            <div className="relative z-10">
+              <p className="text-sm font-black text-yellow-500">
+                Check-in locked for this week
+              </p>
+              <p className="mt-2 text-sm leading-6 text-zinc-300">
+                To keep weekly reviews clean, you can submit one check-in per
+                Monday–Sunday period. Your next check-in will unlock next
+                Monday.
+              </p>
+            </div>
           </div>
-        </form>
+        )}
 
         <section className="space-y-4">
           <h2 className="text-xl font-black">Previous Check-Ins</h2>

@@ -20,11 +20,7 @@ export default async function CoachClientMessagesPage({
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        You must be logged in.
-      </main>
-    )
+    return <div className="p-6 text-white">You must be logged in.</div>
   }
 
   const { data: profile } = await supabase
@@ -34,30 +30,30 @@ export default async function CoachClientMessagesPage({
     .single()
 
   if (profile?.role !== "coach") {
-    return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        Coach access only.
-      </main>
-    )
+    return <div className="p-6 text-white">Coach access only.</div>
   }
 
   const { data: client } = await supabase
     .from("clients")
     .select("id, user_id, name, email")
-    .eq("user_id", clientId)
+    .or(`id.eq.${clientId},user_id.eq.${clientId}`)
     .single()
+
+  const clientUserId = client?.user_id || clientId
+  const clientName = client?.name || client?.email || "Client"
 
   const { data: messages } = await supabase
     .from("messages")
     .select("*")
-    .eq("client_user_id", clientId)
+    .eq("client_user_id", clientUserId)
     .order("created_at", { ascending: true })
 
   const unreadMessageIds =
     messages
       ?.filter(
         (message) =>
-          message.sender_id === clientId && message.read_by_coach === false
+          message.sender_id === clientUserId &&
+          message.read_by_coach === false
       )
       .map((message) => message.id) || []
 
@@ -68,44 +64,41 @@ export default async function CoachClientMessagesPage({
       .in("id", unreadMessageIds)
   }
 
-  const clientName = client?.name || client?.email || "Client"
-
   return (
-    <main className="min-h-screen bg-black px-4 py-6 text-white">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-2xl flex-col">
-        <header className="mb-5">
-          <Link href="/coach/messages" className="text-sm text-yellow-400">
-            ← Back to Messages
-          </Link>
+    <div className="mx-auto flex min-h-[calc(100vh-11rem)] max-w-2xl flex-col">
+      <header className="mb-5">
+        <Link href="/coach/messages" className="text-sm text-yellow-400">
+          ← Back to Messages
+        </Link>
 
-          <p className="mt-5 text-sm font-semibold uppercase tracking-[0.25em] text-yellow-400">
-            Client Thread
-          </p>
-          <h1 className="mt-2 text-3xl font-bold">{clientName}</h1>
-        </header>
+        <p className="mt-5 text-sm font-semibold uppercase tracking-[0.25em] text-yellow-400">
+          Client Thread
+        </p>
 
-        <div className="mb-4">
-          <NotificationPermissionButton />
-        </div>
+        <h1 className="mt-2 text-3xl font-bold">{clientName}</h1>
+      </header>
 
-        <section className="flex-1 space-y-3 rounded-3xl border border-gray-800 bg-gray-950 p-4">
-          <RealtimeMessageThread
-            initialMessages={messages || []}
-            currentUserId={user.id}
-            clientUserId={clientId}
-            unreadMessageIds={unreadMessageIds}
-            otherUserName={clientName}
-          />
-        </section>
-
-        <MessageComposer
-          currentUserId={user.id}
-          recipientId={clientId}
-          clientUserId={clientId}
-          isCoach={true}
-          placeholder="Write a message..."
-        />
+      <div className="mb-4">
+        <NotificationPermissionButton />
       </div>
-    </main>
+
+      <section className="flex-1 space-y-3 rounded-3xl border border-gray-800 bg-gray-950 p-4">
+        <RealtimeMessageThread
+          initialMessages={messages || []}
+          currentUserId={user.id}
+          clientUserId={clientUserId}
+          unreadMessageIds={unreadMessageIds}
+          otherUserName={clientName}
+        />
+      </section>
+
+      <MessageComposer
+        currentUserId={user.id}
+        recipientId={clientUserId}
+        clientUserId={clientUserId}
+        isCoach={true}
+        placeholder="Write a message..."
+      />
+    </div>
   )
 }

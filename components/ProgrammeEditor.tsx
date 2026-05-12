@@ -4,22 +4,25 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 
-type Client = {
-  id: string
-  user_id: string
-  name: string
-  email: string
-}
-
 type Exercise = {
   name: string
   prescription: string
 }
 
 type Session = {
+  id?: string
+  week_number?: number
   day: string
   title: string
   exercises: Exercise[]
+}
+
+type Programme = {
+  id: string
+  user_id: string
+  title: string
+  week_number: number
+  notes: string | null
 }
 
 type ToastType = "success" | "error" | "info"
@@ -46,42 +49,42 @@ const defaultSessions: Session[] = [
   },
 ]
 
+function cloneSessions(sessions: Session[]) {
+  return sessions.map((session) => ({
+    day: session.day,
+    title: session.title,
+    exercises: session.exercises.map((exercise) => ({ ...exercise })),
+  }))
+}
+
 function buildWeeks(length: number) {
   return Array.from({ length }, (_, index) => index + 1)
 }
 
-function createSessionsByWeek(length: number) {
-  return buildWeeks(length).reduce(
-    (acc, week) => ({
-      ...acc,
-      [week]: defaultSessions.map((session) => ({
-        ...session,
-        exercises: session.exercises.map((exercise) => ({ ...exercise })),
-      })),
-    }),
-    {} as Record<number, Session[]>
-  )
-}
-
-export default function ProgrammeCreator() {
+export default function ProgrammeEditor({
+  programmeId,
+}: {
+  programmeId: string
+}) {
   const router = useRouter()
 
-  const [clients, setClients] = useState<Client[]>([])
-  const [loadingClients, setLoadingClients] = useState(true)
-  const [clientUserId, setClientUserId] = useState("")
+  const [programme, setProgramme] = useState<Programme | null>(null)
+  const [clientName, setClientName] = useState("")
+  const [clientId, setClientId] = useState("")
   const [title, setTitle] = useState("")
-  const [programmeLength, setProgrammeLength] = useState("4")
+  const [programmeLength, setProgrammeLength] = useState("1")
   const [activeWeek, setActiveWeek] = useState(1)
   const [notes, setNotes] = useState("")
+  const [sessionsByWeek, setSessionsByWeek] = useState<Record<number, Session[]>>({
+    1: defaultSessions,
+  })
   const [openSessions, setOpenSessions] = useState<number[]>([0])
-
-  const [sessionsByWeek, setSessionsByWeek] = useState<Record<number, Session[]>>(
-    createSessionsByWeek(4)
-  )
-
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [redirecting, setRedirecting] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [loadError, setLoadError] = useState("")
+  const [redirecting, setRedirecting] = useState(false)
 
   const sessionRefs = useRef<Array<HTMLDivElement | null>>([])
   const pendingScrollIndex = useRef<number | null>(null)
@@ -93,11 +96,6 @@ export default function ProgrammeCreator() {
   )
 
   const sessions = sessionsByWeek[activeWeek] ?? defaultSessions
-
-  const selectedClient = useMemo(
-    () => clients.find((client) => client.user_id === clientUserId),
-    [clients, clientUserId]
-  )
 
   const totalSessions = useMemo(
     () =>
@@ -144,28 +142,81 @@ export default function ProgrammeCreator() {
   }, [sessions.length])
 
   useEffect(() => {
-    async function loadClients() {
-      setLoadingClients(true)
+    async function loadProgramme() {
+      setLoading(true)
+      setLoadError("")
 
-      const { data, error } = await supabase
-        .from("clients")
-        .select("id, user_id, name, email")
-        .order("name", { ascending: true })
+      const { data: programmeData, error: programmeError } = await supabase
+        .from("programmes")
+        .select("id, user_id, title, week_number, notes")
+        .eq("id", programmeId)
+        .single()
 
-      if (error) {
-        showToast({
-          type: "error",
-          text: "Could not load clients.",
-        })
+      if (programmeError || !programmeData) {
+        setLoadError("Programme not found.")
+        setLoading(false)
+        return
       }
 
-      if (data) setClients(data)
+      const { data: sessionData } = await supabase
+        .from("programme_sessions")
+        .select("id, week_number, day, title, exercises")
+        .eq("programme_id", programmeId)
+        .order("week_number", { ascending: true })
+        .order("created_at", { ascending: true })
 
-      setLoadingClients(false)
+      const { data: clientData } = await supabase
+        .from("clients")
+        .select("id, name")
+        .eq("user_id", programmeData.user_id)
+        .single()
+
+      const groupedSessions = (sessionData ?? []).reduce(
+        (acc: Record<number, Session[]>, session: any, index: number) => {
+          const week = Number(session.week_number || 1)
+
+          if (!acc[week]) acc[week] = []
+
+          acc[week].push({
+            id: session.id,
+            week_number: week,
+            day: session.day || `Day ${index + 1}`,
+            title: session.title || "",
+            exercises:
+              session.exercises && session.exercises.length > 0
+                ? session.exercises
+                : [{ name: "", prescription: "" }],
+          })
+
+          return acc
+        },
+        {}
+      )
+
+      const maxWeek =
+        Object.keys(groupedSessions).length > 0
+          ? Math.max(...Object.keys(groupedSessions).map(Number))
+          : 1
+
+      if (Object.keys(groupedSessions).length === 0) {
+        groupedSessions[1] = cloneSessions(defaultSessions)
+      }
+
+      setProgramme(programmeData)
+      setTitle(programmeData.title ?? "")
+      setProgrammeLength(String(maxWeek))
+      setActiveWeek(1)
+      setNotes(programmeData.notes ?? "")
+      setClientName(clientData?.name ?? "Client")
+      setClientId(clientData?.id ?? "")
+      setSessionsByWeek(groupedSessions)
+      setOpenSessions([0])
+
+      setLoading(false)
     }
 
-    loadClients()
-  }, [])
+    loadProgramme()
+  }, [programmeId])
 
   function showToast(nextToast: Toast) {
     setToast(nextToast)
@@ -196,12 +247,7 @@ export default function ProgrammeCreator() {
       const nextState: Record<number, Session[]> = {}
 
       nextWeeks.forEach((week) => {
-        nextState[week] =
-          current[week] ??
-          defaultSessions.map((session) => ({
-            ...session,
-            exercises: session.exercises.map((exercise) => ({ ...exercise })),
-          }))
+        nextState[week] = current[week] ?? cloneSessions(defaultSessions)
       })
 
       return nextState
@@ -271,7 +317,7 @@ export default function ProgrammeCreator() {
       sessions[sessionIndex].title || sessions[sessionIndex].day || "this session"
 
     const confirmed = window.confirm(
-      `Remove ${sessionName} from Week ${activeWeek}?`
+      `Remove ${sessionName} from Week ${activeWeek}? This will delete when saved.`
     )
 
     if (!confirmed) return
@@ -285,7 +331,7 @@ export default function ProgrammeCreator() {
 
     showToast({
       type: "info",
-      text: "Session removed.",
+      text: "Session removed. Save to confirm.",
     })
   }
 
@@ -317,7 +363,7 @@ export default function ProgrammeCreator() {
       `Exercise ${exerciseIndex + 1}`
 
     const confirmed = window.confirm(
-      `Remove ${exerciseName} from Week ${activeWeek}?`
+      `Remove ${exerciseName} from Week ${activeWeek}? This will delete when saved.`
     )
 
     if (!confirmed) return
@@ -333,7 +379,7 @@ export default function ProgrammeCreator() {
 
     showToast({
       type: "info",
-      text: "Exercise removed.",
+      text: "Exercise removed. Save to confirm.",
     })
   }
 
@@ -343,23 +389,20 @@ export default function ProgrammeCreator() {
     if (!weeks.includes(nextWeek)) {
       showToast({
         type: "error",
-        text: "There is no next week to duplicate into.",
+        text: "There is no next week to copy into.",
       })
       return
     }
 
     const confirmed = window.confirm(
-      `Copy Week ${activeWeek} into Week ${nextWeek}? This will replace Week ${nextWeek}.`
+      `Copy Week ${activeWeek} into Week ${nextWeek}? This will replace Week ${nextWeek} when saved.`
     )
 
     if (!confirmed) return
 
     setSessionsByWeek((current) => ({
       ...current,
-      [nextWeek]: sessions.map((session) => ({
-        ...session,
-        exercises: session.exercises.map((exercise) => ({ ...exercise })),
-      })),
+      [nextWeek]: cloneSessions(sessions),
     }))
 
     setActiveWeek(nextWeek)
@@ -367,20 +410,83 @@ export default function ProgrammeCreator() {
 
     showToast({
       type: "success",
-      text: `Week ${activeWeek} copied into Week ${nextWeek}.`,
+      text: `Week ${activeWeek} copied into Week ${nextWeek}. Save to confirm.`,
     })
   }
 
-  async function saveProgramme() {
-    if (saving) return
+  async function duplicateProgramme() {
+    if (!programme || duplicating || saving) return
 
-    if (!clientUserId) {
+    const confirmed = window.confirm(
+      "Duplicate this full programme block? This copies every week and session."
+    )
+
+    if (!confirmed) return
+
+    setDuplicating(true)
+
+    showToast({
+      type: "info",
+      text: "Duplicating programme...",
+    })
+
+    const { data: duplicatedProgramme, error: programmeError } = await supabase
+      .from("programmes")
+      .insert({
+        user_id: programme.user_id,
+        title: `${title.trim()} Copy`,
+        week_number: 1,
+        notes: notes.trim(),
+      })
+      .select("id")
+      .single()
+
+    if (programmeError || !duplicatedProgramme) {
+      setDuplicating(false)
       showToast({
         type: "error",
-        text: "Choose a client before saving.",
+        text: "Could not duplicate programme.",
       })
       return
     }
+
+    const duplicatedSessions = weeks.flatMap((week) =>
+      (sessionsByWeek[week] ?? []).map((session) => ({
+        programme_id: duplicatedProgramme.id,
+        week_number: week,
+        day: session.day,
+        title: session.title,
+        exercises: session.exercises,
+      }))
+    )
+
+    const { error: sessionsError } = await supabase
+      .from("programme_sessions")
+      .insert(duplicatedSessions)
+
+    if (sessionsError) {
+      setDuplicating(false)
+      showToast({
+        type: "error",
+        text: "Programme duplicated, but sessions failed to copy.",
+      })
+      return
+    }
+
+    setRedirecting(true)
+
+    showToast({
+      type: "success",
+      text: "Programme duplicated.",
+    })
+
+    setTimeout(() => {
+      router.push(`/coach/programmes/${duplicatedProgramme.id}/edit`)
+    }, 550)
+  }
+
+  async function saveProgramme() {
+    if (!programme || saving || duplicating) return
 
     if (!title.trim()) {
       showToast({
@@ -390,57 +496,46 @@ export default function ProgrammeCreator() {
       return
     }
 
-    if (!programmeLength || Number.isNaN(Number(programmeLength))) {
-      showToast({
-        type: "error",
-        text: "Add a valid programme length before saving.",
-      })
-      return
-    }
-
     setSaving(true)
 
     showToast({
       type: "info",
-      text: "Creating programme...",
+      text: "Saving programme...",
     })
 
-    const { error: deactivateError } = await supabase
-  .from("programmes")
-  .update({ is_active: false })
-  .eq("user_id", clientUserId)
+    const { error: programmeError } = await supabase
+      .from("programmes")
+      .update({
+        title: title.trim(),
+        week_number: 1,
+        notes: notes.trim(),
+      })
+      .eq("id", programme.id)
 
-if (deactivateError) {
-  setSaving(false)
-  showToast({
-    type: "error",
-    text: "Could not deactivate the previous programme.",
-  })
-  return
-}
-
-const { data: programme, error: programmeError } = await supabase
-  .from("programmes")
-  .insert({
-    user_id: clientUserId,
-    title: title.trim(),
-    week_number: 1,
-    notes: notes.trim(),
-    is_active: true,
-  })
-  .select()
-  .single()
-
-    if (programmeError || !programme) {
+    if (programmeError) {
       setSaving(false)
       showToast({
         type: "error",
-        text: "Error creating programme.",
+        text: "Error updating programme.",
       })
       return
     }
 
-    const sessionRows = weeks.flatMap((week) =>
+    const { error: deleteError } = await supabase
+      .from("programme_sessions")
+      .delete()
+      .eq("programme_id", programme.id)
+
+    if (deleteError) {
+      setSaving(false)
+      showToast({
+        type: "error",
+        text: "Programme updated, but old sessions could not be cleared.",
+      })
+      return
+    }
+
+    const cleanedSessions = weeks.flatMap((week) =>
       (sessionsByWeek[week] ?? []).map((session) => ({
         programme_id: programme.id,
         week_number: week,
@@ -452,15 +547,15 @@ const { data: programme, error: programmeError } = await supabase
       }))
     )
 
-    const { error: sessionsError } = await supabase
+    const { error: insertError } = await supabase
       .from("programme_sessions")
-      .insert(sessionRows)
+      .insert(cleanedSessions)
 
-    if (sessionsError) {
+    if (insertError) {
       setSaving(false)
       showToast({
         type: "error",
-        text: "Programme created, but sessions failed to save.",
+        text: "Programme updated, but sessions failed to save.",
       })
       return
     }
@@ -469,12 +564,46 @@ const { data: programme, error: programmeError } = await supabase
 
     showToast({
       type: "success",
-      text: "Programme created successfully.",
+      text: "Programme saved successfully.",
     })
 
     setTimeout(() => {
-      router.push(`/coach/programmes/${programme.id}/edit`)
+      if (clientId) {
+        router.push(`/coach/${clientId}`)
+      } else {
+        router.push("/coach")
+      }
     }, 550)
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black p-6 text-white">
+        <div className="mx-auto max-w-5xl space-y-4">
+          <div className={`${cardStyle} p-5`}>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-smc-gold/70">
+              Loading
+            </p>
+            <h1 className="mt-2 text-2xl font-black">Opening programme...</h1>
+            <p className="mt-2 text-sm text-white/45">
+              Pulling the programme, weeks, sessions and client details.
+            </p>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (!programme) {
+    return (
+      <main className="min-h-screen bg-black p-6 text-white">
+        <div className={`${cardStyle} mx-auto max-w-2xl p-5`}>
+          <p className="text-sm text-white/60">
+            {loadError || "Programme not found."}
+          </p>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -500,14 +629,26 @@ const { data: programme, error: programmeError } = await supabase
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-full border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-white/50 transition hover:border-smc-gold/35 hover:text-white"
+            disabled={saving || duplicating || redirecting}
+            className="rounded-full border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-white/50 transition hover:border-smc-gold/35 hover:text-white disabled:opacity-35"
           >
             ← Back
           </button>
 
-          <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold">
-            Programme Builder
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={duplicateProgramme}
+              disabled={saving || duplicating || redirecting}
+              className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold transition hover:bg-smc-gold hover:text-black disabled:opacity-35"
+            >
+              {duplicating ? "Duplicating..." : "Duplicate"}
+            </button>
+
+            <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold">
+              Edit Programme
+            </span>
+          </div>
         </div>
 
         <section className={`${cardStyle} p-4 sm:p-5`}>
@@ -515,15 +656,15 @@ const { data: programme, error: programmeError } = await supabase
 
           <div className="relative z-10">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
-              SMC Coaching
+              {clientName}
             </p>
 
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
-              Create Programme
+              Edit Programme
             </h1>
 
             <p className="mt-1 max-w-2xl text-sm leading-6 text-white/45">
-              Build a multi-week training block with separate editable weeks.
+              Edit this programme as one full training block, split by week.
             </p>
 
             <div className="mt-4 grid grid-cols-3 gap-2">
@@ -553,25 +694,6 @@ const { data: programme, error: programmeError } = await supabase
 
         <section className={`${cardStyle} p-4 sm:p-5`}>
           <div className="relative z-10 grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className={labelStyle}>Client</label>
-              <select
-                value={clientUserId}
-                onChange={(e) => setClientUserId(e.target.value)}
-                disabled={loadingClients || saving || redirecting}
-                className={inputStyle}
-              >
-                <option value="">
-                  {loadingClients ? "Loading clients..." : "Select client"}
-                </option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.user_id}>
-                    {client.name} — {client.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div>
               <label className={labelStyle}>Programme title</label>
               <input
@@ -809,10 +931,10 @@ const { data: programme, error: programmeError } = await supabase
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-bold text-white/55">
               {redirecting
-                ? "Created — opening editor..."
-                : selectedClient
-                  ? selectedClient.name
-                  : "No client selected"}
+                ? duplicating
+                  ? "Duplicated — opening copy..."
+                  : "Saved — returning to client..."
+                : clientName}
             </p>
             <p className="truncate text-[11px] text-white/30">
               {title || "Untitled programme"} · {programmeLength} weeks ·{" "}
@@ -823,12 +945,10 @@ const { data: programme, error: programmeError } = await supabase
           <button
             type="button"
             onClick={saveProgramme}
-            disabled={
-              saving || redirecting || !clientUserId || !title || !programmeLength
-            }
+            disabled={saving || duplicating || redirecting || !title}
             className="shrink-0 rounded-full bg-smc-gold px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-black transition hover:brightness-110 disabled:opacity-35"
           >
-            {saving ? "Saving..." : redirecting ? "Created" : "Save"}
+            {saving ? "Saving..." : redirecting ? "Saved" : "Save"}
           </button>
         </div>
       </div>

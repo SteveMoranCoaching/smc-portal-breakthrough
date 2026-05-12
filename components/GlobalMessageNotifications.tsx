@@ -30,7 +30,12 @@ export default function GlobalMessageNotifications({
   currentUserId?: string
 }) {
   const pathname = usePathname()
+  const pathnameRef = useRef(pathname)
   const lastNotifiedIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    pathnameRef.current = pathname
+  }, [pathname])
 
   useEffect(() => {
     if (!currentUserId) return
@@ -43,23 +48,29 @@ export default function GlobalMessageNotifications({
           event: "INSERT",
           schema: "public",
           table: "messages",
+          filter: `recipient_id=eq.${currentUserId}`,
         },
         (payload) => {
           const message = payload.new as Message
 
           if (message.sender_id === currentUserId) return
-          if (message.recipient_id !== currentUserId) return
           if (lastNotifiedIdRef.current === message.id) return
 
-          const isFocused =
-            typeof document !== "undefined" &&
-            document.visibilityState === "visible" &&
-            document.hasFocus()
+          const currentPath = pathnameRef.current
 
-          const isClientMessagePage = pathname === "/dashboard/messages"
+          const pageIsVisible =
+            typeof document !== "undefined" &&
+            document.visibilityState === "visible"
+
+          const windowIsFocused =
+            typeof document !== "undefined" && document.hasFocus()
+
+          const isFocused = pageIsVisible && windowIsFocused
+
+          const isClientMessagePage = currentPath === "/dashboard/messages"
 
           const isCoachViewingSameThread =
-            pathname === `/coach/messages/${message.client_user_id}`
+            currentPath === `/coach/messages/${message.client_user_id}`
 
           if (isFocused && (isClientMessagePage || isCoachViewingSameThread)) {
             return
@@ -78,7 +89,7 @@ export default function GlobalMessageNotifications({
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [currentUserId, pathname])
+  }, [currentUserId])
 
   return null
 }

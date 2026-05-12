@@ -32,7 +32,7 @@ type MessageThread = {
 }
 
 function getPreview(message: Message) {
-  if (message.body?.trim()) return message.body
+  if (message.body?.trim()) return message.body.trim()
 
   if (message.attachment_type === "image") return "Sent an image"
   if (message.attachment_type === "video") return "Sent a video"
@@ -94,12 +94,17 @@ export default function CoachMessagesInbox({
   const [clients] = useState<Client[]>(initialClients || [])
   const [messages, setMessages] = useState<Message[]>(initialMessages || [])
   const [search, setSearch] = useState("")
+  const [realtimeStatus, setRealtimeStatus] = useState<
+    "connecting" | "connected" | "disconnected"
+  >("connecting")
 
   useEffect(() => {
     setHasMounted(true)
   }, [])
 
   useEffect(() => {
+    setRealtimeStatus("connecting")
+
     const channel = supabase
       .channel(`coach-messages-inbox-${currentUserId}`)
       .on(
@@ -118,8 +123,20 @@ export default function CoachMessagesInbox({
           setMessages((data || []) as Message[])
         }
       )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setRealtimeStatus("connected")
+          return
+        }
 
-    channel.subscribe()
+        if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setRealtimeStatus("disconnected")
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
@@ -129,6 +146,11 @@ export default function CoachMessagesInbox({
   const messageThreads = useMemo(
     () => buildThreads(clients, messages),
     [clients, messages]
+  )
+
+  const totalUnread = useMemo(
+    () => messageThreads.reduce((total, thread) => total + thread.unreadCount, 0),
+    [messageThreads]
   )
 
   const filteredThreads = useMemo(() => {
@@ -151,7 +173,26 @@ export default function CoachMessagesInbox({
 
   return (
     <>
-      <div className="mb-4 rounded-3xl border border-gray-800 bg-gray-950 p-3">
+      <div className="mb-4 space-y-3 rounded-3xl border border-gray-800 bg-gray-950 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-yellow-400">
+              Inbox
+            </p>
+            <p className="mt-1 text-sm text-gray-400">
+              {messageThreads.length} active thread
+              {messageThreads.length === 1 ? "" : "s"}
+              {totalUnread > 0 ? ` · ${totalUnread} unread` : ""}
+            </p>
+          </div>
+
+          {realtimeStatus === "disconnected" && (
+            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-300">
+              Reconnect on refresh
+            </span>
+          )}
+        </div>
+
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -173,7 +214,7 @@ export default function CoachMessagesInbox({
               <Link
                 key={client.id}
                 href={`/coach/messages/${client.user_id}`}
-                className={`block rounded-3xl border p-4 transition ${
+                className={`block rounded-3xl border p-4 transition active:scale-[0.99] ${
                   unreadCount > 0
                     ? "border-yellow-500/40 bg-yellow-500/10 hover:border-yellow-400"
                     : "border-gray-800 bg-gray-950 hover:border-yellow-400"
@@ -188,13 +229,19 @@ export default function CoachMessagesInbox({
 
                       {unreadCount > 0 && (
                         <span className="rounded-full bg-yellow-400 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                          NEW
+                          Needs reply
                         </span>
                       )}
                     </div>
 
+                    {client.email && client.name && (
+                      <p className="mt-1 truncate text-xs text-gray-500">
+                        {client.email}
+                      </p>
+                    )}
+
                     <p
-                      className={`mt-2 truncate text-sm ${
+                      className={`mt-2 line-clamp-2 text-sm ${
                         unreadCount > 0
                           ? "font-semibold text-white"
                           : "text-gray-400"
@@ -211,20 +258,39 @@ export default function CoachMessagesInbox({
                     </p>
                   </div>
 
-                  {unreadCount > 0 && (
-                    <div className="flex h-7 min-w-[28px] items-center justify-center rounded-full bg-yellow-400 px-2 text-xs font-bold text-black">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </div>
-                  )}
+                  <div className="flex flex-col items-end gap-2">
+                    {unreadCount > 0 && (
+                      <div className="flex h-7 min-w-[28px] items-center justify-center rounded-full bg-yellow-400 px-2 text-xs font-bold text-black">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </div>
+                    )}
+
+                    <span className="text-xs text-gray-600">Open →</span>
+                  </div>
                 </div>
               </Link>
             )
           })
         ) : (
           <div className="rounded-3xl border border-gray-800 bg-gray-950 p-5 text-sm text-gray-400">
-            {search.trim()
-              ? "No conversations match that search."
-              : "No client conversations yet."}
+            {search.trim() ? (
+              <>
+                <p className="font-semibold text-white">No matches found.</p>
+                <p className="mt-1">
+                  Try searching by client name, email, or something from the
+                  message preview.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-white">
+                  No client conversations yet.
+                </p>
+                <p className="mt-1">
+                  Once clients send messages, their threads will appear here.
+                </p>
+              </>
+            )}
           </div>
         )}
       </section>

@@ -15,7 +15,8 @@ export default function VideoGroup({
   const [open, setOpen] = useState(defaultOpen)
   const groupRef = useRef<HTMLDivElement | null>(null)
 
-  const hasNewVideo = true
+  const newVideoCount = videos.filter((video) => !video.reviewed).length
+  const hasNewVideo = newVideoCount > 0
 
   useEffect(() => {
     if (defaultOpen && groupRef.current) {
@@ -31,59 +32,63 @@ export default function VideoGroup({
   return (
     <div
       ref={groupRef}
-      className={`rounded-2xl border-2 bg-zinc-950 ${
+      className={`relative overflow-hidden rounded-[1.25rem] border bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] shadow-[0_12px_30px_rgba(0,0,0,0.45)] transition ${
         defaultOpen
-          ? "border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.4)]"
-          : "border-zinc-800"
+          ? "border-smc-gold/45 shadow-[0_0_24px_rgba(197,167,91,0.16)]"
+          : "border-white/[0.065]"
       }`}
     >
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/35 to-transparent" />
+
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between p-4 text-left"
+        className="relative z-10 flex w-full items-center justify-between gap-3 p-3.5 text-left transition hover:bg-white/[0.025]"
       >
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-xl font-semibold">
-  {exerciseName}
-</h3>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-black text-white">
+              {exerciseName}
+            </h3>
 
             {hasNewVideo && (
-              <span className="text-xs bg-yellow-500 text-black px-2 py-0.5 rounded-full font-semibold">
-                NEW
+              <span className="rounded-full bg-smc-gold px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-black">
+                {newVideoCount} new
               </span>
             )}
           </div>
 
-          <p className="text-sm text-zinc-400">
-            {videos.length} video{videos.length === 1 ? "" : "s"}
+          <p className="mt-0.5 text-xs text-white/40">
+            {videos.length} video{videos.length === 1 ? "" : "s"} uploaded
           </p>
         </div>
 
-        <span className="text-zinc-400">{open ? "−" : "+"}</span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/[0.07] bg-black/35 text-lg font-light text-white/55">
+          {open ? "−" : "+"}
+        </span>
       </button>
 
       {open && (
-        <div className="grid gap-4 md:grid-cols-2 p-4 pt-0">
+        <div className="relative z-10 grid gap-3 border-t border-white/[0.06] p-3.5 pt-3 md:grid-cols-2">
           {videos.map((video: any) => (
             <div
               key={video.id}
-              className="rounded-2xl border border-zinc-800 bg-black p-4"
+              className="overflow-hidden rounded-[1.1rem] border border-white/[0.06] bg-black/40 p-3 shadow-[0_8px_22px_rgba(0,0,0,0.35)]"
             >
               {video.signedUrl && (
-                <div className="flex justify-center bg-black rounded-xl border border-zinc-800 overflow-hidden">
+                <div className="overflow-hidden rounded-[0.95rem] border border-white/[0.06] bg-black">
                   <video
                     src={video.signedUrl}
                     controls
-                    className="h-[320px] w-auto max-w-full object-contain"
+                    className="mx-auto h-[280px] w-auto max-w-full object-contain sm:h-[320px]"
                   />
                 </div>
               )}
 
               <FeedbackBox
-  videoId={video.id}
-  initialFeedback={video.feedback}
-  initialReviewed={video.reviewed}
-/>
+                videoId={video.id}
+                initialFeedback={video.feedback}
+                initialReviewed={video.reviewed}
+              />
             </div>
           ))}
         </div>

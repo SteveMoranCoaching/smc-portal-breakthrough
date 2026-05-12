@@ -80,7 +80,7 @@ export function MessageTypingTextarea({
       rows={rows}
       placeholder={placeholder}
       onChange={handleChange}
-      className="w-full rounded-2xl border border-gray-800 bg-gray-950 p-4 text-sm text-white outline-none placeholder:text-gray-500 focus:border-yellow-400"
+      className="max-h-32 w-full resize-none rounded-[1rem] border border-white/[0.06] bg-[#05070c] p-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
     />
   )
 }
@@ -101,6 +101,9 @@ export default function RealtimeMessageThread({
   const [hasMounted, setHasMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>(initialMessages || [])
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false)
+  const [realtimeStatus, setRealtimeStatus] = useState<
+    "connecting" | "connected" | "disconnected"
+  >("connecting")
   const [toastMessage, setToastMessage] = useState<{
     sender: string
     body: string
@@ -108,14 +111,29 @@ export default function RealtimeMessageThread({
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastBrowserNotificationRef = useRef<string | null>(null)
+  const previousMessageCountRef = useRef(initialMessages?.length || 0)
 
   useEffect(() => {
     setHasMounted(true)
   }, [])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    setMessages(initialMessages || [])
+    previousMessageCountRef.current = initialMessages?.length || 0
+  }, [initialMessages])
+
+  useEffect(() => {
+    const shouldUseSmoothScroll =
+      messages.length > previousMessageCountRef.current
+
+    bottomRef.current?.scrollIntoView({
+      behavior: shouldUseSmoothScroll ? "smooth" : "auto",
+      block: "end",
+    })
+
+    previousMessageCountRef.current = messages.length
   }, [messages.length, isOtherUserTyping])
 
   function getMessagePreview(message: Message) {
@@ -142,7 +160,21 @@ export default function RealtimeMessageThread({
     return true
   }
 
+  function showInAppToast(sender: string, body: string) {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current)
+    }
+
+    setToastMessage({ sender, body })
+
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null)
+    }, 3500)
+  }
+
   useEffect(() => {
+    setRealtimeStatus("connecting")
+
     const channel = supabase
       .channel(`messages-thread-${clientUserId}`)
       .on(
@@ -175,14 +207,7 @@ export default function RealtimeMessageThread({
 
             const preview = getMessagePreview(newMessage)
 
-            setToastMessage({
-              sender: otherUserName,
-              body: preview,
-            })
-
-            setTimeout(() => {
-              setToastMessage(null)
-            }, 3500)
+            showInAppToast(otherUserName, preview)
 
             if (shouldShowBrowserNotification(newMessage)) {
               lastBrowserNotificationRef.current = newMessage.id
@@ -195,7 +220,20 @@ export default function RealtimeMessageThread({
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setRealtimeStatus("connected")
+          return
+        }
+
+        if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setRealtimeStatus("disconnected")
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
@@ -236,6 +274,18 @@ export default function RealtimeMessageThread({
     }
   }, [clientUserId, currentUserId])
 
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current)
+      }
+    }
+  }, [])
+
   function getAttachmentUrl(path: string) {
     return supabase.storage.from("message-attachments").getPublicUrl(path).data
       .publicUrl
@@ -245,97 +295,109 @@ export default function RealtimeMessageThread({
     <>
       <MessageToast message={toastMessage} />
 
+      {realtimeStatus === "disconnected" && (
+        <div className="rounded-[1rem] border border-orange-500/25 bg-orange-500/10 px-3 py-2 text-xs text-orange-300">
+          Realtime paused. New messages may appear after refresh.
+        </div>
+      )}
+
       {(!messages || messages.length === 0) && (
-        <div className="rounded-2xl border border-dashed border-gray-800 bg-black p-5 text-sm text-gray-400">
+        <div className="rounded-[1rem] border border-dashed border-white/[0.08] bg-black/35 p-4 text-sm text-white/40">
           No messages yet. Send the first one below.
         </div>
       )}
 
-      {messages.map((message) => {
-        const isOwn = message.sender_id === currentUserId
-        const attachmentUrl = message.attachment_path
-          ? getAttachmentUrl(message.attachment_path)
-          : null
+      <div className="flex flex-col gap-2.5">
+        {messages.map((message) => {
+          const isOwn = message.sender_id === currentUserId
+          const attachmentUrl = message.attachment_path
+            ? getAttachmentUrl(message.attachment_path)
+            : null
 
-        return (
-          <div
-            key={message.id}
-            className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
-          >
+          return (
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-                isOwn
-                  ? "bg-yellow-400 text-black"
-                  : "border border-gray-800 bg-black text-white"
-              }`}
+              key={message.id}
+              className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
             >
-              {unreadMessageIds.includes(message.id) && !isOwn && (
-                <span className="mb-2 inline-block rounded-full bg-yellow-400 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                  NEW
-                </span>
-              )}
-
-              <div className="space-y-3">
-                {message.body && (
-                  <p className="whitespace-pre-wrap">{message.body}</p>
-                )}
-
-                {attachmentUrl && message.attachment_type === "image" && (
-                  <img
-                    src={attachmentUrl}
-                    alt={message.attachment_name || "Attachment"}
-                    className="max-h-80 w-full rounded-2xl object-cover"
-                  />
-                )}
-
-                {attachmentUrl && message.attachment_type === "video" && (
-                  <video
-                    controls
-                    src={attachmentUrl}
-                    className="max-h-80 w-full rounded-2xl"
-                  />
-                )}
-
-                {attachmentUrl && message.attachment_type === "file" && (
-                  <a
-                    href={attachmentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`inline-flex rounded-xl px-3 py-2 text-xs font-bold underline ${
-                      isOwn ? "bg-black/10 text-black" : "bg-gray-900 text-white"
-                    }`}
-                  >
-                    {message.attachment_name || "View attachment"}
-                  </a>
-                )}
-              </div>
-
-              <p
-                className={`mt-2 text-[11px] ${
-                  isOwn ? "text-black/60" : "text-gray-500"
+              <div
+                className={`max-w-[78%] overflow-hidden rounded-[1.05rem] px-3 py-2.5 text-sm leading-5 shadow-[0_8px_20px_rgba(0,0,0,0.28)] ${
+                  isOwn
+                    ? "bg-smc-gold text-black"
+                    : "border border-white/[0.07] bg-black/55 text-white"
                 }`}
               >
-                {hasMounted
-                  ? new Date(message.created_at).toLocaleString("en-GB", {
-                      day: "2-digit",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : ""}
-              </p>
+                {unreadMessageIds.includes(message.id) && !isOwn && (
+                  <span className="mb-1.5 inline-block rounded-full bg-smc-gold px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-black">
+                    New
+                  </span>
+                )}
+
+                <div className="space-y-2">
+                  {message.body && (
+                    <p className="whitespace-pre-wrap break-words">
+                      {message.body}
+                    </p>
+                  )}
+
+                  {attachmentUrl && message.attachment_type === "image" && (
+                    <img
+                      src={attachmentUrl}
+                      alt={message.attachment_name || "Attachment"}
+                      loading="lazy"
+                      className="max-h-64 w-full rounded-[0.9rem] object-cover"
+                    />
+                  )}
+
+                  {attachmentUrl && message.attachment_type === "video" && (
+                    <video
+                      controls
+                      preload="metadata"
+                      src={attachmentUrl}
+                      className="max-h-64 w-full rounded-[0.9rem]"
+                    />
+                  )}
+
+                  {attachmentUrl && message.attachment_type === "file" && (
+                    <a
+                      href={attachmentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex rounded-[0.8rem] px-3 py-2 text-xs font-bold underline ${
+                        isOwn ? "bg-black/10 text-black" : "bg-white/[0.06] text-white"
+                      }`}
+                    >
+                      {message.attachment_name || "View attachment"}
+                    </a>
+                  )}
+                </div>
+
+                <p
+                  className={`mt-1.5 text-[10px] leading-none ${
+                    isOwn ? "text-black/55" : "text-white/30"
+                  }`}
+                >
+                  {hasMounted
+                    ? new Date(message.created_at).toLocaleString("en-GB", {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : ""}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+
+        {isOtherUserTyping && (
+          <div className="flex justify-start">
+            <div className="rounded-[1rem] border border-white/[0.07] bg-black/55 px-3 py-2 text-xs text-white/40">
+              {otherUserName} is typing...
             </div>
           </div>
-        )
-      })}
-
-      {isOtherUserTyping && (
-        <div className="flex justify-start">
-          <div className="rounded-2xl border border-gray-800 bg-black px-4 py-3 text-xs text-gray-400">
-            {otherUserName} is typing...
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div ref={bottomRef} />
     </>

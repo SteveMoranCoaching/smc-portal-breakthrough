@@ -4,7 +4,6 @@ import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import CoachActivityFeed from "@/components/CoachActivityFeed"
 import RealtimeUnreadMessageCount from "@/components/RealtimeUnreadMessageCount"
-import GlobalMessageNotifications from "@/components/GlobalMessageNotifications"
 
 export const dynamic = "force-dynamic"
 
@@ -12,6 +11,25 @@ type SetEntry = {
   weight: string
   reps: string
   rpe: string
+}
+
+const shellCard =
+  "relative overflow-hidden rounded-[1.35rem] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.016))] p-3.5 shadow-[0_14px_34px_rgba(0,0,0,0.68)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[1.35rem] before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)]"
+
+const innerCard =
+  "rounded-[1.05rem] border border-white/[0.06] bg-[#070707] p-3 shadow-[0_8px_22px_rgba(0,0,0,0.32)]"
+
+const goldPill =
+  "rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold"
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase()
 }
 
 async function createTeamFeedPost(formData: FormData) {
@@ -37,6 +55,128 @@ async function createTeamFeedPost(formData: FormData) {
   redirect("/coach?posted=true")
 }
 
+async function approvePBToTeamFeed(formData: FormData) {
+  "use server"
+
+  const pbId = String(formData.get("pbId") || "")
+  if (!pbId) return
+
+  const supabase = await createSupabaseServerClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  if (profile?.role !== "coach") return
+
+  const { data: pb } = await supabase
+    .from("exercise_pbs")
+    .select("id, user_id, exercise_name, pb_type, weight, reps, estimated_1rm")
+    .eq("id", pbId)
+    .single()
+
+  if (!pb) return
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("name")
+    .eq("user_id", pb.user_id)
+    .single()
+
+  const clientName = client?.name || "Team SMC lifter"
+
+  const pbLabel =
+    pb.pb_type === "heaviest"
+      ? "new heaviest lift"
+      : pb.pb_type === "estimated_1rm"
+        ? "new estimated 1RM"
+        : "new rep PB"
+
+  await supabase.from("team_feed_posts").insert({
+    title: `${clientName} hit a ${pbLabel}`,
+    body: `${clientName} just logged ${pb.weight}kg × ${pb.reps} on ${pb.exercise_name}. Estimated 1RM: ${pb.estimated_1rm}kg.`,
+    type: "PB",
+  })
+
+  await supabase
+    .from("exercise_pbs")
+    .update({
+      team_feed_status: "approved",
+      approved_at: new Date().toISOString(),
+      approved_by: user.id,
+    })
+    .eq("id", pbId)
+
+  revalidatePath("/dashboard")
+  revalidatePath("/coach")
+
+  redirect("/coach?posted=true")
+}
+
+async function dismissPBFromTeamFeed(formData: FormData) {
+  "use server"
+
+  const pbId = String(formData.get("pbId") || "")
+  if (!pbId) return
+
+  const supabase = await createSupabaseServerClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  if (profile?.role !== "coach") return
+
+  await supabase
+    .from("exercise_pbs")
+    .update({
+      team_feed_status: "dismissed",
+      approved_at: null,
+      approved_by: user.id,
+    })
+    .eq("id", pbId)
+
+  revalidatePath("/coach")
+}
+
+function formatDate(dateString: string) {
+  const date = new Date(dateString)
+  const day = date.getDate().toString().padStart(2, "0")
+  const month = date.toLocaleString("en-GB", { month: "short" })
+
+  return `${day} ${month}`
+}
+
+function shortenText(text: string, maxLength = 120) {
+  if (!text) return ""
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
+}
+
+function daysSince(dateString?: string) {
+  if (!dateString) return null
+
+  const diff =
+    (Date.now() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24)
+
+  return Math.floor(diff)
+}
+
 export default async function CoachDashboard({
   searchParams,
 }: {
@@ -51,11 +191,7 @@ export default async function CoachDashboard({
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        You must be logged in.
-      </main>
-    )
+    return <div className="p-6 text-white">You must be logged in.</div>
   }
 
   const { data: profile } = await supabase
@@ -66,17 +202,17 @@ export default async function CoachDashboard({
 
   if (profile?.role !== "coach") {
     return (
-      <main className="min-h-screen bg-black p-6 text-white">
+      <div className="p-6 text-white">
         You do not have permission to view this page.
-      </main>
+      </div>
     )
   }
 
   const { count: unreadMessages } = await supabase
-  .from("messages")
-  .select("*", { count: "exact", head: true })
-  .neq("sender_id", user.id)
-  .eq("read_by_coach", false)
+    .from("messages")
+    .select("*", { count: "exact", head: true })
+    .neq("sender_id", user.id)
+    .eq("read_by_coach", false)
 
   const { data: clients, error } = await supabase
     .from("clients")
@@ -92,6 +228,15 @@ export default async function CoachDashboard({
     .select("id, title, body, type, created_at")
     .order("created_at", { ascending: false })
     .limit(5)
+
+  const { data: pendingPBs } = await supabase
+    .from("exercise_pbs")
+    .select(
+      "id, user_id, exercise_name, pb_type, weight, reps, estimated_1rm, previous_best, created_at, team_feed_status"
+    )
+    .eq("team_feed_status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(10)
 
   const { data: videos } = await supabase
     .from("exercise_videos")
@@ -140,10 +285,15 @@ export default async function CoachDashboard({
   const newLogCount = workoutLogs?.filter((log) => !log.reviewed).length || 0
   const newCheckInCount =
     recentCheckIns?.filter((checkIn) => !checkIn.reviewed).length || 0
-
+  const pendingPBCount = pendingPBs?.length || 0
   const unreadMessageCount = unreadMessages || 0
+
   const totalNewItems =
-    newVideoCount + newLogCount + newCheckInCount + unreadMessageCount
+    newVideoCount +
+    newLogCount +
+    newCheckInCount +
+    unreadMessageCount +
+    pendingPBCount
 
   videos?.forEach((video) => {
     if (!video.reviewed) {
@@ -243,29 +393,6 @@ export default async function CoachDashboard({
     )
     .slice(0, 30)
 
-  function formatDate(dateString: string) {
-    const date = new Date(dateString)
-    const day = date.getDate().toString().padStart(2, "0")
-    const month = date.toLocaleString("en-GB", { month: "short" })
-    const year = date.getFullYear()
-
-    return `${day} ${month} ${year}`
-  }
-
-  function shortenText(text: string, maxLength = 120) {
-    if (!text) return ""
-    return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
-  }
-
-  function daysSince(dateString?: string) {
-    if (!dateString) return null
-
-    const diff =
-      (Date.now() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24)
-
-    return Math.floor(diff)
-  }
-
   const priorityClients =
     clients
       ?.map((client) => {
@@ -286,13 +413,13 @@ export default async function CoachDashboard({
 
         if (hasNoSessions) {
           priorityScore = 3
-          reason = "No sessions completed yet"
+          reason = "No sessions"
         } else if (isInactive) {
           priorityScore = 2
-          reason = "No session in 5+ days"
+          reason = "Inactive"
         } else if (isLowRating) {
           priorityScore = 1
-          reason = "Low session rating"
+          reason = "Low rating"
         }
 
         return {
@@ -310,492 +437,499 @@ export default async function CoachDashboard({
 
   const clientsNeedingAttention = priorityClients.length
 
+  const topClients = clients
+    ?.map((client) => ({
+      ...client,
+      unreviewed: unreviewedCountMap[client.user_id] || 0,
+      lastActivity: lastActivityMap[client.user_id],
+    }))
+    .sort((a, b) => {
+      if (b.unreviewed !== a.unreviewed) return b.unreviewed - a.unreviewed
+
+      return (
+        new Date(b.lastActivity || 0).getTime() -
+        new Date(a.lastActivity || 0).getTime()
+      )
+    })
+
+  const missionTitle =
+    totalNewItems > 0
+      ? `${totalNewItems} items need your eyes`
+      : "All clear for now"
+
+  const missionSubtitle =
+    clientsNeedingAttention > 0
+      ? `${clientsNeedingAttention} client${
+          clientsNeedingAttention === 1 ? "" : "s"
+        } flagged for attention.`
+      : totalNewItems > 0
+        ? "Clear the review queue, reply to messages, then update programming."
+        : "No urgent coaching actions waiting."
+
   return (
-    <main className="min-h-screen bg-black p-6 text-white">
-        <GlobalMessageNotifications currentUserId={user.id} />
-        
-      <div className="mx-auto max-w-5xl space-y-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex flex-col gap-3 pb-8">
+      <section className="relative overflow-hidden rounded-[1.6rem] border border-smc-gold/15 bg-[radial-gradient(circle_at_top_right,rgba(212,175,55,0.18),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018))] p-4 shadow-[0_18px_44px_rgba(0,0,0,0.78)]">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/60 to-transparent" />
+
+        <div className="relative z-10 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <div>
-            <h1 className="text-3xl font-bold">Coach Control Centre</h1>
-            <p className="mt-2 text-gray-400">
-              Review client logs, uploads, session completions, and coaching
-              insights.
+            <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/85">
+              Today’s Mission
             </p>
+
+            <h1 className="mt-2 text-3xl font-black leading-tight tracking-tight text-white">
+              {missionTitle}
+            </h1>
+
+            <p className="mt-2 max-w-xl text-sm leading-6 text-white/50">
+              {missionSubtitle}
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href="/coach/review"
+                className="inline-flex min-h-[42px] items-center justify-center rounded-[1rem] bg-smc-gold px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-black shadow-[0_0_22px_rgba(212,175,55,0.22)] transition hover:brightness-110 active:scale-[0.98]"
+              >
+                Start Review
+              </Link>
+
+              <Link
+                href="/coach/messages"
+                className="inline-flex min-h-[42px] items-center justify-center rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white/70 transition hover:border-smc-gold/35 hover:text-white"
+              >
+                Messages
+              </Link>
+
+              <Link
+                href="/coach/programmes"
+                className="inline-flex min-h-[42px] items-center justify-center rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white/70 transition hover:border-smc-gold/35 hover:text-white"
+              >
+                Programmes
+              </Link>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl border border-yellow-500/40 bg-yellow-500/10 px-5 py-3">
-              <p className="text-sm text-gray-300">New items waiting</p>
-              <p className="text-3xl font-bold text-yellow-400">
+          <div className="grid grid-cols-2 gap-2">
+            <Link href="/coach/review" className={`${innerCard} transition hover:border-smc-gold/35`}>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+                Waiting
+              </p>
+              <p className="mt-1 text-3xl font-black text-smc-gold">
                 {totalNewItems}
               </p>
-            </div>
-
-            <Link
-              href="/coach/review"
-              className="rounded-xl bg-yellow-500 px-4 py-3 font-semibold text-black transition hover:bg-yellow-400"
-            >
-              Review →
             </Link>
+
+            <Link href="/coach/messages" className={`${innerCard} transition hover:border-smc-gold/35`}>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+                Messages
+              </p>
+              <p className="mt-1 text-3xl font-black text-white">
+                <RealtimeUnreadMessageCount
+                  initialCount={unreadMessageCount}
+                  currentUserId={user.id}
+                  mode="coach"
+                  variant="number"
+                />
+              </p>
+            </Link>
+
+            <Link href="/coach/review" className={`${innerCard} transition hover:border-smc-gold/35`}>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+                Reviews
+              </p>
+              <p className="mt-1 text-3xl font-black text-white">
+                {newLogCount + newVideoCount + newCheckInCount}
+              </p>
+            </Link>
+
+            <div className={innerCard}>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+                Attention
+              </p>
+              <p className="mt-1 text-3xl font-black text-red-400">
+                {clientsNeedingAttention}
+              </p>
+            </div>
           </div>
         </div>
+      </section>
 
-        {resolvedSearchParams?.posted === "true" && (
-          <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-300">
-            Post published successfully.
+      {resolvedSearchParams?.posted === "true" && (
+        <div className="rounded-[1rem] border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
+          Post published successfully.
+        </div>
+      )}
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Link
+          href="/coach/review"
+          className={`${shellCard} block transition hover:border-smc-gold/35`}
+        >
+          <div className="relative z-10">
+            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+              Focus
+            </p>
+
+            <h2 className="mt-1.5 text-lg font-black text-white">
+              Coaching Queue
+            </h2>
+
+            <p className="mt-1 text-xs leading-5 text-white/45">
+              {newLogCount} logs · {newVideoCount} videos · {newCheckInCount} check-ins
+            </p>
           </div>
-        )}
+        </Link>
 
         <Link
           href="/coach/messages"
-          className="block rounded-3xl border border-gray-800 bg-gray-950 p-5 transition hover:border-yellow-500"
+          className={`${shellCard} block transition hover:border-smc-gold/35`}
         >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative z-10 flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-yellow-400">
-                Messages
+              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+                Comms
               </p>
-              <h2 className="mt-2 text-xl font-bold text-white">
+
+              <h2 className="mt-1.5 text-lg font-black text-white">
                 Client Messages
               </h2>
-              <p className="mt-1 text-sm text-gray-400">
-                View and reply to client messages.
+
+              <p className="mt-1 text-xs leading-5 text-white/45">
+                Keep client support moving.
               </p>
             </div>
 
             <RealtimeUnreadMessageCount
-  initialCount={unreadMessageCount}
-  currentUserId={user.id}
-  mode="coach"
-/>
+              initialCount={unreadMessageCount}
+              currentUserId={user.id}
+              mode="coach"
+            />
           </div>
         </Link>
 
-        <section className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold text-white">
-              Create Team Feed Post
+        <Link
+          href="/coach/programmes"
+          className={`${shellCard} block transition hover:border-smc-gold/35`}
+        >
+          <div className="relative z-10">
+            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+              Build
+            </p>
+
+            <h2 className="mt-1.5 text-lg font-black text-white">
+              Client Programming
             </h2>
-            <p className="mt-1 text-sm text-gray-400">
-              Post team updates, PBs, competition news and announcements to the
-              SMC Home feed.
+
+            <p className="mt-1 text-xs leading-5 text-white/45">
+              Upload, edit and manage training blocks.
             </p>
           </div>
+        </Link>
+      </div>
 
-          <form action={createTeamFeedPost} className="space-y-4">
+      {priorityClients.length > 0 && (
+        <section className={shellCard}>
+          <div className="relative z-10">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-red-400/80">
+                  Priority
+                </p>
+
+                <h2 className="mt-1 text-lg font-black text-white">
+                  Clients Needing Attention
+                </h2>
+              </div>
+
+              <span className="rounded-full border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-red-300">
+                {priorityClients.length} flagged
+              </span>
+            </div>
+
+            <div className="grid gap-2.5 lg:grid-cols-2">
+              {priorityClients.slice(0, 6).map((client) => (
+                <Link
+                  key={client.id}
+                  href={`/coach/${client.id}`}
+                  className={`${innerCard} block transition hover:border-smc-gold/35`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 text-xs font-black text-red-300">
+                      {getInitials(client.name)}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-sm font-black text-white">
+                            {client.name}
+                          </h3>
+
+                          <p className="mt-1 truncate text-xs text-white/35">
+                            {client.email}
+                          </p>
+                        </div>
+
+                        <span className="shrink-0 rounded-full bg-red-500/90 px-2 py-0.5 text-[8px] font-black uppercase text-black">
+                          {client.reason}
+                        </span>
+                      </div>
+
+                      {client.lastNotes && (
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/50">
+                          “{client.lastNotes}”
+                        </p>
+                      )}
+
+                      <p className="mt-2 text-[11px] text-white/30">
+                        Last session:{" "}
+                        {client.lastSession
+                          ? formatDate(client.lastSession)
+                          : "None"}
+                        {client.lastRating !== undefined &&
+                          client.lastRating !== null &&
+                          ` · ${client.lastRating}/10`}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className={shellCard}>
+        <div className="relative z-10">
+          <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-300">
-                Post type
-              </label>
+              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+                Clients
+              </p>
 
+              <h2 className="mt-1 text-lg font-black text-white">
+                Client Command List
+              </h2>
+            </div>
+
+            <span className="text-[11px] text-white/35">
+              {clients?.length || 0} total
+            </span>
+          </div>
+
+          <div className="grid gap-2.5 lg:grid-cols-2">
+            {topClients?.map((client) => (
+              <Link
+                key={client.id}
+                href={`/coach/${client.id}`}
+                className={`${innerCard} block transition hover:border-smc-gold/35`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-smc-gold/20 bg-smc-gold/10 text-xs font-black text-smc-gold">
+                    {getInitials(client.name)}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-black text-white">
+                      {client.name}
+                    </h3>
+                    <p className="mt-1 truncate text-xs text-white/35">
+                      {client.email}
+                    </p>
+                  </div>
+
+                  <div className="shrink-0 text-right">
+                    {client.unreviewed > 0 ? (
+                      <span className={goldPill}>{client.unreviewed} new</span>
+                    ) : (
+                      <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-green-400">
+                        Clear
+                      </span>
+                    )}
+
+                    <p className="mt-1.5 text-[11px] text-white/30">
+                      {client.lastActivity
+                        ? formatDate(client.lastActivity)
+                        : "No activity"}
+                    </p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {pendingPBCount > 0 && (
+        <section className={shellCard}>
+          <div className="relative z-10">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+                  Team Feed
+                </p>
+                <h2 className="mt-1 text-lg font-black text-white">
+                  PB Approval Strip
+                </h2>
+              </div>
+
+              <span className={goldPill}>{pendingPBCount} pending</span>
+            </div>
+
+            <div className="grid gap-2.5 lg:grid-cols-3">
+              {pendingPBs?.slice(0, 3).map((pb) => (
+                <div key={pb.id} className={innerCard}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className={goldPill}>PB</span>
+                    <span className="text-[11px] text-white/30">
+                      {formatDate(pb.created_at)}
+                    </span>
+                  </div>
+
+                  <h3 className="text-sm font-black text-white">
+                    {clientMap[pb.user_id] || "Unknown client"}
+                  </h3>
+
+                  <p className="mt-1 text-xs text-white/45">
+                    {pb.exercise_name}
+                  </p>
+
+                  <p className="mt-2 text-xl font-black text-white">
+                    {pb.weight}kg × {pb.reps}
+                  </p>
+
+                  <p className="mt-1 text-xs text-smc-gold/80">
+                    Est. 1RM: {pb.estimated_1rm}kg
+                  </p>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <form action={approvePBToTeamFeed}>
+                      <input type="hidden" name="pbId" value={pb.id} />
+                      <button
+                        type="submit"
+                        className="min-h-[38px] w-full rounded-[0.85rem] bg-smc-gold px-3 py-2 text-xs font-black text-black transition hover:brightness-110"
+                      >
+                        Approve
+                      </button>
+                    </form>
+
+                    <form action={dismissPBFromTeamFeed}>
+                      <input type="hidden" name="pbId" value={pb.id} />
+                      <button
+                        type="submit"
+                        className="min-h-[38px] w-full rounded-[0.85rem] border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-bold text-white/55 transition hover:border-red-500/40 hover:text-red-300"
+                      >
+                        Private
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {pendingPBCount > 3 && (
+              <p className="mt-3 text-center text-xs text-white/35">
+                Showing top 3 of {pendingPBCount} pending PBs.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section className={shellCard}>
+          <div className="relative z-10">
+            <div className="mb-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+                SMC Home
+              </p>
+
+              <h2 className="mt-1 text-lg font-black text-white">
+                Create Team Feed Post
+              </h2>
+            </div>
+
+            <form action={createTeamFeedPost} className="space-y-2.5">
               <select
                 name="type"
                 defaultValue="Announcement"
-                className="w-full rounded-xl border border-gray-800 bg-black px-4 py-3 text-white outline-none focus:border-yellow-500"
+                className="min-h-[42px] w-full rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none focus:border-smc-gold/45"
               >
                 <option value="Announcement">Announcement</option>
                 <option value="PB">PB</option>
                 <option value="Competition">Competition</option>
               </select>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-300">
-                Title
-              </label>
 
               <input
                 name="title"
                 required
-                placeholder="e.g. Massive PB from Team SMC"
-                className="w-full rounded-xl border border-gray-800 bg-black px-4 py-3 text-white outline-none placeholder:text-gray-600 focus:border-yellow-500"
+                placeholder="Post title"
+                className="min-h-[42px] w-full rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
               />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-300">
-                Body
-              </label>
 
               <textarea
                 name="body"
                 required
-                rows={4}
+                rows={3}
                 placeholder="Write the update here..."
-                className="w-full rounded-xl border border-gray-800 bg-black px-4 py-3 text-white outline-none placeholder:text-gray-600 focus:border-yellow-500"
+                className="w-full resize-none rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
               />
-            </div>
 
-            <button
-              type="submit"
-              className="rounded-xl bg-yellow-500 px-5 py-3 font-semibold text-black transition hover:bg-yellow-400"
-            >
-              Publish to SMC Home →
-            </button>
-          </form>
-        </section>
-
-        <section className="rounded-2xl border border-gray-800 bg-gray-950 p-5">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold text-white">
-              Recent Team Posts
-            </h2>
-            <p className="mt-1 text-sm text-gray-400">
-              Latest posts currently showing on the SMC Home feed.
-            </p>
-          </div>
-
-          {recentPosts && recentPosts.length > 0 ? (
-            <div className="space-y-3">
-              {recentPosts.map((post) => (
-                <div
-                  key={post.id}
-                  className="rounded-xl border border-gray-800 bg-black p-4"
-                >
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <span className="rounded-full bg-yellow-500 px-3 py-1 text-xs font-bold uppercase text-black">
-                      {post.type}
-                    </span>
-
-                    <span className="text-xs text-gray-500">
-                      {formatDate(post.created_at)}
-                    </span>
-                  </div>
-
-                  <h3 className="font-semibold text-white">{post.title}</h3>
-
-                  <p className="mt-2 text-sm leading-relaxed text-gray-300">
-                    {shortenText(post.body)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-gray-800 bg-black p-4">
-              <p className="text-sm text-gray-400">
-                No team posts have been created yet.
-              </p>
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-gray-800 bg-gray-950 p-5">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold text-white">
-              Recent Client Check-Ins
-            </h2>
-            <p className="mt-1 text-sm text-gray-400">
-              Latest client check-ins submitted for coach review.
-            </p>
-          </div>
-
-          {recentCheckIns && recentCheckIns.length > 0 ? (
-            <div className="space-y-3">
-              {recentCheckIns.map((checkIn) => (
-                <Link
-                  key={checkIn.id}
-                  href={`/coach/check-ins/${checkIn.id}`}
-                  className="block rounded-xl border border-gray-800 bg-black p-4 transition hover:border-yellow-500"
-                >
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-white">
-                        {clientMap[checkIn.user_id] || "Unknown client"}
-                      </h3>
-
-                      {!checkIn.reviewed && (
-                        <span className="rounded-full bg-yellow-500 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                          NEW
-                        </span>
-                      )}
-                    </div>
-
-                    <span className="text-xs text-gray-500">
-                      {formatDate(checkIn.created_at)}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 text-sm">
-                    <span className="rounded-full border border-gray-800 px-3 py-1 text-gray-300">
-                      Bodyweight: {checkIn.bodyweight ?? "—"}kg
-                    </span>
-
-                    <span className="rounded-full border border-gray-800 px-3 py-1 text-gray-300">
-                      Training: {checkIn.training_rating ?? "—"}/10
-                    </span>
-
-                    <span className="rounded-full border border-gray-800 px-3 py-1 text-gray-300">
-                      Recovery: {checkIn.recovery_rating ?? "—"}/10
-                    </span>
-
-                    <span className="rounded-full border border-gray-800 px-3 py-1 text-gray-300">
-                      Nutrition: {checkIn.nutrition_rating ?? "—"}/10
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-gray-800 bg-black p-4">
-              <p className="text-sm text-gray-400">
-                No client check-ins have been submitted yet.
-              </p>
-            </div>
-          )}
-        </section>
-
-        <section className="grid gap-3 sm:grid-cols-5">
-          <div className="rounded-2xl border border-gray-800 bg-gray-950 p-4">
-            <p className="text-sm text-gray-400">New logs</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-400">
-              {newLogCount}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-800 bg-gray-950 p-4">
-            <p className="text-sm text-gray-400">New videos</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-400">
-              {newVideoCount}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-800 bg-gray-950 p-4">
-            <p className="text-sm text-gray-400">New check-ins</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-400">
-              {newCheckInCount}
-            </p>
-          </div>
-
-          <Link
-            href="/coach/messages"
-            className="rounded-2xl border border-gray-800 bg-gray-950 p-4 transition hover:border-yellow-500"
-          >
-            <p className="text-sm text-gray-400">Unread messages</p>
-            <p className="mt-1 text-2xl font-bold text-yellow-400">
-              <RealtimeUnreadMessageCount
-  initialCount={unreadMessageCount}
-  currentUserId={user.id}
-  mode="coach"
-  variant="number"
-/>
-            </p>
-          </Link>
-
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
-            <p className="text-sm text-gray-400">Need attention</p>
-            <p className="mt-1 text-2xl font-bold text-red-400">
-              {clientsNeedingAttention}
-            </p>
+              <button
+                type="submit"
+                className="min-h-[42px] w-full rounded-[1rem] bg-smc-gold px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:brightness-110"
+              >
+                Publish to SMC Home
+              </button>
+            </form>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-white">
-                Needs Attention
-              </h2>
-              <p className="text-sm text-gray-400">
-                Clients automatically flagged based on completion history and
-                session ratings.
-              </p>
-            </div>
+        {recentPosts && recentPosts.length > 0 && (
+          <section className={shellCard}>
+            <div className="relative z-10">
+              <div className="mb-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+                  Recent Posts
+                </p>
 
-            <span className="rounded-full bg-red-500 px-3 py-1 text-sm font-bold text-black">
-              {priorityClients.length} flagged
-            </span>
-          </div>
+                <h2 className="mt-1 text-lg font-black text-white">
+                  Team Feed Activity
+                </h2>
+              </div>
 
-          {priorityClients.length === 0 ? (
-            <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4">
-              <p className="font-semibold text-green-400">All clear</p>
-              <p className="mt-1 text-sm text-gray-300">
-                No clients are currently flagged for missed sessions or low
-                ratings.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {priorityClients.map((client) => (
-                <Link
-                  key={client.id}
-                  href={`/coach/${client.id}`}
-                  className="block rounded-xl border border-red-500/30 bg-black p-4 transition hover:border-yellow-500"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-white">
-                          {client.name}
-                        </h3>
+              <div className="flex flex-col gap-2.5">
+                {recentPosts.slice(0, 3).map((post) => (
+                  <div key={post.id} className={innerCard}>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className={goldPill}>{post.type}</span>
 
-                        <span className="rounded-full bg-red-500 px-2 py-1 text-[10px] font-bold uppercase text-black">
-                          {client.reason}
-                        </span>
-                      </div>
-
-                      <p className="mt-1 text-sm text-gray-400">
-                        {client.email}
-                      </p>
-
-                      {client.lastNotes && (
-                        <p className="mt-2 max-w-xl text-sm text-gray-300">
-                          “{client.lastNotes}”
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 text-sm sm:justify-end">
-                      <span className="rounded-full border border-gray-700 px-3 py-1 text-gray-300">
-                        Last session:{" "}
-                        {client.lastSession
-                          ? formatDate(client.lastSession)
-                          : "None"}
+                      <span className="text-[11px] text-white/30">
+                        {formatDate(post.created_at)}
                       </span>
-
-                      {client.lastRating !== undefined &&
-                      client.lastRating !== null ? (
-                        <span className="rounded-full bg-orange-500 px-3 py-1 font-semibold text-black">
-                          Rating {client.lastRating}/10
-                        </span>
-                      ) : (
-                        <span className="rounded-full border border-gray-700 px-3 py-1 text-gray-400">
-                          No rating
-                        </span>
-                      )}
                     </div>
+
+                    <h3 className="text-sm font-black text-white">
+                      {post.title}
+                    </h3>
+
+                    <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-white/50">
+                      {shortenText(post.body)}
+                    </p>
                   </div>
-                </Link>
-              ))}
+                ))}
+              </div>
             </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5">
-          <h2 className="mb-4 text-xl font-semibold">Coach Insights</h2>
-
-          <div className="space-y-3">
-            {clients?.map((client) => {
-              const lastSession = lastSessionMap[client.user_id]
-              const lastRating = lastRatingMap[client.user_id]
-              const lastNotes = lastSessionNotesMap[client.user_id]
-              const days = daysSince(lastSession)
-
-              const hasNoSessions = !lastSession
-              const isInactive = days !== null && days > 5
-              const isLowRating =
-                lastRating !== undefined &&
-                lastRating !== null &&
-                lastRating <= 5
-
-              return (
-                <Link
-                  key={client.id}
-                  href={`/coach/${client.id}`}
-                  className="block rounded-xl border border-gray-800 bg-black p-4 transition hover:border-yellow-500"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="font-semibold">{client.name}</h3>
-                      <p className="text-sm text-gray-400">{client.email}</p>
-
-                      {lastNotes && (
-                        <p className="mt-2 max-w-xl text-sm text-gray-300">
-                          “{lastNotes}”
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 text-sm sm:justify-end">
-                      <span className="rounded-full border border-gray-700 px-3 py-1 text-gray-300">
-                        Last session:{" "}
-                        {lastSession ? formatDate(lastSession) : "None"}
-                      </span>
-
-                      {lastRating !== undefined && lastRating !== null ? (
-                        <span className="rounded-full bg-yellow-500 px-3 py-1 font-semibold text-black">
-                          Rating {lastRating}/10
-                        </span>
-                      ) : (
-                        <span className="rounded-full border border-gray-700 px-3 py-1 text-gray-400">
-                          No rating
-                        </span>
-                      )}
-
-                      {hasNoSessions && (
-                        <span className="rounded-full bg-red-500 px-3 py-1 font-semibold text-black">
-                          No sessions yet
-                        </span>
-                      )}
-
-                      {isInactive && (
-                        <span className="rounded-full bg-red-500 px-3 py-1 font-semibold text-black">
-                          No session in 5+ days
-                        </span>
-                      )}
-
-                      {isLowRating && (
-                        <span className="rounded-full bg-orange-500 px-3 py-1 font-semibold text-black">
-                          Low rating
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-gray-800 bg-gray-950 p-5">
-          <h2 className="mb-4 text-xl font-semibold">Clients</h2>
-
-          <div className="space-y-3">
-            {clients?.map((client) => {
-              const unreviewed = unreviewedCountMap[client.user_id] || 0
-              const lastActivity = lastActivityMap[client.user_id]
-
-              return (
-                <Link
-                  key={client.id}
-                  href={`/coach/${client.id}`}
-                  className="flex flex-col gap-3 rounded-xl border border-gray-800 bg-black p-4 transition hover:border-yellow-500 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <h3 className="font-semibold">{client.name}</h3>
-                    <p className="text-sm text-gray-400">{client.email}</p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 text-sm">
-                    {unreviewed > 0 ? (
-                      <span className="rounded-full bg-yellow-500 px-3 py-1 font-semibold text-black">
-                        {unreviewed} unreviewed
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-green-500 px-3 py-1 font-semibold text-black">
-                        All reviewed
-                      </span>
-                    )}
-
-                    <span className="text-gray-400">
-                      Last activity:{" "}
-                      {lastActivity ? formatDate(lastActivity) : "None yet"}
-                    </span>
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        </section>
-
-        <CoachActivityFeed
-          activityItems={activityItems}
-          newVideoCount={newVideoCount}
-          newLogCount={newLogCount}
-          newCheckInCount={newCheckInCount}
-        />
+          </section>
+        )}
       </div>
-    </main>
+
+      <CoachActivityFeed
+        activityItems={activityItems}
+        newVideoCount={newVideoCount}
+        newLogCount={newLogCount}
+        newCheckInCount={newCheckInCount}
+      />
+    </div>
   )
 }
