@@ -299,7 +299,7 @@ function getProgressMessage({
 
   if (progressPercent === 100) return "Programme complete. Strong work."
   if (sessionsLeft === 1) return "1 session left this week."
-  if (sessionsLeft > 1) return `${sessionsLeft} sessions left this week.`
+  if (sessionsLeft > 1) return `${sessionsLeft} sessions left this block.`
   if (completedCount > 0) return "Momentum is building."
 
   return "Ready to get the first session ticked off."
