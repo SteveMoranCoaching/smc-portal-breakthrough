@@ -14,13 +14,13 @@ type SetEntry = {
 }
 
 const shellCard =
-  "relative overflow-hidden rounded-[1.35rem] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.016))] p-3.5 shadow-[0_14px_34px_rgba(0,0,0,0.68)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[1.35rem] before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)]"
+  "relative overflow-hidden rounded-[1.1rem] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.014))] p-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.56)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[1.1rem] before:bg-[linear-gradient(rgba(255,255,255,0.028),transparent)]"
 
 const innerCard =
-  "rounded-[1.05rem] border border-white/[0.06] bg-[#070707] p-3 shadow-[0_8px_22px_rgba(0,0,0,0.32)]"
+  "rounded-[0.9rem] border border-white/[0.065] bg-black/42 p-2.5 shadow-[0_6px_16px_rgba(0,0,0,0.3)] backdrop-blur-md"
 
 const goldPill =
-  "rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold"
+  "rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-smc-gold"
 
 function getInitials(name: string) {
   return name
@@ -163,11 +163,6 @@ function formatDate(dateString: string) {
   return `${day} ${month}`
 }
 
-function shortenText(text: string, maxLength = 120) {
-  if (!text) return ""
-  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
-}
-
 function daysSince(dateString?: string) {
   if (!dateString) return null
 
@@ -216,18 +211,12 @@ export default async function CoachDashboard({
 
   const { data: clients, error } = await supabase
     .from("clients")
-    .select("id, user_id, name, email")
+    .select("id, user_id, name, email, goal, status")
     .order("name", { ascending: true })
 
   if (error) {
     return <div className="p-6 text-white">Error loading clients.</div>
   }
-
-  const { data: recentPosts } = await supabase
-    .from("team_feed_posts")
-    .select("id, title, body, type, created_at")
-    .order("created_at", { ascending: false })
-    .limit(5)
 
   const { data: pendingPBs } = await supabase
     .from("exercise_pbs")
@@ -391,7 +380,7 @@ export default async function CoachDashboard({
       (a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )
-    .slice(0, 30)
+    .slice(0, 10)
 
   const priorityClients =
     clients
@@ -437,20 +426,22 @@ export default async function CoachDashboard({
 
   const clientsNeedingAttention = priorityClients.length
 
-  const topClients = clients
-    ?.map((client) => ({
-      ...client,
-      unreviewed: unreviewedCountMap[client.user_id] || 0,
-      lastActivity: lastActivityMap[client.user_id],
-    }))
-    .sort((a, b) => {
-      if (b.unreviewed !== a.unreviewed) return b.unreviewed - a.unreviewed
+  const topClients =
+    clients
+      ?.map((client) => ({
+        ...client,
+        unreviewed: unreviewedCountMap[client.user_id] || 0,
+        lastActivity: lastActivityMap[client.user_id],
+      }))
+      .sort((a, b) => {
+        if (b.unreviewed !== a.unreviewed) return b.unreviewed - a.unreviewed
 
-      return (
-        new Date(b.lastActivity || 0).getTime() -
-        new Date(a.lastActivity || 0).getTime()
-      )
-    })
+        return (
+          new Date(b.lastActivity || 0).getTime() -
+          new Date(a.lastActivity || 0).getTime()
+        )
+      })
+      .slice(0, 6) || []
 
   const missionTitle =
     totalNewItems > 0
@@ -467,63 +458,83 @@ export default async function CoachDashboard({
         : "No urgent coaching actions waiting."
 
   return (
-    <div className="flex flex-col gap-3 pb-8">
-      <section className="relative overflow-hidden rounded-[1.6rem] border border-smc-gold/15 bg-[radial-gradient(circle_at_top_right,rgba(212,175,55,0.18),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018))] p-4 shadow-[0_18px_44px_rgba(0,0,0,0.78)]">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/60 to-transparent" />
+    <div className="relative flex flex-col gap-2.5 overflow-hidden pb-8">
+      <div className="pointer-events-none absolute inset-x-[-40px] top-[-120px] h-[320px] rounded-full bg-smc-gold/10 blur-[90px]" />
+      <div className="pointer-events-none absolute right-[-90px] top-[260px] h-[240px] w-[240px] rounded-full bg-smc-gold/8 blur-[80px]" />
 
-        <div className="relative z-10 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+      <section className="relative overflow-hidden rounded-[1.45rem] border border-smc-gold/25 bg-black p-3 shadow-[0_20px_50px_rgba(0,0,0,0.82)]">
+        <div className="absolute inset-0 bg-[url('/images/coach-hero-placeholder.png')] bg-cover bg-center opacity-55 saturate-[1.08] contrast-[1.08]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(212,175,55,0.25),transparent_30%),linear-gradient(90deg,rgba(0,0,0,0.9),rgba(0,0,0,0.64),rgba(0,0,0,0.36)),linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.9))]" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.06),transparent_28%,rgba(212,175,55,0.06)_72%,transparent)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/80 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-smc-gold/35 to-transparent" />
+
+        <div className="relative z-10 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
-            <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/85">
+            <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold">
               Today’s Mission
             </p>
 
-            <h1 className="mt-2 text-3xl font-black leading-tight tracking-tight text-white">
+            <h1 className="mt-1.5 text-2xl font-black leading-tight tracking-tight text-white drop-shadow-[0_3px_16px_rgba(0,0,0,0.85)] sm:text-3xl">
               {missionTitle}
             </h1>
 
-            <p className="mt-2 max-w-xl text-sm leading-6 text-white/50">
+            <p className="mt-1.5 max-w-xl text-sm leading-6 text-white/64">
               {missionSubtitle}
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 href="/coach/review"
-                className="inline-flex min-h-[42px] items-center justify-center rounded-[1rem] bg-smc-gold px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-black shadow-[0_0_22px_rgba(212,175,55,0.22)] transition hover:brightness-110 active:scale-[0.98]"
+                className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] bg-smc-gold px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black shadow-[0_0_26px_rgba(212,175,55,0.34)] transition hover:brightness-110 active:scale-[0.98]"
               >
                 Start Review
               </Link>
 
               <Link
-                href="/coach/messages"
-                className="inline-flex min-h-[42px] items-center justify-center rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white/70 transition hover:border-smc-gold/35 hover:text-white"
+                href="/coach/calendar"
+                className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] border border-smc-gold/35 bg-black/42 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold backdrop-blur-md transition hover:border-smc-gold/60 hover:bg-smc-gold/10"
               >
-                Messages
+                Calendar
               </Link>
 
               <Link
-                href="/coach/programmes"
-                className="inline-flex min-h-[42px] items-center justify-center rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white/70 transition hover:border-smc-gold/35 hover:text-white"
+                href="/coach/clients"
+                className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] border border-smc-gold/35 bg-black/42 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold backdrop-blur-md transition hover:border-smc-gold/60 hover:bg-smc-gold/10"
               >
-                Programmes
+                Clients
+              </Link>
+
+              <Link
+                href="/coach/clients/new"
+                className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] border border-white/[0.12] bg-black/42 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/76 backdrop-blur-md transition hover:border-smc-gold/40 hover:text-white"
+              >
+                Add Client
               </Link>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Link href="/coach/review" className={`${innerCard} transition hover:border-smc-gold/35`}>
-              <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+          <div className="grid grid-cols-4 gap-2 lg:grid-cols-2">
+            <Link
+              href="/coach/review"
+              className={`${innerCard} min-h-[68px] bg-black/50 transition hover:border-smc-gold/40`}
+            >
+              <p className="text-[8px] uppercase tracking-[0.18em] text-white/42">
                 Waiting
               </p>
-              <p className="mt-1 text-3xl font-black text-smc-gold">
+              <p className="mt-1 text-xl font-black text-smc-gold">
                 {totalNewItems}
               </p>
             </Link>
 
-            <Link href="/coach/messages" className={`${innerCard} transition hover:border-smc-gold/35`}>
-              <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+            <Link
+              href="/coach/messages"
+              className={`${innerCard} min-h-[68px] bg-black/50 transition hover:border-smc-gold/40`}
+            >
+              <p className="text-[8px] uppercase tracking-[0.18em] text-white/42">
                 Messages
               </p>
-              <p className="mt-1 text-3xl font-black text-white">
+              <p className="mt-1 text-xl font-black text-white">
                 <RealtimeUnreadMessageCount
                   initialCount={unreadMessageCount}
                   currentUserId={user.id}
@@ -533,23 +544,29 @@ export default async function CoachDashboard({
               </p>
             </Link>
 
-            <Link href="/coach/review" className={`${innerCard} transition hover:border-smc-gold/35`}>
-              <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+            <Link
+              href="/coach/review"
+              className={`${innerCard} min-h-[68px] bg-black/50 transition hover:border-smc-gold/40`}
+            >
+              <p className="text-[8px] uppercase tracking-[0.18em] text-white/42">
                 Reviews
               </p>
-              <p className="mt-1 text-3xl font-black text-white">
+              <p className="mt-1 text-xl font-black text-white">
                 {newLogCount + newVideoCount + newCheckInCount}
               </p>
             </Link>
 
-            <div className={innerCard}>
-              <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
-                Attention
+            <Link
+              href="/coach/calendar"
+              className={`${innerCard} min-h-[68px] bg-black/50 transition hover:border-smc-gold/40`}
+            >
+              <p className="text-[8px] uppercase tracking-[0.18em] text-white/42">
+                Calendar
               </p>
-              <p className="mt-1 text-3xl font-black text-red-400">
+              <p className="mt-1 text-xl font-black text-white">
                 {clientsNeedingAttention}
               </p>
-            </div>
+            </Link>
           </div>
         </div>
       </section>
@@ -560,101 +577,155 @@ export default async function CoachDashboard({
         </div>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
         <Link
           href="/coach/review"
-          className={`${shellCard} block transition hover:border-smc-gold/35`}
+          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
         >
           <div className="relative z-10">
-            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
               Focus
             </p>
-
-            <h2 className="mt-1.5 text-lg font-black text-white">
+            <h2 className="mt-1.5 text-sm font-black text-white">
               Coaching Queue
             </h2>
+            <p className="mt-1 text-[11px] leading-4 text-white/42">
+              {newLogCount} logs · {newVideoCount} videos · {newCheckInCount}{" "}
+              check-ins
+            </p>
+          </div>
+        </Link>
 
-            <p className="mt-1 text-xs leading-5 text-white/45">
-              {newLogCount} logs · {newVideoCount} videos · {newCheckInCount} check-ins
+        <Link
+          href="/coach/calendar"
+          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
+        >
+          <div className="relative z-10">
+            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
+              Calendar
+            </p>
+            <h2 className="mt-1.5 text-sm font-black text-white">
+              Coaching Tasks
+            </h2>
+            <p className="mt-1 text-[11px] leading-4 text-white/42">
+              Today, this week and who needs eyes.
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/coach/clients"
+          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
+        >
+          <div className="relative z-10">
+            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
+              Roster
+            </p>
+            <h2 className="mt-1.5 text-sm font-black text-white">
+              Client Hub
+            </h2>
+            <p className="mt-1 text-[11px] leading-4 text-white/42">
+              Search, filter and manage all clients.
             </p>
           </div>
         </Link>
 
         <Link
           href="/coach/messages"
-          className={`${shellCard} block transition hover:border-smc-gold/35`}
+          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
         >
           <div className="relative z-10 flex items-start justify-between gap-3">
             <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+              <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
                 Comms
               </p>
-
-              <h2 className="mt-1.5 text-lg font-black text-white">
-                Client Messages
-              </h2>
-
-              <p className="mt-1 text-xs leading-5 text-white/45">
-                Keep client support moving.
+              <h2 className="mt-1.5 text-sm font-black text-white">Messages</h2>
+              <p className="mt-1 text-[11px] leading-4 text-white/42">
+                Keep support moving.
               </p>
             </div>
 
-            <RealtimeUnreadMessageCount
-              initialCount={unreadMessageCount}
-              currentUserId={user.id}
-              mode="coach"
-            />
+            <div className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2 py-1 text-[10px] font-black text-smc-gold">
+  <RealtimeUnreadMessageCount
+    initialCount={unreadMessageCount}
+    currentUserId={user.id}
+    mode="coach"
+    variant="number"
+  />
+</div>
+          </div>
+        </Link>
+
+                <Link
+          href="/coach/programmes"
+          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
+        >
+          <div className="relative z-10">
+            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
+              Build
+            </p>
+            <h2 className="mt-1.5 text-sm font-black text-white">
+              Programming
+            </h2>
+            <p className="mt-1 text-[11px] leading-4 text-white/42">
+              Upload, edit and manage blocks.
+            </p>
           </div>
         </Link>
 
         <Link
-          href="/coach/programmes"
-          className={`${shellCard} block transition hover:border-smc-gold/35`}
+          href="/coach/exercise-demos"
+          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
         >
           <div className="relative z-10">
-            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
-              Build
+            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
+              Library
             </p>
-
-            <h2 className="mt-1.5 text-lg font-black text-white">
-              Client Programming
+            <h2 className="mt-1.5 text-sm font-black text-white">
+              Exercise Demos
             </h2>
-
-            <p className="mt-1 text-xs leading-5 text-white/45">
-              Upload, edit and manage training blocks.
+            <p className="mt-1 text-[11px] leading-4 text-white/42">
+              Add, edit and manage exercise videos.
             </p>
           </div>
         </Link>
       </div>
 
       {priorityClients.length > 0 && (
-        <section className={shellCard}>
+        <section className="relative overflow-hidden rounded-[1.25rem] border border-smc-gold/16 bg-black p-3 shadow-[0_16px_38px_rgba(0,0,0,0.72)]">
+          <div className="absolute inset-0 bg-[url('/images/coach-priority-placeholder.png')] bg-cover bg-center opacity-34 saturate-[0.9] contrast-[1.08]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(212,175,55,0.16),transparent_34%),radial-gradient(circle_at_88%_20%,rgba(239,68,68,0.12),transparent_26%),linear-gradient(90deg,rgba(0,0,0,0.9),rgba(0,0,0,0.68)),linear-gradient(180deg,rgba(0,0,0,0.18),rgba(0,0,0,0.94))]" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/50 to-transparent" />
+
           <div className="relative z-10">
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-2.5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-red-400/80">
+                <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/85">
                   Priority
                 </p>
 
-                <h2 className="mt-1 text-lg font-black text-white">
+                <h2 className="mt-1 text-base font-black text-white">
                   Clients Needing Attention
                 </h2>
               </div>
 
-              <span className="rounded-full border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-red-300">
+              <Link
+                href="/coach/calendar"
+                className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-smc-gold backdrop-blur-sm transition hover:border-smc-gold/50"
+              >
                 {priorityClients.length} flagged
-              </span>
+              </Link>
             </div>
 
-            <div className="grid gap-2.5 lg:grid-cols-2">
+            <div className="grid gap-2 lg:grid-cols-2">
               {priorityClients.slice(0, 6).map((client) => (
                 <Link
                   key={client.id}
                   href={`/coach/${client.id}`}
-                  className={`${innerCard} block transition hover:border-smc-gold/35`}
+                  className="block rounded-[0.95rem] border border-white/[0.07] bg-black/50 p-2.5 backdrop-blur-md transition hover:border-smc-gold/35 hover:bg-black/60"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 text-xs font-black text-red-300">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-smc-gold/24 bg-smc-gold/10 text-[11px] font-black text-smc-gold">
                       {getInitials(client.name)}
                     </div>
 
@@ -665,23 +736,23 @@ export default async function CoachDashboard({
                             {client.name}
                           </h3>
 
-                          <p className="mt-1 truncate text-xs text-white/35">
+                          <p className="mt-0.5 truncate text-[11px] text-white/36">
                             {client.email}
                           </p>
                         </div>
 
-                        <span className="shrink-0 rounded-full bg-red-500/90 px-2 py-0.5 text-[8px] font-black uppercase text-black">
+                        <span className="shrink-0 rounded-full border border-amber-400/25 bg-amber-400/12 px-2 py-0.5 text-[8px] font-black uppercase text-amber-200">
                           {client.reason}
                         </span>
                       </div>
 
                       {client.lastNotes && (
-                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/50">
+                        <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-white/54">
                           “{client.lastNotes}”
                         </p>
                       )}
 
-                      <p className="mt-2 text-[11px] text-white/30">
+                      <p className="mt-1.5 text-[10px] text-white/34">
                         Last session:{" "}
                         {client.lastSession
                           ? formatDate(client.lastSession)
@@ -699,33 +770,40 @@ export default async function CoachDashboard({
         </section>
       )}
 
-      <section className={shellCard}>
+      <section className="relative overflow-hidden rounded-[1.1rem] border border-white/[0.06] bg-black p-2.5 shadow-[0_12px_30px_rgba(0,0,0,0.62)]">
+        <div className="absolute inset-0 bg-[url('/images/coach-activity-placeholder.png')] bg-cover bg-center opacity-20 saturate-[0.9] contrast-[1.05]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_0%,rgba(212,175,55,0.12),transparent_30%),linear-gradient(180deg,rgba(0,0,0,0.72),rgba(0,0,0,0.92))]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/18 to-transparent" />
+
         <div className="relative z-10">
-          <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="mb-2.5 flex items-center justify-between gap-3">
             <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
-                Clients
+              <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+                Snapshot
               </p>
 
-              <h2 className="mt-1 text-lg font-black text-white">
-                Client Command List
+              <h2 className="mt-1 text-base font-black text-white">
+                Recent / Review Clients
               </h2>
             </div>
 
-            <span className="text-[11px] text-white/35">
-              {clients?.length || 0} total
-            </span>
+            <Link
+              href="/coach/clients"
+              className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-smc-gold transition hover:border-smc-gold/50"
+            >
+              View All
+            </Link>
           </div>
 
-          <div className="grid gap-2.5 lg:grid-cols-2">
-            {topClients?.map((client) => (
+          <div className="grid gap-2 lg:grid-cols-2">
+            {topClients.map((client) => (
               <Link
                 key={client.id}
                 href={`/coach/${client.id}`}
-                className={`${innerCard} block transition hover:border-smc-gold/35`}
+                className={`${innerCard} block bg-black/52 transition hover:border-smc-gold/35 hover:bg-black/62`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-smc-gold/20 bg-smc-gold/10 text-xs font-black text-smc-gold">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-smc-gold/20 bg-smc-gold/10 text-[11px] font-black text-smc-gold">
                     {getInitials(client.name)}
                   </div>
 
@@ -733,7 +811,7 @@ export default async function CoachDashboard({
                     <h3 className="truncate text-sm font-black text-white">
                       {client.name}
                     </h3>
-                    <p className="mt-1 truncate text-xs text-white/35">
+                    <p className="mt-0.5 truncate text-[11px] text-white/32">
                       {client.email}
                     </p>
                   </div>
@@ -742,12 +820,12 @@ export default async function CoachDashboard({
                     {client.unreviewed > 0 ? (
                       <span className={goldPill}>{client.unreviewed} new</span>
                     ) : (
-                      <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-green-400">
+                      <span className="rounded-full border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-green-400">
                         Clear
                       </span>
                     )}
 
-                    <p className="mt-1.5 text-[11px] text-white/30">
+                    <p className="mt-1 text-[10px] text-white/28">
                       {client.lastActivity
                         ? formatDate(client.lastActivity)
                         : "No activity"}
@@ -759,170 +837,6 @@ export default async function CoachDashboard({
           </div>
         </div>
       </section>
-
-      {pendingPBCount > 0 && (
-        <section className={shellCard}>
-          <div className="relative z-10">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
-                  Team Feed
-                </p>
-                <h2 className="mt-1 text-lg font-black text-white">
-                  PB Approval Strip
-                </h2>
-              </div>
-
-              <span className={goldPill}>{pendingPBCount} pending</span>
-            </div>
-
-            <div className="grid gap-2.5 lg:grid-cols-3">
-              {pendingPBs?.slice(0, 3).map((pb) => (
-                <div key={pb.id} className={innerCard}>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className={goldPill}>PB</span>
-                    <span className="text-[11px] text-white/30">
-                      {formatDate(pb.created_at)}
-                    </span>
-                  </div>
-
-                  <h3 className="text-sm font-black text-white">
-                    {clientMap[pb.user_id] || "Unknown client"}
-                  </h3>
-
-                  <p className="mt-1 text-xs text-white/45">
-                    {pb.exercise_name}
-                  </p>
-
-                  <p className="mt-2 text-xl font-black text-white">
-                    {pb.weight}kg × {pb.reps}
-                  </p>
-
-                  <p className="mt-1 text-xs text-smc-gold/80">
-                    Est. 1RM: {pb.estimated_1rm}kg
-                  </p>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <form action={approvePBToTeamFeed}>
-                      <input type="hidden" name="pbId" value={pb.id} />
-                      <button
-                        type="submit"
-                        className="min-h-[38px] w-full rounded-[0.85rem] bg-smc-gold px-3 py-2 text-xs font-black text-black transition hover:brightness-110"
-                      >
-                        Approve
-                      </button>
-                    </form>
-
-                    <form action={dismissPBFromTeamFeed}>
-                      <input type="hidden" name="pbId" value={pb.id} />
-                      <button
-                        type="submit"
-                        className="min-h-[38px] w-full rounded-[0.85rem] border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-bold text-white/55 transition hover:border-red-500/40 hover:text-red-300"
-                      >
-                        Private
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {pendingPBCount > 3 && (
-              <p className="mt-3 text-center text-xs text-white/35">
-                Showing top 3 of {pendingPBCount} pending PBs.
-              </p>
-            )}
-          </div>
-        </section>
-      )}
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        <section className={shellCard}>
-          <div className="relative z-10">
-            <div className="mb-3">
-              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
-                SMC Home
-              </p>
-
-              <h2 className="mt-1 text-lg font-black text-white">
-                Create Team Feed Post
-              </h2>
-            </div>
-
-            <form action={createTeamFeedPost} className="space-y-2.5">
-              <select
-                name="type"
-                defaultValue="Announcement"
-                className="min-h-[42px] w-full rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none focus:border-smc-gold/45"
-              >
-                <option value="Announcement">Announcement</option>
-                <option value="PB">PB</option>
-                <option value="Competition">Competition</option>
-              </select>
-
-              <input
-                name="title"
-                required
-                placeholder="Post title"
-                className="min-h-[42px] w-full rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
-              />
-
-              <textarea
-                name="body"
-                required
-                rows={3}
-                placeholder="Write the update here..."
-                className="w-full resize-none rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
-              />
-
-              <button
-                type="submit"
-                className="min-h-[42px] w-full rounded-[1rem] bg-smc-gold px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:brightness-110"
-              >
-                Publish to SMC Home
-              </button>
-            </form>
-          </div>
-        </section>
-
-        {recentPosts && recentPosts.length > 0 && (
-          <section className={shellCard}>
-            <div className="relative z-10">
-              <div className="mb-3">
-                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
-                  Recent Posts
-                </p>
-
-                <h2 className="mt-1 text-lg font-black text-white">
-                  Team Feed Activity
-                </h2>
-              </div>
-
-              <div className="flex flex-col gap-2.5">
-                {recentPosts.slice(0, 3).map((post) => (
-                  <div key={post.id} className={innerCard}>
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className={goldPill}>{post.type}</span>
-
-                      <span className="text-[11px] text-white/30">
-                        {formatDate(post.created_at)}
-                      </span>
-                    </div>
-
-                    <h3 className="text-sm font-black text-white">
-                      {post.title}
-                    </h3>
-
-                    <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-white/50">
-                      {shortenText(post.body)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
-      </div>
 
       <CoachActivityFeed
         activityItems={activityItems}

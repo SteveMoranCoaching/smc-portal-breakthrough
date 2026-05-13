@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic"
 const softBorder = "border-[rgba(255,255,255,0.08)]"
 
 const glassCard =
-  "relative overflow-hidden rounded-[1.75rem] border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.052),rgba(255,255,255,0.018))] shadow-[0_16px_42px_rgba(0,0,0,0.68)]"
+  "relative overflow-hidden rounded-[1.55rem] border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.052),rgba(255,255,255,0.018))] shadow-[0_14px_34px_rgba(0,0,0,0.66)]"
 
 const labelStyle =
-  "text-[9px] font-semibold uppercase tracking-[0.24em] text-smc-gold"
+  "text-[8px] font-semibold uppercase tracking-[0.24em] text-smc-gold"
 
 function Icon({
   type,
@@ -181,13 +181,13 @@ function IconBubble({
 }) {
   return (
     <span
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
         subtle
           ? "border-[rgba(255,255,255,0.07)] bg-white/[0.03] text-smc-gold"
           : "border-smc-gold/25 bg-smc-gold/10 text-smc-gold"
       }`}
     >
-      <Icon type={type} className="h-4 w-4" />
+      <Icon type={type} className="h-3.5 w-3.5" />
     </span>
   )
 }
@@ -282,6 +282,27 @@ function sortProgrammeSessions(sessions: any[]) {
 
     return getDayOrder(a.day) - getDayOrder(b.day)
   })
+}
+
+function getProgressMessage({
+  totalCount,
+  completedCount,
+  progressPercent,
+}: {
+  totalCount: number
+  completedCount: number
+  progressPercent: number
+}) {
+  if (totalCount === 0) return "Your programme progress will appear here."
+
+  const sessionsLeft = Math.max(totalCount - completedCount, 0)
+
+  if (progressPercent === 100) return "Programme complete. Strong work."
+  if (sessionsLeft === 1) return "1 session left this week."
+  if (sessionsLeft > 1) return `${sessionsLeft} sessions left this week.`
+  if (completedCount > 0) return "Momentum is building."
+
+  return "Ready to get the first session ticked off."
 }
 
 export default async function Dashboard() {
@@ -401,6 +422,13 @@ export default async function Dashboard() {
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
+  const sessionsLeft = Math.max(totalCount - completedCount, 0)
+  const progressMessage = getProgressMessage({
+    totalCount,
+    completedCount,
+    progressPercent,
+  })
+
   const nextWorkout =
     sessions.find((session: any) => !completedSessionIds.has(session.id)) ||
     sessions[0]
@@ -513,36 +541,36 @@ export default async function Dashboard() {
   ].sort((a, b) => a.priority - b.priority)
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       <FeedbackReadMarker
         unreadLogIds={unreadLogFeedbackIds}
         unreadVideoIds={unreadVideoFeedbackIds}
       />
 
-      <section className="relative px-1 pt-1">
-        <div className="relative min-h-[128px]">
-          <div className="absolute -left-5 top-2 h-[104px] w-[104px] overflow-hidden rounded-full border border-smc-gold/40 bg-zinc-950 shadow-[0_0_26px_rgba(212,175,55,0.12)]">
+      <section className="relative px-1 pt-0">
+        <div className="relative min-h-[118px]">
+          <div className="absolute -left-4 top-2 h-[94px] w-[94px] overflow-hidden rounded-full border border-smc-gold/35 bg-zinc-950 shadow-[0_0_24px_rgba(212,175,55,0.12)]">
             <Image
               src="/images/steve-avatar.jpeg"
               alt="Steve Moran"
               fill
-              sizes="104px"
+              sizes="94px"
               className="object-cover grayscale"
               priority
             />
           </div>
 
-          <div className="grid grid-cols-[48px_1fr_48px] items-start gap-3">
+          <div className="grid grid-cols-[42px_1fr_42px] items-start gap-3">
             <div />
 
-            <div className="mt-10 flex items-center justify-center gap-2.5">
-              <p className="text-2xl font-black tracking-[-0.08em] text-smc-gold">
+            <div className="mt-8 flex items-center justify-center gap-2.5">
+              <p className="text-[1.65rem] font-black tracking-[-0.08em] text-smc-gold">
                 SMC
               </p>
 
-              <div className="h-7 w-px bg-smc-gold/35" />
+              <div className="h-6 w-px bg-smc-gold/35" />
 
-              <p className="text-[8px] font-bold uppercase leading-[0.95rem] tracking-[0.3em] text-smc-text">
+              <p className="text-[7.5px] font-bold uppercase leading-[0.88rem] tracking-[0.28em] text-smc-text">
                 Steve Moran
                 <br />
                 Coaching
@@ -552,10 +580,10 @@ export default async function Dashboard() {
             <div className="relative z-20 mt-3 flex flex-col items-center gap-2">
               <Link
                 href="/dashboard/messages"
-                className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-smc-gold/35 bg-smc-gold/5 text-smc-gold shadow-[0_0_22px_rgba(212,175,55,0.12)]"
+                className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-smc-gold/35 bg-smc-gold/5 text-smc-gold shadow-[0_0_20px_rgba(212,175,55,0.12)]"
                 aria-label="Open messages"
               >
-                <Icon type="message" className="h-5 w-5" />
+                <Icon type="message" className="h-4.5 w-4.5" />
 
                 {unreadFeedbackCount > 0 && (
                   <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-smc-gold shadow-[0_0_10px_rgba(212,175,55,0.9)]" />
@@ -564,16 +592,16 @@ export default async function Dashboard() {
 
               <Link
                 href="/dashboard/pbs"
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-smc-gold/25 bg-black/35 text-smc-gold shadow-[0_0_18px_rgba(212,175,55,0.08)] transition active:scale-[0.96]"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-smc-gold/25 bg-black/35 text-smc-gold shadow-[0_0_18px_rgba(212,175,55,0.08)] transition active:scale-[0.96]"
                 aria-label="Open PBs"
               >
-                <Icon type="trophy" className="h-5 w-5" />
+                <Icon type="trophy" className="h-4.5 w-4.5" />
               </Link>
             </div>
           </div>
 
-          <div className="relative z-10 mt-2 text-center">
-            <h1 className="text-[1.55rem] font-black leading-[0.98] tracking-[-0.055em] text-smc-text">
+          <div className="relative z-10 mt-1 text-center">
+            <h1 className="text-[1.45rem] font-black leading-[0.98] tracking-[-0.055em] text-smc-text">
               Welcome back,
               <br />
               <span className="text-smc-gold">
@@ -581,20 +609,22 @@ export default async function Dashboard() {
               </span>
             </h1>
 
-            <p className="mt-2 text-sm leading-5 text-smc-muted">
+            <p className="mt-2 text-[13px] leading-5 text-smc-muted">
               {unreadFeedbackCount > 0
                 ? "Steve has fresh feedback waiting for you."
                 : checkInDue
                   ? "Your weekly check-in is ready when you are."
                   : progressPercent === 100 && totalCount > 0
                     ? "Programme complete. Strong work."
-                    : "Here’s what needs doing next."}
+                    : sessionsLeft > 0
+                      ? progressMessage
+                      : "Here’s what needs doing next."}
             </p>
           </div>
         </div>
       </section>
 
-      <section className={`${glassCard} mt-1 p-3.5`}>
+      <section className={`${glassCard} mt-0.5 p-3.5`}>
         <div
           className="pointer-events-none absolute inset-y-0 right-0 w-[64%] bg-cover bg-center opacity-55"
           style={{
@@ -613,18 +643,18 @@ export default async function Dashboard() {
                 <p className={labelStyle}>Priority</p>
               </div>
 
-              <h2 className="mt-3 text-[1.5rem] font-black tracking-[-0.04em] text-smc-text">
+              <h2 className="mt-2.5 text-[1.42rem] font-black tracking-[-0.04em] text-smc-text">
                 New Coach Feedback
               </h2>
 
-              <p className="mt-1 text-sm text-smc-muted">
+              <p className="mt-1 text-[13px] leading-5 text-smc-muted">
                 {unreadFeedbackCount} new feedback item
                 {unreadFeedbackCount === 1 ? "" : "s"} waiting.
               </p>
 
               <Link
                 href="/dashboard/workouts"
-                className="mt-3.5 flex min-h-[42px] items-center justify-center rounded-[1.25rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
+                className="mt-3 flex min-h-[40px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
               >
                 View Feedback <span className="ml-3 text-lg">→</span>
               </Link>
@@ -638,17 +668,17 @@ export default async function Dashboard() {
                 <p className={labelStyle}>Priority</p>
               </div>
 
-              <h2 className="mt-3 text-[1.5rem] font-black tracking-[-0.04em] text-smc-text">
+              <h2 className="mt-2.5 text-[1.42rem] font-black tracking-[-0.04em] text-smc-text">
                 Weekly Check-In Due
               </h2>
 
-              <p className="mt-1 text-sm text-smc-muted">
+              <p className="mt-1 text-[13px] leading-5 text-smc-muted">
                 Submit your weekly update so Steve can review your progress.
               </p>
 
               <Link
                 href="/dashboard/check-ins"
-                className="mt-3.5 flex min-h-[42px] items-center justify-center rounded-[1.25rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
+                className="mt-3 flex min-h-[40px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
               >
                 Start Check-In <span className="ml-3 text-lg">→</span>
               </Link>
@@ -662,11 +692,11 @@ export default async function Dashboard() {
                 <p className={labelStyle}>Next Workout</p>
               </div>
 
-              <h2 className="mt-3 text-[1.5rem] font-black tracking-[-0.04em] text-smc-text">
+              <h2 className="mt-2.5 text-[1.42rem] font-black tracking-[-0.04em] text-smc-text">
                 {nextWorkout.title}
               </h2>
 
-              <div className="mt-2.5 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.08)] bg-black/40 px-3 py-1 text-xs text-smc-muted">
                   <Icon type="calendar" className="h-3.5 w-3.5 text-smc-gold" />
                   Week {nextWorkout.week_number || 1} · {nextWorkout.day}
@@ -684,7 +714,7 @@ export default async function Dashboard() {
 
               <Link
                 href={`/dashboard/session/${nextWorkout.id}?programmeId=${currentProgramme.id}`}
-                className="mt-3.5 flex min-h-[42px] items-center justify-center rounded-[1.25rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
+                className="mt-3 flex min-h-[40px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
               >
                 Start Workout <span className="ml-3 text-lg">→</span>
               </Link>
@@ -698,11 +728,11 @@ export default async function Dashboard() {
                 <p className={labelStyle}>Current Status</p>
               </div>
 
-              <h2 className="mt-3 text-[1.5rem] font-black tracking-[-0.04em] text-smc-text">
+              <h2 className="mt-2.5 text-[1.42rem] font-black tracking-[-0.04em] text-smc-text">
                 Programme Pending
               </h2>
 
-              <p className="mt-1 text-sm text-smc-muted">
+              <p className="mt-1 text-[13px] leading-5 text-smc-muted">
                 Your programme will appear here once it has been assigned.
               </p>
             </>
@@ -714,7 +744,7 @@ export default async function Dashboard() {
         {dashboardStats.map((stat) => (
           <Link key={stat.label} href={stat.href} className={`${glassCard} p-3`}>
             <div className="relative z-10">
-              <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="mb-2.5 flex items-center justify-between gap-2">
                 <p className="text-[8px] font-black uppercase tracking-[0.22em] text-smc-muted-soft">
                   {stat.label}
                 </p>
@@ -724,11 +754,11 @@ export default async function Dashboard() {
                 </span>
               </div>
 
-              <p className="text-2xl font-black tracking-[-0.055em] text-smc-text">
+              <p className="text-[1.45rem] font-black tracking-[-0.055em] text-smc-text">
                 {stat.value}
               </p>
 
-              <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-smc-muted">
+              <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 text-smc-muted">
                 {stat.sub}
               </p>
             </div>
@@ -759,11 +789,7 @@ export default async function Dashboard() {
           </div>
 
           <p className="mt-2 text-[13px] text-smc-muted">
-            {totalCount === 0
-              ? "Your programme progress will appear here."
-              : progressPercent === 100
-                ? "Programme complete. Strong work."
-                : "Keep ticking off the work."}
+            {progressMessage}
           </p>
         </div>
       </section>
@@ -778,20 +804,20 @@ export default async function Dashboard() {
               <p className={labelStyle}>Latest PB</p>
             </div>
 
-            <div className="mt-3 flex items-end justify-between gap-3">
+            <div className="mt-2.5 flex items-end justify-between gap-3">
               <div>
-                <h2 className="text-xl font-black tracking-[-0.04em] text-smc-text">
+                <h2 className="text-[1.15rem] font-black tracking-[-0.04em] text-smc-text">
                   {latestPB.exercise_name}
                 </h2>
 
-                <p className="mt-1 text-sm text-smc-muted">
+                <p className="mt-1 text-[13px] text-smc-muted">
                   {formatPBType(latestPB.pb_type)} ·{" "}
                   {formatTimestamp(latestPB.created_at)}
                 </p>
               </div>
 
               <div className="text-right">
-                <p className="text-2xl font-black tracking-[-0.06em] text-smc-gold">
+                <p className="text-[1.7rem] font-black tracking-[-0.06em] text-smc-gold">
                   {latestPB.weight}kg
                 </p>
 
@@ -803,7 +829,7 @@ export default async function Dashboard() {
 
             <Link
               href="/dashboard/pbs"
-              className="mt-3 flex items-center justify-center gap-3 text-sm font-black text-smc-gold"
+              className="mt-2.5 flex items-center justify-center gap-3 text-sm font-black text-smc-gold"
             >
               View PB board <span className="text-lg">→</span>
             </Link>
@@ -820,7 +846,7 @@ export default async function Dashboard() {
               <IconBubble type="trophy" subtle />
               <div>
                 <p className={labelStyle}>Achievements</p>
-                <h2 className="mt-1 text-lg font-black tracking-[-0.035em] text-smc-text">
+                <h2 className="mt-1 text-[1.05rem] font-black tracking-[-0.035em] text-smc-text">
                   Momentum Board
                 </h2>
               </div>
@@ -836,23 +862,23 @@ export default async function Dashboard() {
 
           {latestAchievement ? (
             <>
-              <div className="mt-4 rounded-[1.35rem] border border-smc-gold/25 bg-smc-gold/[0.07] p-4 shadow-[0_0_22px_rgba(212,175,55,0.08)]">
+              <div className="mt-3 rounded-[1.2rem] border border-smc-gold/25 bg-smc-gold/[0.07] p-3.5 shadow-[0_0_22px_rgba(212,175,55,0.08)]">
                 <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-smc-gold/30 bg-black/35 text-smc-gold">
-                    <Icon type="spark" className="h-5 w-5" />
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-smc-gold/30 bg-black/35 text-smc-gold">
+                    <Icon type="spark" className="h-4.5 w-4.5" />
                   </span>
 
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-smc-gold">
+                    <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
                       Latest Unlock
                     </p>
 
-                    <h3 className="mt-1 text-base font-black text-smc-text">
+                    <h3 className="mt-1 text-[0.98rem] font-black text-smc-text">
                       {latestAchievement.achievement_definitions?.title ||
                         "Achievement Unlocked"}
                     </h3>
 
-                    <p className="mt-1 text-sm leading-5 text-smc-muted">
+                    <p className="mt-1 text-[13px] leading-5 text-smc-muted">
                       {latestAchievement.achievement_definitions?.description ||
                         "Another marker of progress ticked off."}
                     </p>
@@ -860,13 +886,13 @@ export default async function Dashboard() {
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {unlockedAchievements.slice(1, 4).map((achievement: any) => (
                   <div
                     key={achievement.id}
-                    className={`rounded-[1.15rem] border ${softBorder} bg-black/35 p-3`}
+                    className={`rounded-[1rem] border ${softBorder} bg-black/35 p-3`}
                   >
-                    <p className="text-xs font-black text-smc-text">
+                    <p className="text-[13px] font-black text-smc-text">
                       {achievement.achievement_definitions?.title ||
                         "Achievement"}
                     </p>
@@ -880,12 +906,12 @@ export default async function Dashboard() {
               </div>
             </>
           ) : (
-            <div className="mt-4 rounded-[1.35rem] border border-[rgba(255,255,255,0.07)] bg-black/35 p-4">
+            <div className="mt-3 rounded-[1.2rem] border border-[rgba(255,255,255,0.07)] bg-black/35 p-3.5">
               <p className="text-sm font-black text-smc-text">
                 No achievements unlocked yet.
               </p>
 
-              <p className="mt-1 text-sm leading-5 text-smc-muted">
+              <p className="mt-1 text-[13px] leading-5 text-smc-muted">
                 Log your first workout, hit a PB, or submit your first check-in
                 to start building your achievement board.
               </p>
@@ -904,7 +930,7 @@ export default async function Dashboard() {
                   <p className={labelStyle}>Latest Coach Feedback</p>
                 </div>
 
-                <p className="mt-2.5 text-sm text-zinc-300">
+                <p className="mt-2 text-[13px] text-zinc-300">
                   Recent notes from Steve.
                 </p>
               </div>
@@ -919,7 +945,7 @@ export default async function Dashboard() {
             {latestFeedbackItems.map((item, index) => (
               <div
                 key={`${item.type}-${index}`}
-                className={`mt-3 rounded-[1.35rem] border ${softBorder} bg-black/45 p-3`}
+                className={`mt-3 rounded-[1.2rem] border ${softBorder} bg-black/45 p-3`}
               >
                 <div className="mb-2 flex items-center gap-3">
                   <span className="rounded-full bg-smc-gold px-3 py-1 text-[9px] font-black uppercase text-black">

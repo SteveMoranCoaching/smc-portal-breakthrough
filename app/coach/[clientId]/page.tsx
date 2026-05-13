@@ -1,5 +1,8 @@
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
+import { createSupabaseServerClient } from "@/lib/supabaseServer"
+import { createSupabaseAdminClient } from "@/lib/supabaseAdmin"
 import VideoGroup from "./VideoGroup"
 import WorkoutLogReviewButton from "./WorkoutLogReviewButton"
 import WorkoutLogFeedbackBox from "./WorkoutLogFeedbackBox"
@@ -14,6 +17,50 @@ const innerPanel =
 
 const labelStyle =
   "text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80"
+
+async function updateClientProfile(formData: FormData) {
+  "use server"
+
+  const clientId = String(formData.get("clientId") || "")
+  const goal = String(formData.get("goal") || "Uncategorised")
+  const status = String(formData.get("status") || "Active")
+  const coachNotes = String(formData.get("coach_notes") || "")
+
+  if (!clientId) return
+
+  const supabase = await createSupabaseServerClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) redirect("/")
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  if (profile?.role !== "coach") redirect("/dashboard")
+
+  const admin = createSupabaseAdminClient()
+
+  await admin
+    .from("clients")
+    .update({
+      goal,
+      status,
+      coach_notes: coachNotes,
+    })
+    .eq("id", clientId)
+
+  revalidatePath(`/coach/${clientId}`)
+  revalidatePath("/coach/clients")
+  revalidatePath("/coach")
+
+  redirect(`/coach/${clientId}?updated=true`)
+}
 
 function formatDateTime(dateString?: string | null) {
   if (!dateString) return "No date"
@@ -71,14 +118,16 @@ export default async function ClientProfilePage({
   searchParams,
 }: {
   params: Promise<{ clientId: string }>
-  searchParams: Promise<{ exercise?: string }>
+  searchParams: Promise<{ exercise?: string; updated?: string }>
 }) {
   const { clientId } = await params
-  const { exercise: selectedExercise } = await searchParams
+  const { exercise: selectedExercise, updated } = await searchParams
+
+  const supabase = await createSupabaseServerClient()
 
   const { data: client } = await supabase
     .from("clients")
-    .select("id, user_id, name, email")
+    .select("id, user_id, name, email, goal, status, coach_notes")
     .eq("id", clientId)
     .single()
 
@@ -176,11 +225,17 @@ export default async function ClientProfilePage({
     <main className="min-h-screen bg-black px-4 py-5 text-white sm:px-6 sm:py-8">
       <div className="mx-auto max-w-6xl space-y-5">
         <Link
-          href="/coach"
+          href="/coach/clients"
           className="inline-flex items-center rounded-full border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-white/55 transition hover:border-smc-gold/35 hover:text-white"
         >
           ← Back to clients
         </Link>
+
+        {updated === "true" && (
+          <div className="rounded-[1rem] border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
+            Client details updated.
+          </div>
+        )}
 
         <section className={`${shellCard} p-4 sm:p-5`}>
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/45 to-transparent" />
@@ -197,6 +252,16 @@ export default async function ClientProfilePage({
                   {client.name}
                 </h1>
                 <p className="mt-0.5 text-sm text-white/45">{client.email}</p>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
+                    {client.goal || "Uncategorised"}
+                  </span>
+
+                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/55">
+                    {client.status || "Active"}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -241,6 +306,78 @@ export default async function ClientProfilePage({
                 </p>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className={`${shellCard} p-4 sm:p-5`}>
+          <div className="relative z-10">
+            <div className="mb-4">
+              <p className={labelStyle}>Client Management</p>
+              <h2 className="mt-1 text-xl font-black text-white">
+                Goal, Status & Coach Notes
+              </h2>
+            </div>
+
+            <form action={updateClientProfile} className="space-y-3">
+              <input type="hidden" name="clientId" value={client.id} />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
+                    Goal
+                  </label>
+                  <select
+                    name="goal"
+                    defaultValue={client.goal || "Uncategorised"}
+                    className="min-h-[44px] w-full rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none focus:border-smc-gold/45"
+                  >
+                    <option>Powerlifting</option>
+                    <option>Fat loss</option>
+                    <option>Muscle build</option>
+                    <option>General strength</option>
+                    <option>Rehab / return to training</option>
+                    <option>Other</option>
+                    <option>Uncategorised</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
+                    Status
+                  </label>
+                  <select
+                    name="status"
+                    defaultValue={client.status || "Active"}
+                    className="min-h-[44px] w-full rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none focus:border-smc-gold/45"
+                  >
+                    <option>Active</option>
+                    <option>Onboarding</option>
+                    <option>Paused</option>
+                    <option>Inactive</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
+                  Private coach notes
+                </label>
+                <textarea
+                  name="coach_notes"
+                  defaultValue={client.coach_notes || ""}
+                  rows={4}
+                  placeholder="Anything useful for coaching this client..."
+                  className="w-full resize-none rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="min-h-[42px] rounded-[1rem] bg-smc-gold px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-black transition hover:brightness-110"
+              >
+                Save Client Details
+              </button>
+            </form>
           </div>
         </section>
 
