@@ -260,10 +260,11 @@ export default function TeamFeedClient({
     setBusyCommentId(null)
 
     if (error) {
-      setComments(previousComments)
-      showToast("Could not edit comment")
-      return
-    }
+  console.error("Edit comment error:", error)
+  setComments(previousComments)
+  showToast(error.message || "Could not edit comment")
+  return
+}
 
     setEditingCommentId(null)
     showToast("Comment updated ✅")
@@ -291,10 +292,11 @@ export default function TeamFeedClient({
     setBusyCommentId(null)
 
     if (error) {
-      setComments(previousComments)
-      showToast("Could not delete comment")
-      return
-    }
+  console.error("Delete comment error:", error)
+  setComments(previousComments)
+  showToast(error.message || "Could not delete comment")
+  return
+}
 
     showToast("Comment deleted")
   }

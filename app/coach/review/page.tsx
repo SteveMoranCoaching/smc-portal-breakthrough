@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import { requireCoach } from "@/lib/authGuards"
 import ReviewSession from "@/components/ReviewSession"
 
 type SetEntry = {
@@ -9,6 +9,8 @@ type SetEntry = {
 }
 
 export default async function CoachReviewPage() {
+    const { supabase } = await requireCoach()
+    
   const { data: clients } = await supabase
     .from("clients")
     .select("id, user_id, name, email")

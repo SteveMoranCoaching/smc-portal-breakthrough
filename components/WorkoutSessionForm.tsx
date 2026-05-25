@@ -1,6 +1,7 @@
 "use client"
 
-import { useRef, useState } from "react"
+import Link from "next/link"
+import { useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import AchievementUnlockToast from "@/components/AchievementUnlockToast"
@@ -40,6 +41,13 @@ type ParsedSet = {
   estimated1RM: number
 }
 
+type PreviousPerformanceSet = {
+  weight: number
+  reps: number
+  rpe: string
+  estimated1RM: number
+}
+
 type AchievementUnlock = {
   title: string
   description?: string
@@ -47,10 +55,10 @@ type AchievementUnlock = {
 }
 
 const card =
-  "relative overflow-hidden rounded-[1.35rem] border border-white/[0.055] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] shadow-[0_12px_30px_rgba(0,0,0,0.55)]"
+  "relative scroll-mt-24 overflow-hidden rounded-[1.35rem] border border-white/[0.055] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] shadow-[0_12px_30px_rgba(0,0,0,0.55)]"
 
 const inputStyle =
-  "h-[40px] rounded-xl border border-white/[0.07] bg-black/30 px-2 text-center text-sm font-bold text-white outline-none placeholder:text-white/20 focus:border-smc-gold/70 focus:shadow-[0_0_14px_rgba(212,175,55,0.12)]"
+  "h-11 min-h-11 rounded-xl border border-white/[0.07] bg-black/35 px-2 text-center text-base font-black text-white outline-none placeholder:text-white/20 transition focus:border-smc-gold/70 focus:bg-black/50 focus:shadow-[0_0_14px_rgba(212,175,55,0.12)]"
 
 function normaliseAchievementUnlock(result: any): AchievementUnlock | null {
   const achievement = Array.isArray(result) ? result[0] : result
@@ -76,7 +84,7 @@ function normaliseAchievementUnlock(result: any): AchievementUnlock | null {
 }
 
 function getPrescribedSetCount(exercise: any) {
-  const prescription = exercise?.prescription || ""
+  const prescription = String(exercise?.prescription || "")
   const match = prescription.match(/^(\d+)\s*x/i)
   if (match) return Number(match[1])
 
@@ -112,6 +120,55 @@ function estimateOneRM(weight: number, reps: number) {
   return Math.round(weight * (1 + reps / 30))
 }
 
+function formatLogDate(dateString?: string | null) {
+  if (!dateString) return "No date"
+
+  return new Date(dateString).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+  })
+}
+
+function getPreviousPerformance(previousLog: any) {
+  const sets = Array.isArray(previousLog?.sets_completed)
+    ? previousLog.sets_completed
+    : []
+
+  const parsedSets: PreviousPerformanceSet[] = sets
+    .map((set: SetEntry) => {
+      const weight = toNumber(set.weight)
+      const reps = toNumber(set.reps)
+
+      return {
+        weight,
+        reps,
+        rpe: set.rpe || "",
+        estimated1RM: estimateOneRM(weight, reps),
+      }
+    })
+    .filter((set: PreviousPerformanceSet) => set.weight > 0 && set.reps > 0)
+
+  if (parsedSets.length === 0) return null
+
+  const bestSet = parsedSets.reduce((best, set) =>
+    set.estimated1RM > best.estimated1RM ? set : best
+  )
+
+  return {
+    date: formatLogDate(previousLog?.created_at),
+    setCount: parsedSets.length,
+    bestSet,
+  }
+}
+
+function hasSetData(set: SetEntry) {
+  return Boolean(set.weight || set.reps || set.rpe)
+}
+
+function isCompletedSet(set: SetEntry) {
+  return Boolean(set.weight && set.reps)
+}
+
 function groupPBResults(results: PBResult[]) {
   const priority: Record<PBType, number> = {
     heaviest: 1,
@@ -120,6 +177,10 @@ function groupPBResults(results: PBResult[]) {
   }
 
   return results.sort((a, b) => priority[a.type] - priority[b.type]).slice(0, 3)
+}
+
+function safeFileName(fileName: string) {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, "-")
 }
 
 function detectPBs({
@@ -260,37 +321,109 @@ export default function WorkoutSessionForm({
 }: any) {
   const router = useRouter()
   const inputRefs = useRef<any[]>([])
-  const exercises = Array.isArray(session?.exercises) ? session.exercises : []
+  const exercises = useMemo(
+    () => (Array.isArray(session?.exercises) ? session.exercises : []),
+    [session?.exercises]
+  )
+
+  const initialFormData = useMemo(
+    () =>
+      exercises.map((exercise: any) => {
+        const setCount = getPrescribedSetCount(exercise)
+
+        return {
+          sets: Array.from({ length: Math.max(1, setCount) }, () => ({
+            weight: "",
+            reps: "",
+            rpe: "",
+          })),
+          notes: "",
+          video: null,
+        }
+      }),
+    [exercises]
+  )
 
   const [activeDemo, setActiveDemo] = useState<any | null>(null)
   const [prefillMode, setPrefillMode] = useState<"unset" | "previous" | "blank">(
     "unset"
   )
   const [confirmedSets, setConfirmedSets] = useState<Record<string, boolean>>({})
-
-  const [formData, setFormData] = useState<ExerciseEntry[]>(
-    exercises.map((exercise: any) => {
-      const setCount = getPrescribedSetCount(exercise)
-
-      return {
-        sets: Array.from({ length: setCount }, () => ({
-          weight: "",
-          reps: "",
-          rpe: "",
-        })),
-        notes: "",
-        video: null,
-      }
-    })
-  )
-
+  const [formData, setFormData] = useState<ExerciseEntry[]>(initialFormData)
+  const [keyboardActive, setKeyboardActive] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
+  const [saveError, setSaveError] = useState("")
+  const [uploadingExercise, setUploadingExercise] = useState("")
   const [complete, setComplete] = useState(false)
   const [pbResults, setPbResults] = useState<PBResult[]>([])
   const [showPBModal, setShowPBModal] = useState(false)
   const [achievementUnlock, setAchievementUnlock] =
     useState<AchievementUnlock | null>(null)
+
+  const sessionStats = useMemo(() => {
+    const completedExercises = formData.filter((entry) => {
+      const completedSetCount = entry.sets.filter(isCompletedSet).length
+      return completedSetCount >= Math.max(1, entry.sets.length)
+    }).length
+
+    const totalCompletedSets = formData.reduce((total, entry) => {
+      return total + entry.sets.filter(isCompletedSet).length
+    }, 0)
+
+    const totalLoggedSets = formData.reduce((total, entry) => {
+      return total + entry.sets.filter(hasSetData).length
+    }, 0)
+
+    const hasAnyLoggedWork = formData.some((entry) => {
+      return (
+        entry.sets.some(hasSetData) ||
+        entry.notes.trim().length > 0 ||
+        Boolean(entry.video)
+      )
+    })
+
+    const progress =
+      exercises.length > 0
+        ? Math.round((completedExercises / exercises.length) * 100)
+        : 0
+
+    return {
+      completedExercises,
+      totalCompletedSets,
+      totalLoggedSets,
+      hasAnyLoggedWork,
+      progress,
+    }
+  }, [formData, exercises.length])
+
+  function handleInputFocus() {
+    setKeyboardActive(true)
+  }
+
+  function handleInputBlur() {
+    setTimeout(() => {
+      const activeElement = document.activeElement
+
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+
+      setKeyboardActive(false)
+    }, 140)
+  }
+
+  function getSaveButtonText() {
+    if (saving) return uploadingExercise || "Saving workout..."
+    if (!sessionStats.hasAnyLoggedWork) return "Log your first set"
+    if (sessionStats.completedExercises === exercises.length) {
+      return "Complete Workout"
+    }
+    return "Save Progress"
+  }
 
   function getSetKey(exerciseIndex: number, setIndex: number) {
     return `${exerciseIndex}-${setIndex}`
@@ -299,6 +432,7 @@ export default function WorkoutSessionForm({
   function fillFromPreviousSession() {
     setPrefillMode("previous")
     setConfirmedSets({})
+    setSaveError("")
 
     setFormData((current) =>
       current.map((exerciseEntry, exerciseIndex) => {
@@ -327,6 +461,7 @@ export default function WorkoutSessionForm({
   function startBlankSession() {
     setPrefillMode("blank")
     setConfirmedSets({})
+    setSaveError("")
   }
 
   function confirmSet(exerciseIndex: number, setIndex: number) {
@@ -364,7 +499,7 @@ export default function WorkoutSessionForm({
   ) {
     setTimeout(() => {
       inputRefs.current?.[exerciseIndex]?.[setIndex]?.[field]?.focus()
-    }, 60)
+    }, 80)
   }
 
   function updateSetField(
@@ -374,6 +509,7 @@ export default function WorkoutSessionForm({
     value: string
   ) {
     markSetActive(exerciseIndex, setIndex)
+    setSaveError("")
 
     setFormData((current) =>
       current.map((exercise, i) => {
@@ -421,6 +557,8 @@ export default function WorkoutSessionForm({
   }
 
   function updateNotes(exerciseIndex: number, value: string) {
+    setSaveError("")
+
     setFormData((current) =>
       current.map((exercise, i) =>
         i === exerciseIndex ? { ...exercise, notes: value } : exercise
@@ -429,6 +567,8 @@ export default function WorkoutSessionForm({
   }
 
   function updateVideo(exerciseIndex: number, file: File | null) {
+    setSaveError("")
+
     setFormData((current) =>
       current.map((exercise, i) =>
         i === exerciseIndex ? { ...exercise, video: file } : exercise
@@ -509,15 +649,16 @@ export default function WorkoutSessionForm({
 
   function closePBModal() {
     setShowPBModal(false)
-
-    if (!achievementUnlock) {
-      router.push("/dashboard")
-    }
+    setComplete(true)
   }
 
   async function handleSave() {
+    if (!sessionStats.hasAnyLoggedWork || saving) return
+
     setSaving(true)
+    setSaveError("")
     setMessage("Saving workout...")
+    setUploadingExercise("")
 
     try {
       const historicalLogsByExercise = await fetchHistoricalLogsByExercise()
@@ -525,6 +666,9 @@ export default function WorkoutSessionForm({
       for (let i = 0; i < formData.length; i++) {
         const ex = exercises[i]
         const data = formData[i]
+        const exerciseName = ex?.name || `Exercise ${i + 1}`
+
+        setMessage(`Saving ${exerciseName}...`)
 
         const completedSets = data.sets.filter(
           (set) => set.weight || set.reps || set.rpe
@@ -535,7 +679,7 @@ export default function WorkoutSessionForm({
             user_id: userId,
             programme_id: programmeId,
             session_id: session.id,
-            exercise_name: ex.name,
+            exercise_name: exerciseName,
             sets_completed: completedSets,
             notes: data.notes,
             reviewed: false,
@@ -545,7 +689,11 @@ export default function WorkoutSessionForm({
         }
 
         if (data.video) {
-          const filePath = `${userId}/${Date.now()}-${data.video.name}`
+          setUploadingExercise(`Uploading ${exerciseName} video...`)
+
+          const filePath = `${userId}/${Date.now()}-${safeFileName(
+            data.video.name
+          )}`
 
           const { error: uploadError } = await supabase.storage
             .from("exercise-videos")
@@ -559,7 +707,7 @@ export default function WorkoutSessionForm({
               user_id: userId,
               programme_id: programmeId,
               session_id: session.id,
-              exercise_name: ex.name,
+              exercise_name: exerciseName,
               exercise_index: i,
               video_path: filePath,
               reviewed: false,
@@ -568,6 +716,8 @@ export default function WorkoutSessionForm({
           if (videoError) throw videoError
         }
       }
+
+      setMessage("Checking PBs...")
 
       const detectedPBs = checkForPBs(historicalLogsByExercise)
 
@@ -595,27 +745,36 @@ export default function WorkoutSessionForm({
         setPbResults(detectedPBs)
         setShowPBModal(true)
         setMessage("")
+        setUploadingExercise("")
         setSaving(false)
         return
       }
 
       setComplete(true)
-      setMessage("Workout saved successfully ✅")
+      setMessage("")
+      setUploadingExercise("")
       setSaving(false)
-
-      if (!workoutUnlock) {
-        setTimeout(() => {
-          router.push("/dashboard")
-        }, 1200)
-      }
     } catch (err: any) {
-      setMessage(`Error: ${err.message}`)
+      setSaveError(
+        err?.message
+          ? `Couldn’t save this workout: ${err.message}`
+          : "Couldn’t save this workout. Check your connection and try again."
+      )
+      setMessage("")
+      setUploadingExercise("")
       setSaving(false)
     }
   }
 
   if (exercises.length === 0) {
-    return <div className={`${card} p-4 text-white`}>No exercises found.</div>
+    return (
+      <div className={`${card} p-4 text-white`}>
+        <p className="text-sm font-black">No exercises found.</p>
+        <p className="mt-1 text-xs leading-5 text-white/45">
+          This session has loaded, but no exercises are attached to it.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -625,7 +784,32 @@ export default function WorkoutSessionForm({
         onClose={() => setAchievementUnlock(null)}
       />
 
-      <div className="space-y-3 pb-40">
+      <div className="sticky top-2 z-30 mb-3 rounded-[1.35rem] border border-white/[0.07] bg-black/85 p-2.5 shadow-[0_14px_34px_rgba(0,0,0,0.62)] backdrop-blur-xl supports-[padding:max(0px)]:top-[max(0.5rem,env(safe-area-inset-top))]">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[11px] font-black text-white">
+              {session?.title || "Workout Session"}
+            </p>
+            <p className="mt-0.5 text-[10px] font-bold text-white/40">
+              {sessionStats.completedExercises}/{exercises.length} exercises ·{" "}
+              {sessionStats.totalCompletedSets} sets logged
+            </p>
+          </div>
+
+          <div className="shrink-0 rounded-full border border-smc-gold/25 bg-smc-gold/[0.08] px-2.5 py-1 text-[10px] font-black text-smc-gold">
+            {sessionStats.progress}%
+          </div>
+        </div>
+
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+          <div
+            className="h-full rounded-full bg-smc-gold shadow-[0_0_14px_rgba(212,175,55,0.45)] transition-all duration-500"
+            style={{ width: `${sessionStats.progress}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-3 pb-[calc(15rem+env(safe-area-inset-bottom))]">
         {prefillMode === "unset" && (
           <section className={`${card} p-2.5`}>
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/35 to-transparent" />
@@ -634,7 +818,7 @@ export default function WorkoutSessionForm({
               <button
                 type="button"
                 onClick={fillFromPreviousSession}
-                className="flex-1 rounded-2xl border border-smc-gold/30 bg-smc-gold/[0.08] px-3 py-2.5 text-xs font-black text-smc-gold transition active:scale-[0.98]"
+                className="flex-1 rounded-2xl border border-smc-gold/30 bg-smc-gold/[0.08] px-3 py-3 text-xs font-black text-smc-gold transition active:scale-[0.98]"
               >
                 Use Previous
               </button>
@@ -642,7 +826,7 @@ export default function WorkoutSessionForm({
               <button
                 type="button"
                 onClick={startBlankSession}
-                className="flex-1 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs font-black text-white/65 transition active:scale-[0.98]"
+                className="flex-1 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-3 text-xs font-black text-white/65 transition active:scale-[0.98]"
               >
                 Start Blank
               </button>
@@ -651,29 +835,54 @@ export default function WorkoutSessionForm({
         )}
 
         {exercises.map((ex: any, exerciseIndex: number) => {
-          const previousLog = getPreviousLogForExercise(previousLogs, ex.name)
-          const demo = getDemoForExercise(exerciseDemos, ex.name)
+          const exerciseName = ex?.name || `Exercise ${exerciseIndex + 1}`
+          const previousLog = getPreviousLogForExercise(previousLogs, exerciseName)
+          const previousPerformance = getPreviousPerformance(previousLog)
+          const demo = getDemoForExercise(exerciseDemos, exerciseName)
+          const entry = formData[exerciseIndex]
+          const completedSetCount = entry?.sets.filter(isCompletedSet).length || 0
+          const exerciseComplete =
+            completedSetCount >= Math.max(1, entry?.sets.length || 1)
 
           return (
-            <div key={`${ex.name}-${exerciseIndex}`} className={`${card} p-3`}>
+            <div
+              key={`${exerciseName}-${exerciseIndex}`}
+              className={`${card} p-3 transition-all duration-300 ${
+                exerciseComplete
+                  ? "border-smc-gold/25 shadow-[0_0_28px_rgba(212,175,55,0.10)]"
+                  : ""
+              }`}
+            >
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/35 to-transparent" />
+
+              {exerciseComplete && (
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(212,175,55,0.13),transparent_34%)]" />
+              )}
 
               <div className="relative z-10">
                 <div className="text-center">
-  <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/70">
-    Exercise {exerciseIndex + 1}
-  </p>
+                  <div className="flex items-center justify-center gap-2">
+                    <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/70">
+                      Exercise {exerciseIndex + 1}
+                    </p>
 
-  <h3 className="mt-1 text-xl font-black leading-tight text-white">
-    {ex.name}
-  </h3>
+                    {exerciseComplete && (
+                      <span className="rounded-full border border-smc-gold/35 bg-smc-gold/[0.12] px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-smc-gold">
+                        ✓ Complete
+                      </span>
+                    )}
+                  </div>
 
-  <div className="mt-2 flex justify-center">
-    <span className="rounded-full border border-smc-gold/25 bg-smc-gold/[0.08] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold">
-      {ex.prescription || "No prescription"}
-    </span>
-  </div>
-</div>
+                  <h3 className="mt-1 break-words text-xl font-black leading-tight text-white">
+                    {exerciseName}
+                  </h3>
+
+                  <div className="mt-2 flex justify-center">
+                    <span className="max-w-full break-words rounded-full border border-smc-gold/25 bg-smc-gold/[0.08] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold">
+                      {ex?.prescription || "No prescription"}
+                    </span>
+                  </div>
+                </div>
 
                 {demo && (
                   <button
@@ -685,7 +894,7 @@ export default function WorkoutSessionForm({
                     {demo?.thumbnail_url ? (
                       <img
                         src={demo.thumbnail_url}
-                        alt={`${ex.name} demo`}
+                        alt={`${exerciseName} demo`}
                         className="h-full w-full object-cover opacity-80 transition group-hover:scale-[1.03] group-hover:opacity-100"
                       />
                     ) : (
@@ -720,10 +929,57 @@ export default function WorkoutSessionForm({
                   </button>
                 )}
 
-                {ex.notes && (
-                  <p className="mt-2 text-xs leading-5 text-white/45">
+                {ex?.notes && (
+                  <p className="mt-2 break-words text-xs leading-5 text-white/45">
                     {ex.notes}
                   </p>
+                )}
+
+                {previousPerformance && (
+                  <div className="mt-3 rounded-2xl border border-smc-gold/15 bg-smc-gold/[0.045] p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold/75">
+                        Previous Performance
+                      </p>
+
+                      <p className="text-[10px] font-bold text-white/35">
+                        Last completed {previousPerformance.date}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-white/[0.06] bg-black/25 p-2.5 text-center">
+                        <p className="text-base font-black text-white">
+                          {previousPerformance.bestSet.weight}kg ×{" "}
+                          {previousPerformance.bestSet.reps}
+                        </p>
+
+                        <p className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-white/35">
+                          Best Previous Set
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-white/[0.06] bg-black/25 p-2.5 text-center">
+                        <p className="text-base font-black text-white">
+                          {previousPerformance.setCount}
+                        </p>
+
+                        <p className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-white/35">
+                          Sets Logged
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 rounded-xl border border-white/[0.05] bg-black/20 px-3 py-2">
+                      <p className="text-[10px] font-medium text-white/38">
+                        Last session: {previousPerformance.setCount}{" "}
+                        {previousPerformance.setCount === 1 ? "set" : "sets"}
+                        {previousPerformance.bestSet.rpe
+                          ? ` · Best set RPE ${previousPerformance.bestSet.rpe}`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
                 )}
 
                 <div className="mt-3 space-y-2">
@@ -732,23 +988,26 @@ export default function WorkoutSessionForm({
                     const previousSet = previousLog?.sets_completed?.[setIndex]
                     const setKey = getSetKey(exerciseIndex, setIndex)
                     const isConfirmed = confirmedSets[setKey]
+                    const setComplete = isCompletedSet(set)
                     const isPrefilledUnconfirmed =
                       prefillMode === "previous" && setHasData && !isConfirmed
 
                     return (
                       <div
                         key={setIndex}
-                        className={`rounded-2xl border px-2.5 py-2 transition ${
-                          isConfirmed
+                        className={`rounded-2xl border px-2.5 py-2.5 transition ${
+                          setComplete
                             ? "border-smc-gold/45 bg-smc-gold/[0.075] shadow-[0_0_16px_rgba(212,175,55,0.09)]"
-                            : isPrefilledUnconfirmed
-                              ? "border-white/5 bg-white/[0.02] opacity-70"
-                              : setHasData
-                                ? "border-smc-gold/22 bg-smc-gold/[0.04]"
-                                : "border-white/[0.055] bg-black/20"
+                            : isConfirmed
+                              ? "border-smc-gold/30 bg-smc-gold/[0.05]"
+                              : isPrefilledUnconfirmed
+                                ? "border-white/5 bg-white/[0.02] opacity-80"
+                                : setHasData
+                                  ? "border-smc-gold/22 bg-smc-gold/[0.04]"
+                                  : "border-white/[0.055] bg-black/20"
                         }`}
                       >
-                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <div className="mb-2 flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">
@@ -757,9 +1016,16 @@ export default function WorkoutSessionForm({
 
                               {previousSet && (
                                 <p className="text-[10px] font-semibold text-white/45">
-  Last: {previousSet.weight || "-"}kg × {previousSet.reps || "-"} @ RPE
-  {previousSet.rpe || "-"}
-</p>
+                                  Last: {previousSet.weight || "-"}kg ×{" "}
+                                  {previousSet.reps || "-"} @ RPE{" "}
+                                  {previousSet.rpe || "-"}
+                                </p>
+                              )}
+
+                              {setComplete && (
+                                <p className="text-[10px] font-black text-smc-gold">
+                                  ✓ Logged
+                                </p>
                               )}
                             </div>
                           </div>
@@ -768,8 +1034,8 @@ export default function WorkoutSessionForm({
                             <button
                               type="button"
                               onClick={() => confirmSet(exerciseIndex, setIndex)}
-                              className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-black transition active:scale-95 ${
-                                isConfirmed
+                              className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-black transition active:scale-95 ${
+                                isConfirmed || setComplete
                                   ? "border-smc-gold/60 bg-smc-gold/25 text-smc-gold"
                                   : "border-white/10 bg-white/[0.035] text-white/35"
                               }`}
@@ -784,7 +1050,7 @@ export default function WorkoutSessionForm({
                                 onClick={() =>
                                   removeSet(exerciseIndex, setIndex)
                                 }
-                                className="rounded-full border border-red-500/15 bg-red-500/[0.07] px-2 py-1 text-[10px] font-bold text-red-300/80 transition active:scale-[0.98]"
+                                className="min-h-8 rounded-full border border-red-500/15 bg-red-500/[0.07] px-2.5 py-1 text-[10px] font-bold text-red-300/80 transition active:scale-[0.98]"
                               >
                                 Remove
                               </button>
@@ -801,6 +1067,8 @@ export default function WorkoutSessionForm({
                             inputMode="decimal"
                             placeholder="Kg"
                             value={set.weight}
+                            onFocus={handleInputFocus}
+                            onBlur={handleInputBlur}
                             onChange={(e) =>
                               updateSetField(
                                 exerciseIndex,
@@ -824,6 +1092,8 @@ export default function WorkoutSessionForm({
                             inputMode="numeric"
                             placeholder="Reps"
                             value={set.reps}
+                            onFocus={handleInputFocus}
+                            onBlur={handleInputBlur}
                             onChange={(e) =>
                               updateSetField(
                                 exerciseIndex,
@@ -847,6 +1117,8 @@ export default function WorkoutSessionForm({
                             inputMode="decimal"
                             placeholder="RPE"
                             value={set.rpe}
+                            onFocus={handleInputFocus}
+                            onBlur={handleInputBlur}
                             onChange={(e) =>
                               updateSetField(
                                 exerciseIndex,
@@ -869,7 +1141,7 @@ export default function WorkoutSessionForm({
                   <button
                     type="button"
                     onClick={() => addSet(exerciseIndex)}
-                    className="w-full rounded-2xl border border-smc-gold/25 bg-smc-gold/[0.06] px-4 py-2 text-xs font-black text-smc-gold transition active:scale-[0.98]"
+                    className="min-h-11 w-full rounded-2xl border border-smc-gold/25 bg-smc-gold/[0.06] px-4 py-2 text-xs font-black text-smc-gold transition active:scale-[0.98]"
                   >
                     + Add Extra Set
                   </button>
@@ -878,8 +1150,10 @@ export default function WorkoutSessionForm({
                 <textarea
                   placeholder="Exercise notes..."
                   value={formData[exerciseIndex]?.notes || ""}
+                  onFocus={handleInputFocus}
+                  onBlur={handleInputBlur}
                   onChange={(e) => updateNotes(exerciseIndex, e.target.value)}
-                  className="mt-2.5 w-full rounded-2xl border border-white/5 bg-black/20 p-2.5 text-xs text-white outline-none placeholder:text-white/25 focus:border-smc-gold/60"
+                  className="mt-2.5 w-full rounded-2xl border border-white/5 bg-black/25 p-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/60"
                   rows={2}
                 />
 
@@ -894,8 +1168,14 @@ export default function WorkoutSessionForm({
                     onChange={(e) =>
                       updateVideo(exerciseIndex, e.target.files?.[0] || null)
                     }
-                    className="w-full text-[11px] text-white/55 file:mr-2 file:rounded-xl file:border-0 file:bg-white/[0.07] file:px-2.5 file:py-1.5 file:text-[11px] file:font-bold file:text-white/75"
+                    className="w-full text-[11px] text-white/55 file:mr-2 file:rounded-xl file:border-0 file:bg-white/[0.07] file:px-2.5 file:py-2 file:text-[11px] file:font-bold file:text-white/75"
                   />
+
+                  {formData[exerciseIndex]?.video && (
+                    <p className="mt-2 break-words text-[10px] font-bold text-smc-gold/80">
+                      Video ready: {formData[exerciseIndex].video?.name}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -903,24 +1183,40 @@ export default function WorkoutSessionForm({
         })}
       </div>
 
-      <div className="fixed bottom-[5.05rem] left-0 right-0 z-40 px-4 pb-1 sm:bottom-0">
-        <div className="mx-auto w-full max-w-5xl rounded-[1.35rem] border border-white/[0.07] bg-black/80 p-2 shadow-[0_-10px_32px_rgba(0,0,0,0.7)] backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full rounded-2xl bg-smc-gold py-2.5 text-[15px] font-black text-black shadow-[0_0_20px_rgba(212,175,55,0.18)] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60"
-          >
-            {saving ? "Saving..." : "Save Workout"}
-          </button>
+      {!keyboardActive && (
+        <div className="fixed inset-x-0 bottom-[92px] z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
+          <div className="mx-auto w-full max-w-5xl rounded-[1.35rem] border border-white/[0.07] bg-black/90 p-2 shadow-[0_-10px_32px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <p className="text-[10px] font-bold text-white/40">
+                {sessionStats.completedExercises}/{exercises.length} exercises
+                complete
+              </p>
+              <p className="text-[10px] font-black text-smc-gold">
+                {sessionStats.progress}%
+              </p>
+            </div>
 
-          {message && !complete && (
-            <p className="mt-1.5 text-center text-[11px] font-medium text-white/45">
-              {message}
-            </p>
-          )}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !sessionStats.hasAnyLoggedWork}
+              className="min-h-12 w-full rounded-2xl bg-smc-gold py-3 text-[15px] font-black text-black shadow-[0_0_20px_rgba(212,175,55,0.18)] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
+            >
+              {getSaveButtonText()}
+            </button>
+
+            {(message || saveError) && !complete && (
+              <p
+                className={`mt-1.5 text-center text-[11px] font-medium ${
+                  saveError ? "text-red-300/85" : "text-white/45"
+                }`}
+              >
+                {saveError || message}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {activeDemo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 px-3 backdrop-blur-xl">
@@ -1027,16 +1323,85 @@ export default function WorkoutSessionForm({
         </div>
       )}
 
-      {complete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-6 backdrop-blur-xl">
-          <div className="w-full max-w-sm rounded-3xl border border-smc-gold/25 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.025))] p-6 text-center shadow-2xl">
-            <h2 className="text-2xl font-extrabold tracking-tight text-white">
-              Session Complete
-            </h2>
+      {complete && !showPBModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 px-5 py-6 backdrop-blur-xl">
+          <div className="relative w-full max-w-sm overflow-hidden rounded-[2rem] border border-smc-gold/25 bg-[linear-gradient(180deg,rgba(255,255,255,0.075),rgba(255,255,255,0.025))] p-5 text-center shadow-[0_0_80px_rgba(212,175,55,0.16)]">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.18),transparent_42%)]" />
 
-            <p className="mt-2 text-sm leading-6 text-white/50">
-              Workout saved successfully. Returning you to your programme.
-            </p>
+            <div className="relative z-10">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-smc-gold/35 bg-smc-gold/[0.12] text-2xl text-smc-gold shadow-[0_0_34px_rgba(212,175,55,0.18)]">
+                ✓
+              </div>
+
+              <p className="mt-4 text-[10px] font-black uppercase tracking-[0.3em] text-smc-gold/80">
+                Workout Complete
+              </p>
+
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-white">
+                Session locked in
+              </h2>
+
+              <p className="mt-2 text-sm leading-6 text-white/50">
+                Strong work. Your training has been saved and Steve can review
+                anything uploaded from this session.
+              </p>
+
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                  <p className="text-lg font-black text-white">
+                    {sessionStats.completedExercises}
+                  </p>
+                  <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/35">
+                    Exercises
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                  <p className="text-lg font-black text-white">
+                    {sessionStats.totalLoggedSets}
+                  </p>
+                  <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/35">
+                    Sets
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                  <p className="text-lg font-black text-smc-gold">
+                    {pbResults.length}
+                  </p>
+                  <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/35">
+                    PBs
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-2">
+                {pbResults.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPBModal(true)}
+                    className="w-full rounded-2xl border border-smc-gold/30 bg-smc-gold/[0.08] px-5 py-3 text-sm font-black text-smc-gold transition active:scale-[0.98]"
+                  >
+                    View PBs
+                  </button>
+                )}
+
+                <Link
+                  href="/dashboard"
+                  className="w-full rounded-2xl bg-smc-gold px-5 py-3 text-sm font-black text-black shadow-[0_0_30px_rgba(212,175,55,0.22)] transition active:scale-[0.98]"
+                >
+                  Return Home
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => router.refresh()}
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-3 text-xs font-bold text-white/55 transition active:scale-[0.98]"
+                >
+                  Stay on session
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

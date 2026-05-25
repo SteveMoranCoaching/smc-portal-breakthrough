@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { createSupabaseServerClient } from "@/lib/supabaseServer"
+import { requireCoach } from "@/lib/authGuards"
 
 export const dynamic = "force-dynamic"
 
@@ -19,26 +19,6 @@ const inputStyle =
 const textareaStyle =
   "w-full rounded-[1rem] border border-[rgba(255,255,255,0.08)] bg-black/40 p-3 text-sm leading-6 text-white outline-none placeholder:text-white/25 focus:border-smc-gold/70"
 
-async function requireCoach() {
-  const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) redirect("/login")
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "coach") redirect("/dashboard")
-
-  return supabase
-}
-
 function safeFileName(name: string) {
   return name
     .toLowerCase()
@@ -47,11 +27,13 @@ function safeFileName(name: string) {
 }
 
 async function uploadFile({
+  supabase,
   file,
   folder,
   exerciseName,
   fallbackContentType,
 }: {
+  supabase: any
   file: File | null
   folder: "videos" | "thumbnails"
   exerciseName: string
@@ -59,7 +41,6 @@ async function uploadFile({
 }) {
   if (!file || file.size <= 0) return null
 
-  const supabase = await createSupabaseServerClient()
   const ext = file.name.split(".").pop() || (folder === "videos" ? "mp4" : "jpg")
   const path = `${folder}/${safeFileName(exerciseName)}-${Date.now()}.${ext}`
 
@@ -78,7 +59,7 @@ async function uploadFile({
 async function uploadExerciseDemo(formData: FormData) {
   "use server"
 
-  const supabase = await requireCoach()
+  const { supabase } = await requireCoach()
 
   const exerciseName = String(formData.get("exerciseName") || "").trim()
   const coachNotes = String(formData.get("coachNotes") || "").trim()
@@ -88,6 +69,7 @@ async function uploadExerciseDemo(formData: FormData) {
   if (!exerciseName) return
 
   const videoPath = await uploadFile({
+    supabase,
     file: video,
     folder: "videos",
     exerciseName,
@@ -95,6 +77,7 @@ async function uploadExerciseDemo(formData: FormData) {
   })
 
   const thumbnailPath = await uploadFile({
+    supabase,
     file: thumbnail,
     folder: "thumbnails",
     exerciseName,
@@ -129,7 +112,7 @@ async function uploadExerciseDemo(formData: FormData) {
 async function updateExerciseDemo(formData: FormData) {
   "use server"
 
-  const supabase = await requireCoach()
+  const { supabase } = await requireCoach()
 
   const id = String(formData.get("id") || "").trim()
   const exerciseName = String(formData.get("exerciseName") || "").trim()
@@ -146,6 +129,7 @@ async function updateExerciseDemo(formData: FormData) {
     .single()
 
   const videoPath = await uploadFile({
+    supabase,
     file: video,
     folder: "videos",
     exerciseName,
@@ -153,6 +137,7 @@ async function updateExerciseDemo(formData: FormData) {
   })
 
   const thumbnailPath = await uploadFile({
+    supabase,
     file: thumbnail,
     folder: "thumbnails",
     exerciseName,
@@ -179,7 +164,7 @@ async function updateExerciseDemo(formData: FormData) {
 async function deleteExerciseDemo(formData: FormData) {
   "use server"
 
-  const supabase = await requireCoach()
+  const { supabase } = await requireCoach()
 
   const id = String(formData.get("id") || "")
   if (!id) return
@@ -198,11 +183,13 @@ async function deleteExerciseDemo(formData: FormData) {
 export default async function ExerciseDemosPage({
   searchParams,
 }: {
-  searchParams?: { saved?: string; deleted?: string } | Promise<{ saved?: string; deleted?: string }>
+  searchParams?:
+    | { saved?: string; deleted?: string }
+    | Promise<{ saved?: string; deleted?: string }>
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {}
 
-  const supabase = await requireCoach()
+  const { supabase } = await requireCoach()
 
   const { data: demos } = await supabase
     .from("exercise_demo_videos")
@@ -249,7 +236,8 @@ export default async function ExerciseDemosPage({
             Exercise Demos
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
-            Create, edit and manage the demo videos that appear inside client workout panels.
+            Create, edit and manage the demo videos that appear inside client
+            workout panels.
           </p>
         </section>
 
@@ -301,7 +289,9 @@ export default async function ExerciseDemosPage({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className={`rounded-2xl border ${softBorder} bg-black/30 p-4`}>
+              <div
+                className={`rounded-2xl border ${softBorder} bg-black/30 p-4`}
+              >
                 <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-white/35">
                   Demo video
                 </p>
@@ -313,7 +303,9 @@ export default async function ExerciseDemosPage({
                 />
               </div>
 
-              <div className={`rounded-2xl border ${softBorder} bg-black/30 p-4`}>
+              <div
+                className={`rounded-2xl border ${softBorder} bg-black/30 p-4`}
+              >
                 <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-white/35">
                   Thumbnail image
                 </p>
@@ -410,7 +402,9 @@ export default async function ExerciseDemosPage({
                       </div>
 
                       <div className="grid gap-2 sm:grid-cols-2">
-                        <div className={`rounded-[1rem] border ${softBorder} bg-black/30 p-3`}>
+                        <div
+                          className={`rounded-[1rem] border ${softBorder} bg-black/30 p-3`}
+                        >
                           <p className="mb-2 text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
                             Replace video
                           </p>
@@ -422,7 +416,9 @@ export default async function ExerciseDemosPage({
                           />
                         </div>
 
-                        <div className={`rounded-[1rem] border ${softBorder} bg-black/30 p-3`}>
+                        <div
+                          className={`rounded-[1rem] border ${softBorder} bg-black/30 p-3`}
+                        >
                           <p className="mb-2 text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
                             Replace thumbnail
                           </p>

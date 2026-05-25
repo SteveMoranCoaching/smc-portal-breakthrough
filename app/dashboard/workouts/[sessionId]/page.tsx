@@ -1,4 +1,6 @@
 import Link from "next/link"
+import { notFound, redirect } from "next/navigation"
+import EmptyStateCard from "@/components/ui/EmptyStateCard"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import WorkoutSessionForm from "@/components/WorkoutSessionForm"
 
@@ -7,6 +9,16 @@ export const dynamic = "force-dynamic"
 const shellCard =
   "relative overflow-hidden rounded-[1.35rem] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.016))] p-3.5 shadow-[0_14px_34px_rgba(0,0,0,0.68)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[1.35rem] before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)]"
 
+function getSafeExercises(exercises: unknown) {
+  return Array.isArray(exercises) ? exercises : []
+}
+
+function getExerciseName(exercise: any) {
+  return typeof exercise?.name === "string" && exercise.name.trim()
+    ? exercise.name.trim()
+    : null
+}
+
 export default async function SessionPage({
   params,
 }: {
@@ -14,23 +26,20 @@ export default async function SessionPage({
 }) {
   const { sessionId } = await params
 
+  if (!sessionId) notFound()
+
   const supabase = await createSupabaseServerClient()
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    return (
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.10),transparent_32%),#050505] px-3 py-4 text-white">
-        <div className={`${shellCard} mx-auto w-full max-w-5xl`}>
-          <div className="relative z-10 text-sm text-smc-muted">
-            You must be logged in.
-          </div>
-        </div>
-      </main>
-    )
+  if (userError) {
+    throw new Error("User authentication failed")
   }
+
+  if (!user) redirect("/login")
 
   const { data: matchedSession, error: sessionError } = await supabase
     .from("programme_sessions")
@@ -38,54 +47,32 @@ export default async function SessionPage({
     .eq("id", sessionId)
     .maybeSingle()
 
-  const { data: matchedProgramme, error: programmeError } = matchedSession
-    ? await supabase
-        .from("programmes")
-        .select("id, title, week_number, notes, user_id")
-        .eq("id", matchedSession.programme_id)
-        .eq("user_id", user.id)
-        .maybeSingle()
-    : { data: null, error: null }
-
-  if (
-    sessionError ||
-    programmeError ||
-    !matchedProgramme ||
-    !matchedSession
-  ) {
-    return (
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.10),transparent_32%),#050505] px-3 py-4 text-white">
-        <div className={`${shellCard} mx-auto w-full max-w-5xl`}>
-          <div className="relative z-10">
-            <h1 className="text-lg font-black tracking-tight">
-              Session not found
-            </h1>
-
-            <p className="mt-2 text-sm leading-6 text-white/55">
-              This session could not be loaded. Go back to your workouts and try
-              again.
-            </p>
-
-            <p className="mt-3 rounded-[1rem] border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.24)] p-3 text-xs text-white/35">
-              Debug session ID: {sessionId || "No session ID found"}
-            </p>
-
-            <Link
-              href="/dashboard/workouts"
-              className="mt-4 inline-flex min-h-[42px] items-center justify-center rounded-[1rem] bg-smc-gold px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-black shadow-[0_0_24px_rgba(212,175,55,0.22)] transition hover:brightness-110 active:scale-[0.98]"
-            >
-              Back to workouts
-            </Link>
-          </div>
-        </div>
-      </main>
-    )
+  if (sessionError) {
+    throw new Error("Workout session failed to load")
   }
 
-  const exerciseNames =
-    matchedSession.exercises?.map((exercise: any) => exercise.name) || []
+  if (!matchedSession) notFound()
 
-  const { data: previousLogs } =
+  const { data: matchedProgramme, error: programmeError } = await supabase
+    .from("programmes")
+    .select("id, title, week_number, notes, user_id")
+    .eq("id", matchedSession.programme_id)
+    .eq("user_id", user.id)
+    .maybeSingle()
+
+  if (programmeError) {
+    throw new Error("Workout programme failed to load")
+  }
+
+  if (!matchedProgramme) notFound()
+
+  const exercises = getSafeExercises(matchedSession.exercises)
+
+  const exerciseNames = Array.from(
+    new Set(exercises.map(getExerciseName).filter(Boolean))
+  ) as string[]
+
+  const { data: previousLogs, error: previousLogsError } =
     exerciseNames.length > 0
       ? await supabase
           .from("workout_logs")
@@ -93,15 +80,23 @@ export default async function SessionPage({
           .eq("user_id", user.id)
           .in("exercise_name", exerciseNames)
           .order("created_at", { ascending: false })
-      : { data: [] }
+      : { data: [], error: null }
 
-  const { data: demoRows } =
+  if (previousLogsError) {
+    throw new Error("Previous workout history failed to load")
+  }
+
+  const { data: demoRows, error: demoRowsError } =
     exerciseNames.length > 0
       ? await supabase
           .from("exercise_demo_videos")
           .select("id, exercise_name, video_path, thumbnail_path, coach_notes")
           .in("exercise_name", exerciseNames)
-      : { data: [] }
+      : { data: [], error: null }
+
+  if (demoRowsError) {
+    throw new Error("Exercise demo videos failed to load")
+  }
 
   const exerciseDemos = await Promise.all(
     (demoRows || []).map(async (demo: any) => {
@@ -128,19 +123,19 @@ export default async function SessionPage({
   )
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.10),transparent_32%),#050505] px-3 py-4 pb-40 text-white">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.10),transparent_32%),#050505] px-3 py-4 pb-[calc(10rem+env(safe-area-inset-bottom))] text-white">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <Link
-            href={`/dashboard/workouts/${matchedSession.id}?programmeId=${matchedProgramme.id}`}
-            className="inline-flex w-fit items-center gap-2 rounded-full border border-smc-gold/15 bg-smc-gold/[0.06] px-3 py-2 text-xs font-black text-smc-gold"
+            href={`/dashboard/workouts/preview/${matchedSession.id}`}
+            className="inline-flex min-h-[40px] w-fit items-center gap-2 rounded-full border border-smc-gold/15 bg-smc-gold/[0.06] px-3 py-2 text-xs font-black text-smc-gold transition hover:border-smc-gold/30 hover:bg-smc-gold/10 active:scale-[0.98]"
           >
             ← Preview
           </Link>
 
           <Link
             href="/dashboard/workouts"
-            className="text-xs font-bold text-white/35 transition hover:text-white/60"
+            className="inline-flex min-h-[40px] items-center text-xs font-bold text-white/35 transition hover:text-white/60"
           >
             Workouts
           </Link>
@@ -156,13 +151,17 @@ export default async function SessionPage({
                   Active Session
                 </p>
 
-                <h1 className="mt-1.5 text-xl font-black leading-tight tracking-tight text-white">
-                  {matchedSession.title}
+                <h1 className="mt-1.5 break-words text-xl font-black leading-tight tracking-tight text-white">
+                  {matchedSession.title || "Untitled session"}
                 </h1>
 
-                <p className="mt-1 text-xs leading-5 text-white/45">
-                  Week {matchedSession.week_number || matchedProgramme.week_number || "—"} ·{" "}
-                  {matchedSession.day} · {exerciseNames.length} exercises
+                <p className="mt-1 break-words text-xs leading-5 text-white/45">
+                  Week{" "}
+                  {matchedSession.week_number ||
+                    matchedProgramme.week_number ||
+                    "—"}{" "}
+                  · {matchedSession.day || "Session"} · {exercises.length}{" "}
+                  exercises
                 </p>
               </div>
 
@@ -172,19 +171,32 @@ export default async function SessionPage({
             </div>
 
             <p className="mt-3 rounded-[1rem] border border-white/[0.05] bg-black/25 px-3 py-2 text-xs leading-5 text-white/45">
-              Log your sets, notes and videos below. Save everything at the end
-              when the session is complete.
+              Log your sets, notes and videos below. Keep it calm, focused and
+              save once the session is complete.
             </p>
           </div>
         </section>
 
-        <WorkoutSessionForm
-          session={matchedSession}
-          programmeId={matchedProgramme.id}
-          userId={user.id}
-          previousLogs={previousLogs || []}
-          exerciseDemos={exerciseDemos}
-        />
+        {exercises.length === 0 ? (
+          <EmptyStateCard
+            eyebrow="Workout logger"
+            title="No exercises found"
+            body="This session exists, but it doesn’t currently have any exercises attached. Head back to your workouts and choose another session, or ask your coach to update the programme."
+            href="/dashboard/workouts"
+            actionLabel="Back to workouts"
+          />
+        ) : (
+          <WorkoutSessionForm
+            session={{
+              ...matchedSession,
+              exercises,
+            }}
+            programmeId={matchedProgramme.id}
+            userId={user.id}
+            previousLogs={previousLogs || []}
+            exerciseDemos={exerciseDemos}
+          />
+        )}
       </div>
     </main>
   )

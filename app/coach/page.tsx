@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import CoachActivityFeed from "@/components/CoachActivityFeed"
 import RealtimeUnreadMessageCount from "@/components/RealtimeUnreadMessageCount"
+import { requireCoach } from "@/lib/authGuards"
 
 export const dynamic = "force-dynamic"
 
@@ -179,29 +180,7 @@ export default async function CoachDashboard({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {}
 
-  const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return <div className="p-6 text-white">You must be logged in.</div>
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "coach") {
-    return (
-      <div className="p-6 text-white">
-        You do not have permission to view this page.
-      </div>
-    )
-  }
+  const { supabase, user } = await requireCoach()
 
   const { count: unreadMessages } = await supabase
     .from("messages")

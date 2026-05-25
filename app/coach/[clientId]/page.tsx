@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabaseAdmin"
 import VideoGroup from "./VideoGroup"
 import WorkoutLogReviewButton from "./WorkoutLogReviewButton"
 import WorkoutLogFeedbackBox from "./WorkoutLogFeedbackBox"
+import { requireCoach } from "@/lib/authGuards"
 
 export const dynamic = "force-dynamic"
 
@@ -123,7 +124,7 @@ export default async function ClientProfilePage({
   const { clientId } = await params
   const { exercise: selectedExercise, updated } = await searchParams
 
-  const supabase = await createSupabaseServerClient()
+  const { supabase } = await requireCoach()
 
   const { data: client } = await supabase
     .from("clients")

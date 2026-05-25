@@ -140,10 +140,10 @@ export default async function SessionPage({
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <Link
-            href={`/dashboard/workouts/${matchedSession.id}?programmeId=${matchedProgramme.id}`}
+            href={`/dashboard/workouts/${matchedSession.id}/preview?programmeId=${matchedProgramme.id}`}
             className="inline-flex w-fit items-center gap-2 rounded-full border border-smc-gold/15 bg-smc-gold/[0.06] px-3 py-2 text-xs font-black text-smc-gold"
           >
-            ← Preview
+            ← Back to Preview
           </Link>
 
           <Link

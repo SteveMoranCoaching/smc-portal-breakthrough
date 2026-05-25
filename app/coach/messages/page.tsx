@@ -1,37 +1,13 @@
 import Link from "next/link"
-import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import CoachMessagesInbox from "@/components/CoachMessagesInbox"
+import { requireCoach } from "@/lib/authGuards"
 
 export const dynamic = "force-dynamic"
 
 export default async function CoachMessagesInboxPage() {
   const supabase = await createSupabaseServerClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        You must be logged in.
-      </main>
-    )
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "coach") {
-    return (
-      <main className="min-h-screen bg-black p-6 text-white">
-        Coach access only.
-      </main>
-    )
-  }
+ const { supabase, user } = await requireCoach()
 
   const { data: clients } = await supabase
     .from("clients")

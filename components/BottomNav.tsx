@@ -9,8 +9,8 @@ const navItems = [
   { label: "Home", href: "/dashboard", icon: "⌂" },
   { label: "Workout", href: "/dashboard/workouts", icon: "＋" },
   { label: "SMC", href: "/dashboard/smc-home", isCentre: true },
+  { label: "History", href: "/dashboard/history", icon: "↗" },
   { label: "Messages", href: "/dashboard/messages", icon: "✉" },
-  { label: "Check-ins", href: "/dashboard/check-ins", icon: "✓" },
 ]
 
 export default function BottomNav({

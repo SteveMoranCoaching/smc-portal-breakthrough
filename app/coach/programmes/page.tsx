@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { requireCoach } from "@/lib/authGuards"
 import ProgrammeLibraryActions from "@/components/ProgrammeLibraryActions"
 
 export const dynamic = "force-dynamic"
@@ -18,6 +18,8 @@ function getDayOrder(day: string) {
 
 async function duplicateProgrammeForClient(formData: FormData) {
   "use server"
+
+  const { supabase } = await requireCoach()
 
   const programmeId = String(formData.get("programmeId") || "")
   const targetUserId = String(formData.get("targetUserId") || "")
@@ -76,6 +78,8 @@ async function duplicateProgrammeForClient(formData: FormData) {
 }
 
 export default async function ProgrammesPage() {
+  const { supabase } = await requireCoach()
+
   const { data: programmes } = await supabase
     .from("programmes")
     .select(`

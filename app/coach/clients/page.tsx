@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
+import { requireCoach } from "@/lib/authGuards"
 
 export const dynamic = "force-dynamic"
 
