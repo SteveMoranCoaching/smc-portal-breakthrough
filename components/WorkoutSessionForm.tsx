@@ -19,7 +19,7 @@ type SetEntry = {
 type ExerciseEntry = {
   sets: SetEntry[]
   notes: string
-  video: File | null
+  videos: File[]
 }
 
 type PBType = "heaviest" | "rep" | "estimated_1rm"
@@ -338,7 +338,7 @@ export default function WorkoutSessionForm({
             rpe: "",
           })),
           notes: "",
-          video: null,
+          videos: [],
         }
       }),
     [exercises]
@@ -379,7 +379,7 @@ export default function WorkoutSessionForm({
       return (
         entry.sets.some(hasSetData) ||
         entry.notes.trim().length > 0 ||
-        Boolean(entry.video)
+        Boolean(entry.videos.length > 0)
       )
     })
 
@@ -566,15 +566,37 @@ export default function WorkoutSessionForm({
     )
   }
 
-  function updateVideo(exerciseIndex: number, file: File | null) {
-    setSaveError("")
+  function updateVideos(exerciseIndex: number, files: FileList | null) {
+  setSaveError("")
 
-    setFormData((current) =>
-      current.map((exercise, i) =>
-        i === exerciseIndex ? { ...exercise, video: file } : exercise
-      )
+  if (!files || files.length === 0) return
+
+  const newFiles = Array.from(files)
+
+  setFormData((current) =>
+    current.map((exercise, i) =>
+      i === exerciseIndex
+        ? {
+            ...exercise,
+            videos: [...exercise.videos, ...newFiles],
+          }
+        : exercise
     )
-  }
+  )
+}
+
+function removeVideo(exerciseIndex: number, videoIndex: number) {
+  setFormData((current) =>
+    current.map((exercise, i) =>
+      i === exerciseIndex
+        ? {
+            ...exercise,
+            videos: exercise.videos.filter((_, j) => j !== videoIndex),
+          }
+        : exercise
+    )
+  )
+}
 
   async function fetchHistoricalLogsByExercise() {
     const exerciseNames = exercises
@@ -662,6 +684,7 @@ export default function WorkoutSessionForm({
 
     try {
       const historicalLogsByExercise = await fetchHistoricalLogsByExercise()
+      const failedUploads: string[] = []
 
       for (let i = 0; i < formData.length; i++) {
         const ex = exercises[i]
@@ -687,34 +710,42 @@ export default function WorkoutSessionForm({
 
           if (logError) throw logError
         }
+        
 
-        if (data.video) {
-          setUploadingExercise(`Uploading ${exerciseName} video...`)
+for (const video of data.videos) {
+  setUploadingExercise(`Uploading ${exerciseName} video...`)
 
-          const filePath = `${userId}/${Date.now()}-${safeFileName(
-            data.video.name
-          )}`
+  const filePath = `${userId}/${session.id}/${i}-${Date.now()}-${crypto.randomUUID()}-${safeFileName(
+    video.name
+  )}`
 
-          const { error: uploadError } = await supabase.storage
-            .from("exercise-videos")
-            .upload(filePath, data.video)
+  const { error: uploadError } = await supabase.storage
+    .from("exercise-videos")
+    .upload(filePath, video)
 
-          if (uploadError) throw uploadError
+  if (uploadError) {
+    failedUploads.push(`${exerciseName}: ${uploadError.message}`)
+    continue
+  }
 
-          const { error: videoError } = await supabase
-            .from("exercise_videos")
-            .insert({
-              user_id: userId,
-              programme_id: programmeId,
-              session_id: session.id,
-              exercise_name: exerciseName,
-              exercise_index: i,
-              video_path: filePath,
-              reviewed: false,
-            })
+  const { error: videoError } = await supabase
+    .from("exercise_videos")
+    .insert({
+      user_id: userId,
+      programme_id: programmeId,
+      session_id: session.id,
+      exercise_name: exerciseName,
+      exercise_index: i,
+      video_path: filePath,
+      reviewed: false,
+    })
 
-          if (videoError) throw videoError
-        }
+  if (videoError) {
+    failedUploads.push(`${exerciseName}: ${videoError.message}`)
+    continue
+  }
+}
+
       }
 
       setMessage("Checking PBs...")
@@ -750,10 +781,16 @@ export default function WorkoutSessionForm({
         return
       }
 
-      setComplete(true)
-      setMessage("")
-      setUploadingExercise("")
-      setSaving(false)
+      if (failedUploads.length > 0) {
+  setSaveError(
+    "Workout saved, but one or more videos failed to upload. You can retry them later."
+  )
+}
+
+setComplete(true)
+setMessage("")
+setUploadingExercise("")
+setSaving(false)
     } catch (err: any) {
       setSaveError(
         err?.message
@@ -1163,19 +1200,35 @@ export default function WorkoutSessionForm({
                   </p>
 
                   <input
-                    type="file"
-                    accept="video/*"
-                    onChange={(e) =>
-                      updateVideo(exerciseIndex, e.target.files?.[0] || null)
-                    }
-                    className="w-full text-[11px] text-white/55 file:mr-2 file:rounded-xl file:border-0 file:bg-white/[0.07] file:px-2.5 file:py-2 file:text-[11px] file:font-bold file:text-white/75"
-                  />
+  type="file"
+  accept="video/*"
+  multiple
+  onChange={(e) => updateVideos(exerciseIndex, e.target.files)}
+  className="w-full text-[11px] text-white/55 file:mr-2 file:rounded-xl file:border-0 file:bg-white/[0.07] file:px-2.5 file:py-2 file:text-[11px] file:font-bold file:text-white/75"
+/>
 
-                  {formData[exerciseIndex]?.video && (
-                    <p className="mt-2 break-words text-[10px] font-bold text-smc-gold/80">
-                      Video ready: {formData[exerciseIndex].video?.name}
-                    </p>
-                  )}
+{formData[exerciseIndex]?.videos.length > 0 && (
+  <div className="mt-2 space-y-1.5">
+    {formData[exerciseIndex].videos.map((video, videoIndex) => (
+      <div
+        key={`${video.name}-${videoIndex}`}
+        className="flex items-center justify-between gap-2 rounded-xl border border-smc-gold/20 bg-smc-gold/[0.06] px-3 py-2"
+      >
+        <p className="min-w-0 truncate text-[10px] font-bold text-smc-gold/80">
+          Video ready: {video.name}
+        </p>
+
+        <button
+          type="button"
+          onClick={() => removeVideo(exerciseIndex, videoIndex)}
+          className="shrink-0 text-[10px] font-black text-red-300"
+        >
+          Remove
+        </button>
+      </div>
+    ))}
+  </div>
+)}
                 </div>
               </div>
             </div>
