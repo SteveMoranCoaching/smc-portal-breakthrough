@@ -26,24 +26,25 @@ export default async function ClientMessagesPage() {
     )
   }
 
-  const { data: coach } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("role", "coach")
-    .limit(1)
-    .single()
+  const { data: client } = await supabase
+  .from("clients")
+  .select("coach_id")
+  .eq("user_id", user.id)
+  .single()
 
-  if (!coach) {
-    return (
-      <main className="min-h-screen bg-black px-3 py-4 text-white">
-        <div className={`${shellCard} mx-auto w-full max-w-2xl`}>
-          <div className="relative z-10 text-sm text-white/50">
-            Coach account not found.
-          </div>
+const coachId = client?.coach_id
+
+if (!coachId) {
+  return (
+    <main className="min-h-screen bg-black px-3 py-4 text-white">
+      <div className={`${shellCard} mx-auto w-full max-w-2xl`}>
+        <div className="relative z-10 text-sm text-white/50">
+          Coach account not linked yet.
         </div>
-      </main>
-    )
-  }
+      </div>
+    </main>
+  )
+}
 
   await supabase
     .from("messages")
@@ -99,7 +100,7 @@ export default async function ClientMessagesPage() {
 
         <MessageComposer
           currentUserId={user.id}
-          recipientId={coach.id}
+          recipientId={coachId}
           clientUserId={user.id}
           isCoach={false}
           placeholder="Write a message..."
