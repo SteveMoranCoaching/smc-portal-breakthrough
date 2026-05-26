@@ -28,7 +28,7 @@ export default async function ClientMessagesPage() {
 
   const { data: client } = await supabase
   .from("clients")
-  .select("coach_id")
+  .select("coach_user_id")
   .eq("user_id", user.id)
   .single()
 
@@ -100,7 +100,7 @@ if (!coachId) {
 
         <MessageComposer
           currentUserId={user.id}
-          recipientId={coachId}
+          recipientId={client.coach_user_id}
           clientUserId={user.id}
           isCoach={false}
           placeholder="Write a message..."
