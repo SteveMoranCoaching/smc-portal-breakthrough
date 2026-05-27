@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import CoachActivityFeed from "@/components/CoachActivityFeed"
 import RealtimeUnreadMessageCount from "@/components/RealtimeUnreadMessageCount"
 import { requireCoach } from "@/lib/authGuards"
+import { buildCoachAttentionItems } from "@/lib/coachIntelligence"
 
 export const dynamic = "force-dynamic"
 
@@ -220,13 +221,6 @@ export default async function CoachDashboard({
     .order("created_at", { ascending: false })
     .limit(50)
 
-  const { data: sessions } = await supabase
-    .from("session_completions")
-    .select(
-      "id, user_id, programme_id, session_id, completed, session_rating, notes, created_at"
-    )
-    .order("created_at", { ascending: false })
-
   const { data: recentCheckIns } = await supabase
     .from("check_ins")
     .select(
@@ -239,9 +233,6 @@ export default async function CoachDashboard({
   const clientIdMap: Record<string, string> = {}
   const unreviewedCountMap: Record<string, number> = {}
   const lastActivityMap: Record<string, string> = {}
-  const lastSessionMap: Record<string, string> = {}
-  const lastRatingMap: Record<string, number | null> = {}
-  const lastSessionNotesMap: Record<string, string | null> = {}
 
   clients?.forEach((client) => {
     clientMap[client.user_id] = client.name
@@ -305,16 +296,6 @@ export default async function CoachDashboard({
     }
   })
 
-  sessions
-    ?.filter((session) => session.completed === true)
-    .forEach((session) => {
-      if (!lastSessionMap[session.user_id]) {
-        lastSessionMap[session.user_id] = session.created_at
-        lastRatingMap[session.user_id] = session.session_rating
-        lastSessionNotesMap[session.user_id] = session.notes
-      }
-    })
-
   const activityItems = [
     ...(videos || []).map((video) => ({
       type: "video" as const,
@@ -361,49 +342,14 @@ export default async function CoachDashboard({
     )
     .slice(0, 10)
 
-  const priorityClients =
-    clients
-      ?.map((client) => {
-        const lastSession = lastSessionMap[client.user_id]
-        const lastRating = lastRatingMap[client.user_id]
-        const lastNotes = lastSessionNotesMap[client.user_id]
-        const days = daysSince(lastSession)
+  const coachAttentionItems = buildCoachAttentionItems({
+  clients: clients || [],
+  workoutLogs: workoutLogs || [],
+  videos: videos || [],
+  checkIns: recentCheckIns || [],
+})
 
-        const hasNoSessions = !lastSession
-        const isInactive = days !== null && days > 5
-        const isLowRating =
-          lastRating !== undefined &&
-          lastRating !== null &&
-          lastRating <= 5
-
-        let priorityScore = 0
-        let reason = ""
-
-        if (hasNoSessions) {
-          priorityScore = 3
-          reason = "No sessions"
-        } else if (isInactive) {
-          priorityScore = 2
-          reason = "Inactive"
-        } else if (isLowRating) {
-          priorityScore = 1
-          reason = "Low rating"
-        }
-
-        return {
-          ...client,
-          lastSession,
-          lastRating,
-          lastNotes,
-          days,
-          priorityScore,
-          reason,
-        }
-      })
-      .filter((client) => client.priorityScore > 0)
-      .sort((a, b) => b.priorityScore - a.priorityScore) || []
-
-  const clientsNeedingAttention = priorityClients.length
+const clientsNeedingAttention = coachAttentionItems.length
 
   const topClients =
     clients
@@ -670,7 +616,7 @@ export default async function CoachDashboard({
         </Link>
       </div>
 
-      {priorityClients.length > 0 && (
+      {coachAttentionItems.length > 0 && (
         <section className="relative overflow-hidden rounded-[1.25rem] border border-smc-gold/16 bg-black p-3 shadow-[0_16px_38px_rgba(0,0,0,0.72)]">
           <div className="absolute inset-0 bg-[url('/images/coach-priority-placeholder.png')] bg-cover bg-center opacity-34 saturate-[0.9] contrast-[1.08]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(212,175,55,0.16),transparent_34%),radial-gradient(circle_at_88%_20%,rgba(239,68,68,0.12),transparent_26%),linear-gradient(90deg,rgba(0,0,0,0.9),rgba(0,0,0,0.68)),linear-gradient(180deg,rgba(0,0,0,0.18),rgba(0,0,0,0.94))]" />
@@ -692,15 +638,15 @@ export default async function CoachDashboard({
                 href="/coach/calendar"
                 className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-smc-gold backdrop-blur-sm transition hover:border-smc-gold/50"
               >
-                {priorityClients.length} flagged
+                {coachAttentionItems.length} flagged
               </Link>
             </div>
 
             <div className="grid gap-2 lg:grid-cols-2">
-              {priorityClients.slice(0, 6).map((client) => (
+              {coachAttentionItems.slice(0, 6).map((client) => (
                 <Link
-                  key={client.id}
-                  href={`/coach/${client.id}`}
+                  key={client.clientId}
+                  href={`/coach/${client.clientId}`}
                   className="block rounded-[0.95rem] border border-white/[0.07] bg-black/50 p-2.5 backdrop-blur-md transition hover:border-smc-gold/35 hover:bg-black/60"
                 >
                   <div className="flex items-start gap-3">
@@ -721,25 +667,13 @@ export default async function CoachDashboard({
                         </div>
 
                         <span className="shrink-0 rounded-full border border-amber-400/25 bg-amber-400/12 px-2 py-0.5 text-[8px] font-black uppercase text-amber-200">
-                          {client.reason}
+                          {client.summary}
                         </span>
                       </div>
 
-                      {client.lastNotes && (
-                        <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-white/54">
-                          “{client.lastNotes}”
-                        </p>
-                      )}
-
                       <p className="mt-1.5 text-[10px] text-white/34">
-                        Last session:{" "}
-                        {client.lastSession
-                          ? formatDate(client.lastSession)
-                          : "None"}
-                        {client.lastRating !== undefined &&
-                          client.lastRating !== null &&
-                          ` · ${client.lastRating}/10`}
-                      </p>
+  Attention score: {client.score}
+</p>
                     </div>
                   </div>
                 </Link>

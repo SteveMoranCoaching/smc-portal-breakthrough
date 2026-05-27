@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 
@@ -10,140 +10,101 @@ type SetEntry = {
   rpe: string
 }
 
-type ReviewItem =
-  | {
-      type: "video"
-      id: string
-      user_id: string
-      clientId: string
-      clientName: string
-      exercise_name: string
-      created_at: string
-      feedback: string
-      signedUrl: string
-    }
-  | {
-      type: "log"
-      id: string
-      user_id: string
-      clientId: string
-      clientName: string
-      exercise_name: string
-      created_at: string
-      coach_feedback: string
-      sets_completed: SetEntry[] | null
-      notes: string | null
-    }
+type LogItem = {
+  type: "log"
+  id: string
+  exercise_name: string
+  coach_feedback: string
+  sets_completed: SetEntry[] | null
+  notes: string | null
+}
 
-export default function ReviewSession({ items }: { items: ReviewItem[] }) {
-  const [reviewItems] = useState(items)
-  const [index, setIndex] = useState(0)
-  const [feedback, setFeedback] = useState("")
-  const [saving, setSaving] = useState(false)
+type VideoItem = {
+  type: "video"
+  id: string
+  exercise_name: string
+  feedback: string
+  signedUrl: string
+}
+
+type SessionReviewItem = {
+  type: "session"
+  id: string
+  session_id: string
+  programme_id: string
+  user_id: string
+  clientId: string
+  clientName: string
+  created_at: string
+  completion?: any
+  latestCheckIn?: any
+  attention?: any
+  logs: LogItem[]
+  videos: VideoItem[]
+}
+
+export default function ReviewSession({ items }: { items: SessionReviewItem[] }) {
+  const [reviewItems, setReviewItems] = useState(items)
+  const [savingId, setSavingId] = useState("")
   const [message, setMessage] = useState("")
-  const [lastAction, setLastAction] = useState<{
-    item: ReviewItem
-    feedback: string
-  } | null>(null)
+  const [feedbackById, setFeedbackById] = useState<Record<string, string>>({})
 
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-
-  const current = reviewItems[index]
-  const remainingAfterThis = Math.max(reviewItems.length - index - 1, 0)
-
-  useEffect(() => {
-    if (!current) return
-
-    setFeedback(
-      current.type === "video"
-        ? current.feedback || ""
-        : current.coach_feedback || ""
-    )
-
-    setMessage("")
-
-    setTimeout(() => {
-      textareaRef.current?.focus()
-    }, 50)
-  }, [current])
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (saving || !current) return
-
-      if (event.key === "Enter" && event.shiftKey) {
-        event.preventDefault()
-        saveFeedback(true)
-      }
-
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault()
-        saveFeedback(false)
-      }
-
-      if (event.key === "ArrowRight") {
-        event.preventDefault()
-        goNext()
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [saving, feedback, current])
+  const current = reviewItems[0]
 
   function formatDateTime(dateString: string) {
-    const date = new Date(dateString)
-
-    const day = date.getDate().toString().padStart(2, "0")
-    const month = date.toLocaleString("en-GB", { month: "short" })
-    const hours = date.getHours().toString().padStart(2, "0")
-    const minutes = date.getMinutes().toString().padStart(2, "0")
-
-    return `${day} ${month}, ${hours}:${minutes}`
+    return new Date(dateString).toLocaleString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   }
 
-  function formatTopSet(sets: SetEntry[] | null) {
-    if (!sets || sets.length === 0) return "No sets logged"
-
-    const firstSet = sets[0]
-
-    return `${firstSet.weight || "?"}kg x ${firstSet.reps || "?"} @ ${
-      firstSet.rpe || "?"
-    }`
+  function formatSet(set: SetEntry) {
+    return `${set.weight || "?"}kg × ${set.reps || "?"} @ ${set.rpe || "?"}`
   }
 
-  function goNext() {
-    setIndex((prev) => prev + 1)
+  function formatFlag(flag: string) {
+    return flag.replaceAll("_", " ")
   }
 
-  async function saveFeedback(markReviewed: boolean) {
+  function getFeedbackValue(type: "log" | "video", item: LogItem | VideoItem) {
+    const key = `${type}-${item.id}`
+    if (feedbackById[key] !== undefined) return feedbackById[key]
+
+    return type === "log"
+      ? (item as LogItem).coach_feedback || ""
+      : (item as VideoItem).feedback || ""
+  }
+
+  function setFeedbackValue(type: "log" | "video", itemId: string, value: string) {
+    setFeedbackById((current) => ({
+      ...current,
+      [`${type}-${itemId}`]: value,
+    }))
+  }
+
+  async function saveItemFeedback({
+    type,
+    item,
+    markReviewed,
+  }: {
+    type: "log" | "video"
+    item: LogItem | VideoItem
+    markReviewed: boolean
+  }) {
     if (!current) return
 
-    const currentItem = current
-
-    if (markReviewed) {
-      setLastAction({
-        item: currentItem,
-        feedback,
-      })
-
-      goNext()
-    }
-
-    setSaving(true)
+    setSavingId(`${type}-${item.id}`)
     setMessage("")
 
-    const table =
-      currentItem.type === "video" ? "exercise_videos" : "workout_logs"
+    const feedback = getFeedbackValue(type, item)
+    const table = type === "video" ? "exercise_videos" : "workout_logs"
 
     const updateData =
-      currentItem.type === "video"
+      type === "video"
         ? {
             feedback,
-            feedback_read: false,
             ...(markReviewed ? { reviewed: true } : {}),
           }
         : {
@@ -152,50 +113,91 @@ export default function ReviewSession({ items }: { items: ReviewItem[] }) {
             ...(markReviewed ? { reviewed: true } : {}),
           }
 
-    const { error } = await supabase
-      .from(table)
-      .update(updateData)
-      .eq("id", currentItem.id)
+    const { error } = await supabase.from(table).update(updateData).eq("id", item.id)
 
-    setSaving(false)
+    setSavingId("")
 
     if (error) {
-      setMessage("Save failed — refresh later.")
+      setMessage(`Save failed: ${error.message}`)
       return
     }
 
-    if (!markReviewed) {
-      setMessage("Saved.")
+    setMessage(markReviewed ? "Marked reviewed." : "Feedback saved.")
+
+    if (markReviewed) {
+      setReviewItems((currentItems) =>
+        currentItems
+          .map((session) => {
+            if (session.id !== current.id) return session
+
+            return {
+              ...session,
+              logs:
+                type === "log"
+                  ? session.logs.filter((log) => log.id !== item.id)
+                  : session.logs,
+              videos:
+                type === "video"
+                  ? session.videos.filter((video) => video.id !== item.id)
+                  : session.videos,
+            }
+          })
+          .filter((session) => session.logs.length > 0 || session.videos.length > 0)
+      )
     }
   }
 
-  async function undoLast() {
-    if (!lastAction) return
+  async function markWholeSessionReviewed() {
+    if (!current) return
 
-    const table =
-      lastAction.item.type === "video" ? "exercise_videos" : "workout_logs"
+    setSavingId("whole-session")
+    setMessage("")
 
-    await supabase
-      .from(table)
-      .update({
-        reviewed: false,
-      })
-      .eq("id", lastAction.item.id)
+    const logUpdates = current.logs.map((log) =>
+      supabase
+        .from("workout_logs")
+        .update({
+          coach_feedback: getFeedbackValue("log", log),
+          feedback_read: false,
+          reviewed: true,
+        })
+        .eq("id", log.id)
+    )
 
-    setLastAction(null)
-    setMessage("Undo complete.")
+    const videoUpdates = current.videos.map((video) =>
+      supabase
+        .from("exercise_videos")
+        .update({
+          feedback: getFeedbackValue("video", video),
+          reviewed: true,
+        })
+        .eq("id", video.id)
+    )
+
+    const results = await Promise.all([...logUpdates, ...videoUpdates])
+    const firstError = results.find((result) => result.error)?.error
+
+    setSavingId("")
+
+    if (firstError) {
+      setMessage(`Save failed: ${firstError.message}`)
+      return
+    }
+
+    setReviewItems((items) => items.filter((item) => item.id !== current.id))
+    setMessage("Session reviewed.")
   }
 
-  if (reviewItems.length === 0 || !current) {
+  function skipSession() {
+    setReviewItems((items) => [...items.slice(1), items[0]])
+  }
+
+  if (!current) {
     return (
       <section className="rounded-2xl border border-green-500/30 bg-green-500/10 p-8 text-center">
         <p className="text-4xl">✅</p>
-        <h2 className="mt-4 text-2xl font-bold text-green-400">
-          All caught up
-        </h2>
-        <p className="mt-2 text-zinc-300">
-          No new logs or videos waiting for review.
-        </p>
+        <h2 className="mt-4 text-2xl font-bold text-green-400">All caught up</h2>
+        <p className="mt-2 text-zinc-300">No sessions waiting for review.</p>
 
         <Link
           href="/coach"
@@ -211,127 +213,237 @@ export default function ReviewSession({ items }: { items: ReviewItem[] }) {
     <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm text-zinc-400">
-            Item {index + 1} of {reviewItems.length} · {remainingAfterThis}{" "}
-            remaining after this
-          </p>
-
+          <p className="text-sm text-zinc-400">Session 1 of {reviewItems.length}</p>
           <h2 className="mt-1 text-2xl font-bold">{current.clientName}</h2>
-
           <p className="mt-1 text-sm text-zinc-400">
-            {current.exercise_name} · {formatDateTime(current.created_at)}
+            {current.logs.length} logs · {current.videos.length} videos ·{" "}
+            {formatDateTime(current.created_at)}
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
-              current.type === "video"
-                ? "bg-yellow-500 text-black"
-                : "bg-indigo-500 text-white"
-            }`}
-          >
-            {current.type === "video" ? "Video" : "Workout Log"}
+          <span className="rounded-full bg-yellow-500 px-3 py-1 text-xs font-bold uppercase text-black">
+            Session Review
           </span>
-
           <span className="rounded-full bg-zinc-800 px-3 py-1 text-xs font-bold text-zinc-300">
             New
           </span>
         </div>
       </div>
 
-      {current.type === "video" ? (
-        <div className="rounded-xl border border-zinc-800 bg-black p-4">
-          {current.signedUrl ? (
-            <video
-              src={current.signedUrl}
-              controls
-              className="max-h-[520px] w-full rounded-xl object-contain"
-            />
-          ) : (
-            <p className="text-sm text-zinc-400">Video unavailable.</p>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-4 rounded-xl border border-zinc-800 bg-black p-4">
-          <p className="text-sm font-semibold text-yellow-400">
-            First set: {formatTopSet(current.sets_completed)}
-          </p>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/[0.06] p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-yellow-400/80">
+                  Session Context
+                </p>
+                <h3 className="mt-1 text-xl font-black text-white">
+                  {current.clientName}
+                </h3>
+                <p className="mt-1 text-sm text-zinc-400">
+                  {formatDateTime(current.created_at)}
+                </p>
+              </div>
 
-          {current.sets_completed?.map((set, setIndex) => (
-            <div
-              key={setIndex}
-              className="grid grid-cols-3 gap-2 rounded-lg bg-zinc-950 p-3 text-sm"
-            >
-              <p>
-                <span className="text-zinc-500">Weight:</span>{" "}
-                {set.weight || "-"}kg
-              </p>
+              <div className="flex flex-wrap gap-2">
+                <div className="rounded-xl border border-zinc-800 bg-black/40 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">
+                    Session Rating
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-white">
+                    {current.completion?.session_rating || "-"}
+                    <span className="ml-1 text-sm text-zinc-500">/10</span>
+                  </p>
+                </div>
 
-              <p>
-                <span className="text-zinc-500">Reps:</span>{" "}
-                {set.reps || "-"}
-              </p>
+                <div className="rounded-xl border border-zinc-800 bg-black/40 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">
+                    Recovery
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-white">
+                    {current.latestCheckIn?.recovery_rating || "-"}
+                    <span className="ml-1 text-sm text-zinc-500">/10</span>
+                  </p>
+                </div>
 
-              <p>
-                <span className="text-zinc-500">RPE:</span>{" "}
-                {set.rpe || "-"}
-              </p>
+                <div className="rounded-xl border border-zinc-800 bg-black/40 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">
+                    Training
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-white">
+                    {current.latestCheckIn?.training_rating || "-"}
+                    <span className="ml-1 text-sm text-zinc-500">/10</span>
+                  </p>
+                </div>
+
+                {current.attention && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-red-300/70">
+                      Attention Score
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-red-300">
+                      {current.attention.score}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {current.completion?.notes && (
+                <div className="rounded-xl border border-zinc-800 bg-black/40 p-3">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                    Session Notes
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm text-zinc-300">
+                    {current.completion.notes}
+                  </p>
+                </div>
+              )}
             </div>
-          ))}
 
-          {current.notes && (
-            <div className="rounded-lg bg-zinc-950 p-3">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                Client notes
-              </p>
-              <p className="whitespace-pre-wrap text-sm text-zinc-300">
-                {current.notes}
-              </p>
-            </div>
-          )}
+            {current.attention?.flags?.length > 0 && (
+              <div className="w-full max-w-xs rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-red-300">
+                  Coach Attention
+                </p>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {current.attention.flags.map((flag: string) => (
+                    <span
+                      key={flag}
+                      className="rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold capitalize text-red-200"
+                    >
+                      {formatFlag(flag)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      )}
 
-      <div className="mt-5">
-        <label className="mb-2 block text-sm font-semibold text-zinc-300">
-          Coach feedback
-        </label>
+        {current.logs.map((log) => {
+          const saving = savingId === `log-${log.id}`
 
-        <textarea
-          ref={textareaRef}
-          value={feedback}
-          onChange={(event) => setFeedback(event.target.value)}
-          rows={6}
-          className="w-full rounded-xl border border-zinc-800 bg-black p-4 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-yellow-500"
-          placeholder="Write feedback for this item..."
-        />
+          return (
+            <div key={log.id} className="rounded-xl border border-zinc-800 bg-black p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
+                Workout Log
+              </p>
+              <h3 className="mt-1 text-lg font-bold text-white">{log.exercise_name}</h3>
 
-        <p className="mt-2 text-xs text-zinc-500">
-          Enter = save · Shift + Enter = save & next · → = skip
-        </p>
+              <div className="mt-3 space-y-2">
+                {log.sets_completed?.map((set, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between rounded-lg bg-zinc-950 px-3 py-2 text-sm"
+                  >
+                    <span className="text-zinc-500">Set {index + 1}</span>
+                    <span className="font-semibold text-white">{formatSet(set)}</span>
+                  </div>
+                ))}
+              </div>
 
-        {message && <p className="mt-2 text-sm text-zinc-400">{message}</p>}
+              {log.notes && (
+                <div className="mt-3 rounded-lg bg-zinc-950 p-3">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    Client notes
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm text-zinc-300">
+                    {log.notes}
+                  </p>
+                </div>
+              )}
+
+              <textarea
+                value={getFeedbackValue("log", log)}
+                onChange={(event) => setFeedbackValue("log", log.id, event.target.value)}
+                rows={4}
+                className="mt-4 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-yellow-500"
+                placeholder={`Feedback for ${log.exercise_name}...`}
+              />
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() => saveItemFeedback({ type: "log", item: log, markReviewed: false })}
+                  disabled={saving}
+                  className="rounded-xl border border-yellow-500/40 px-4 py-2 text-sm font-semibold text-yellow-400 disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Save Feedback"}
+                </button>
+
+                <button
+                  onClick={() => saveItemFeedback({ type: "log", item: log, markReviewed: true })}
+                  disabled={saving}
+                  className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Review Exercise"}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+
+        {current.videos.map((video) => {
+          const saving = savingId === `video-${video.id}`
+
+          return (
+            <div key={video.id} className="rounded-xl border border-zinc-800 bg-black p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
+                Video
+              </p>
+              <h3 className="mt-1 text-lg font-bold text-white">{video.exercise_name}</h3>
+
+              {video.signedUrl ? (
+                <video
+                  src={video.signedUrl}
+                  controls
+                  className="mt-3 max-h-[520px] w-full rounded-xl bg-black object-contain"
+                />
+              ) : (
+                <p className="mt-3 text-sm text-zinc-400">Video unavailable.</p>
+              )}
+
+              <textarea
+                value={getFeedbackValue("video", video)}
+                onChange={(event) => setFeedbackValue("video", video.id, event.target.value)}
+                rows={4}
+                className="mt-4 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-yellow-500"
+                placeholder={`Feedback for ${video.exercise_name} video...`}
+              />
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() =>
+                    saveItemFeedback({ type: "video", item: video, markReviewed: false })
+                  }
+                  disabled={saving}
+                  className="rounded-xl border border-yellow-500/40 px-4 py-2 text-sm font-semibold text-yellow-400 disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Save Feedback"}
+                </button>
+
+                <button
+                  onClick={() =>
+                    saveItemFeedback({ type: "video", item: video, markReviewed: true })
+                  }
+                  disabled={saving}
+                  className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Review Video"}
+                </button>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
-      {lastAction && (
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3">
-          <p className="text-sm text-yellow-300">Marked as reviewed</p>
-
-          <button
-            onClick={undoLast}
-            className="text-sm font-semibold text-yellow-400 hover:text-yellow-300"
-          >
-            Undo
-          </button>
-        </div>
-      )}
+      {message && <p className="mt-4 text-sm text-zinc-400">{message}</p>}
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Link
-          href={`/coach/${current.clientId}?exercise=${encodeURIComponent(
-            current.exercise_name
-          )}`}
+          href={`/coach/${current.clientId}`}
           className="rounded-xl border border-zinc-700 px-4 py-2 text-center text-sm text-zinc-300 transition hover:border-yellow-500 hover:text-white"
         >
           Open full client page
@@ -339,27 +451,19 @@ export default function ReviewSession({ items }: { items: ReviewItem[] }) {
 
         <div className="flex flex-col gap-2 sm:flex-row">
           <button
-            onClick={goNext}
-            disabled={saving}
-            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-50"
+            onClick={skipSession}
+            disabled={savingId !== ""}
+            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 disabled:opacity-50"
           >
-            Skip →
+            Skip Session →
           </button>
 
           <button
-            onClick={() => saveFeedback(false)}
-            disabled={saving}
-            className="rounded-xl border border-yellow-500/40 px-4 py-2 text-sm font-semibold text-yellow-400 transition hover:bg-yellow-500/10 disabled:opacity-50"
+            onClick={markWholeSessionReviewed}
+            disabled={savingId !== ""}
+            className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
           >
-            {saving ? "Saving..." : "Save Feedback"}
-          </button>
-
-          <button
-            onClick={() => saveFeedback(true)}
-            disabled={saving}
-            className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-yellow-400 disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Mark Reviewed & Next →"}
+            {savingId === "whole-session" ? "Saving..." : "Mark Whole Session Reviewed"}
           </button>
         </div>
       </div>

@@ -515,7 +515,9 @@ export default async function WorkoutsPage() {
                               video.feedback && !video.feedback_read
                           )
 
-                        const previewHref = `/dashboard/workouts/${session.id}/preview?programmeId=${currentProgramme.id}`
+                        const sessionHref = completed
+  ? `/dashboard/workouts/${session.id}/completed?programmeId=${currentProgramme.id}`
+  : `/dashboard/workouts/${session.id}/preview?programmeId=${currentProgramme.id}`
                         const lastCompletedText =
                           getLastCompletedText(sessionLogs)
 
@@ -540,7 +542,7 @@ export default async function WorkoutsPage() {
                             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/30 to-transparent" />
 
                             <div className="relative z-10">
-                              <PrefetchSession href={previewHref} />
+                              <PrefetchSession href={sessionHref} />
 
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
@@ -591,7 +593,7 @@ export default async function WorkoutsPage() {
 
                               <div className={`mt-3 ${compactButtonWrap}`}>
                                 <StartWorkoutButton
-                                  href={previewHref}
+                                  href={sessionHref}
                                   label={
                                     completed
                                       ? "View Session"

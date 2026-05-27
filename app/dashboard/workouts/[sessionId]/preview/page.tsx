@@ -32,28 +32,13 @@ export default async function PreviewSessionPage({
     .eq("id", sessionId)
     .maybeSingle()
 
-  if (sessionError) {
-    throw new Error("Workout preview failed to load")
-  }
+  if (sessionError || !session) notFound()
 
-  if (!session) {
-    notFound()
-  }
-
-  const { data: programme, error: programmeError } = await supabase
+  const { data: programme } = await supabase
     .from("programmes")
     .select("id, title, week_number, user_id")
     .eq("id", session.programme_id)
-    .eq("user_id", user.id)
     .maybeSingle()
-
-  if (programmeError) {
-    throw new Error("Workout programme failed to load")
-  }
-
-  if (!programme) {
-    notFound()
-  }
 
   const exercises = Array.isArray(session.exercises) ? session.exercises : []
 
@@ -91,7 +76,7 @@ export default async function PreviewSessionPage({
             </h1>
 
             <p className="mt-1 break-words text-xs leading-5 text-white/50">
-              Week {session.week_number || programme.week_number || "—"} ·{" "}
+              Week {session.week_number || programme?.week_number || "—"} ·{" "}
               {session.day || "Session"} · {getExerciseCount(session)} exercises
             </p>
 
@@ -154,7 +139,7 @@ export default async function PreviewSessionPage({
         {exercises.length > 0 ? (
           <div className="sticky bottom-3 z-20 rounded-[1.35rem] border border-white/[0.07] bg-black/80 p-2 shadow-[0_-10px_32px_rgba(0,0,0,0.7)] backdrop-blur-xl">
             <Link
-              href={`/dashboard/workouts/${session.id}?programmeId=${programme.id}`}
+              href={`/dashboard/workouts/${session.id}`}
               className="flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-smc-gold px-5 py-3 text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.22)] transition hover:bg-smc-gold-soft active:scale-[0.98]"
             >
               Start Workout

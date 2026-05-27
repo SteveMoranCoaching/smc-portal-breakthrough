@@ -314,10 +314,13 @@ function detectPBs({
 
 export default function WorkoutSessionForm({
   session,
+  sessionId,
   programmeId,
   userId,
   previousLogs = [],
   exerciseDemos = [],
+   existingLogs = [],
+  isEditMode = false,
 }: any) {
   const router = useRouter()
   const inputRefs = useRef<any[]>([])
@@ -327,22 +330,50 @@ export default function WorkoutSessionForm({
   )
 
   const initialFormData = useMemo(
-    () =>
-      exercises.map((exercise: any) => {
-        const setCount = getPrescribedSetCount(exercise)
+  () =>
+    exercises.map((exercise: any) => {
+      const existingLog = existingLogs.find(
+        (log: any) =>
+          String(log.exercise_name || "").toLowerCase().trim() ===
+          String(exercise.name || "").toLowerCase().trim()
+      )
 
+      if (existingLog) {
         return {
-          sets: Array.from({ length: Math.max(1, setCount) }, () => ({
-            weight: "",
-            reps: "",
-            rpe: "",
-          })),
-          notes: "",
+          sets:
+            Array.isArray(existingLog.sets_completed) &&
+            existingLog.sets_completed.length > 0
+              ? existingLog.sets_completed.map((set: any) => ({
+                  weight: set.weight?.toString() || "",
+                  reps: set.reps?.toString() || "",
+                  rpe: set.rpe?.toString() || "",
+                }))
+              : [
+                  {
+                    weight: "",
+                    reps: "",
+                    rpe: "",
+                  },
+                ],
+          notes: existingLog.notes || "",
           videos: [],
         }
-      }),
-    [exercises]
-  )
+      }
+
+      const setCount = getPrescribedSetCount(exercise)
+
+      return {
+        sets: Array.from({ length: Math.max(1, setCount) }, () => ({
+          weight: "",
+          reps: "",
+          rpe: "",
+        })),
+        notes: "",
+        videos: [],
+      }
+    }),
+  [exercises, existingLogs]
+)
 
   const [activeDemo, setActiveDemo] = useState<any | null>(null)
   const [prefillMode, setPrefillMode] = useState<"unset" | "previous" | "blank">(
@@ -418,6 +449,7 @@ export default function WorkoutSessionForm({
 
   function getSaveButtonText() {
     if (saving) return uploadingExercise || "Saving workout..."
+    if (isEditMode) return "Save Changes"
     if (!sessionStats.hasAnyLoggedWork) return "Log your first set"
     if (sessionStats.completedExercises === exercises.length) {
       return "Complete Workout"
@@ -698,24 +730,31 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
         )
 
         if (completedSets.length > 0 || data.notes.trim()) {
-          const { error: logError } = await supabase.from("workout_logs").insert({
-            user_id: userId,
-            programme_id: programmeId,
-            session_id: session.id,
-            exercise_name: exerciseName,
-            sets_completed: completedSets,
-            notes: data.notes,
-            reviewed: false,
-          })
+  const existingLog = existingLogs.find(
+    (log: any) =>
+      String(log.exercise_name || "").toLowerCase().trim() ===
+      String(exerciseName).toLowerCase().trim()
+  )
 
-          if (logError) throw logError
-        }
+  const { error: logError } = await supabase.from("workout_logs").upsert({
+    id: existingLog?.id,
+    user_id: userId,
+    programme_id: programmeId,
+    session_id: session.id,
+    exercise_name: exerciseName,
+    sets_completed: completedSets,
+    notes: data.notes,
+    reviewed: false,
+  })
+
+  if (logError) throw logError
+}
         
 
 for (const video of data.videos) {
   setUploadingExercise(`Uploading ${exerciseName} video...`)
 
-  const filePath = `${userId}/${session.id}/${i}-${Date.now()}-${crypto.randomUUID()}-${safeFileName(
+  const filePath = `${userId}/${session.id}/${i}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}-${safeFileName(
     video.name
   )}`
 
@@ -820,6 +859,13 @@ setSaving(false)
         achievement={achievementUnlock}
         onClose={() => setAchievementUnlock(null)}
       />
+
+      <Link
+  href={`/dashboard/workouts/${session.id}/preview`}
+  className="mb-3 inline-flex w-fit items-center gap-2 rounded-full border border-smc-gold/15 bg-smc-gold/[0.06] px-3 py-2 text-xs font-black text-smc-gold"
+>
+  ← Preview
+</Link>
 
       <div className="sticky top-2 z-30 mb-3 rounded-[1.35rem] border border-white/[0.07] bg-black/85 p-2.5 shadow-[0_14px_34px_rgba(0,0,0,0.62)] backdrop-blur-xl supports-[padding:max(0px)]:top-[max(0.5rem,env(safe-area-inset-top))]">
         <div className="flex items-center justify-between gap-3">

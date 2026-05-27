@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { requireCoach } from "@/lib/authGuards"
 import ReviewSession from "@/components/ReviewSession"
+import { buildCoachAttentionItems } from "@/lib/coachIntelligence"
 
 type SetEntry = {
   weight: string
@@ -9,8 +10,8 @@ type SetEntry = {
 }
 
 export default async function CoachReviewPage() {
-    const { supabase } = await requireCoach()
-    
+  const { supabase } = await requireCoach()
+
   const { data: clients } = await supabase
     .from("clients")
     .select("id, user_id, name, email")
@@ -26,17 +27,76 @@ export default async function CoachReviewPage() {
 
   const { data: videos } = await supabase
     .from("exercise_videos")
-    .select("id, user_id, exercise_name, video_path, feedback, reviewed, created_at")
+    .select(
+      "id, user_id, programme_id, session_id, exercise_name, video_path, feedback, reviewed, created_at"
+    )
     .eq("reviewed", false)
     .order("created_at", { ascending: false })
-    .limit(50)
+    .limit(100)
 
   const { data: workoutLogs } = await supabase
     .from("workout_logs")
-    .select("id, user_id, exercise_name, sets_completed, notes, coach_feedback, reviewed, created_at")
+    .select(
+      "id, user_id, programme_id, session_id, exercise_name, sets_completed, notes, coach_feedback, reviewed, created_at"
+    )
     .eq("reviewed", false)
     .order("created_at", { ascending: false })
-    .limit(50)
+    .limit(100)
+
+  const { data: sessionCompletions } = await supabase
+    .from("session_completions")
+    .select(
+      "id, user_id, programme_id, session_id, completed, session_rating, notes, created_at"
+    )
+    .order("created_at", { ascending: false })
+    .limit(100)
+
+  const { data: checkIns } = await supabase
+    .from("check_ins")
+    .select(
+      "id, user_id, created_at, bodyweight, training_rating, recovery_rating, nutrition_rating, cardio_steps, notes, reviewed"
+    )
+    .order("created_at", { ascending: false })
+    .limit(100)
+
+  const coachAttentionItems = buildCoachAttentionItems({
+    clients: clients || [],
+    workoutLogs: workoutLogs || [],
+    videos: videos || [],
+    checkIns: checkIns || [],
+  })
+
+  const attentionByUserId = coachAttentionItems.reduce(
+    (acc: Record<string, any>, item) => {
+      acc[item.userId] = item
+      return acc
+    },
+    {}
+  )
+
+  const latestCheckInByUserId = (checkIns || []).reduce(
+    (acc: Record<string, any>, checkIn: any) => {
+      if (!acc[checkIn.user_id]) {
+        acc[checkIn.user_id] = checkIn
+      }
+
+      return acc
+    },
+    {}
+  )
+
+  const completionBySessionId = (sessionCompletions || []).reduce(
+    (acc: Record<string, any>, completion: any) => {
+      const key = `${completion.user_id}-${completion.session_id}`
+
+      if (!acc[key]) {
+        acc[key] = completion
+      }
+
+      return acc
+    },
+    {}
+  )
 
   const videosWithUrls = await Promise.all(
     (videos || []).map(async (video) => {
@@ -48,6 +108,8 @@ export default async function CoachReviewPage() {
         type: "video" as const,
         id: video.id,
         user_id: video.user_id,
+        programme_id: video.programme_id,
+        session_id: video.session_id,
         clientId: clientMap[video.user_id]?.id,
         clientName: clientMap[video.user_id]?.name || "Unknown client",
         exercise_name: video.exercise_name,
@@ -62,6 +124,8 @@ export default async function CoachReviewPage() {
     type: "log" as const,
     id: log.id,
     user_id: log.user_id,
+    programme_id: log.programme_id,
+    session_id: log.session_id,
     clientId: clientMap[log.user_id]?.id,
     clientName: clientMap[log.user_id]?.name || "Unknown client",
     exercise_name: log.exercise_name,
@@ -71,15 +135,52 @@ export default async function CoachReviewPage() {
     notes: log.notes,
   }))
 
-  const reviewItems = [...videosWithUrls, ...logItems]
-  .filter((item) => item.clientId)
-  .sort((a, b) => {
-    if (a.type === "log" && b.type === "video") return -1
-    if (a.type === "video" && b.type === "log") return 1
+  const rawItems = [...videosWithUrls, ...logItems].filter(
+    (item) => item.clientId && item.session_id
+  )
 
-    return (
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    )
+  const groupedReviewItems = Object.values(
+    rawItems.reduce((acc: Record<string, any>, item: any) => {
+      const key = `${item.user_id}-${item.session_id}`
+
+      if (!acc[key]) {
+        const completion = completionBySessionId[key]
+        const latestCheckIn = latestCheckInByUserId[item.user_id]
+        const attention = attentionByUserId[item.user_id]
+
+        acc[key] = {
+          type: "session",
+          id: key,
+          session_id: item.session_id,
+          programme_id: item.programme_id,
+          user_id: item.user_id,
+          clientId: item.clientId,
+          clientName: item.clientName,
+          created_at: item.created_at,
+          completion: completion || null,
+          latestCheckIn: latestCheckIn || null,
+          attention: attention || null,
+          logs: [],
+          videos: [],
+        }
+      }
+
+      if (new Date(item.created_at) > new Date(acc[key].created_at)) {
+        acc[key].created_at = item.created_at
+      }
+
+      if (item.type === "log") acc[key].logs.push(item)
+      if (item.type === "video") acc[key].videos.push(item)
+
+      return acc
+    }, {})
+  ).sort((a: any, b: any) => {
+    const scoreA = a.attention?.score || 0
+    const scoreB = b.attention?.score || 0
+
+    if (scoreB !== scoreA) return scoreB - scoreA
+
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   })
 
   return (
@@ -92,7 +193,7 @@ export default async function CoachReviewPage() {
             </p>
             <h1 className="mt-2 text-3xl font-bold">Review Session</h1>
             <p className="mt-2 text-sm text-zinc-400">
-              Clear new logs and videos without jumping between pages.
+              Clear completed sessions, exercise logs and videos in one place.
             </p>
           </div>
 
@@ -104,7 +205,7 @@ export default async function CoachReviewPage() {
           </Link>
         </div>
 
-        <ReviewSession items={reviewItems} />
+        <ReviewSession items={groupedReviewItems as any} />
       </div>
     </main>
   )
