@@ -176,7 +176,7 @@ function groupPBResults(results: PBResult[]) {
     rep: 3,
   }
 
-  return results.sort((a, b) => priority[a.type] - priority[b.type]).slice(0, 3)
+  return results.sort((a, b) => priority[a.type] - priority[b.type]).slice(0, 2)
 }
 
 function safeFileName(fileName: string) {
@@ -389,6 +389,9 @@ export default function WorkoutSessionForm({
   const [complete, setComplete] = useState(false)
   const [pbResults, setPbResults] = useState<PBResult[]>([])
   const [showPBModal, setShowPBModal] = useState(false)
+  const [showCompletionModal, setShowCompletionModal] = useState(false)
+  const [sessionRating, setSessionRating] = useState("")
+  const [sessionNotes, setSessionNotes] = useState("")
   const [achievementUnlock, setAchievementUnlock] =
     useState<AchievementUnlock | null>(null)
 
@@ -451,10 +454,7 @@ export default function WorkoutSessionForm({
     if (saving) return uploadingExercise || "Saving workout..."
     if (isEditMode) return "Save Changes"
     if (!sessionStats.hasAnyLoggedWork) return "Log your first set"
-    if (sessionStats.completedExercises === exercises.length) {
-      return "Complete Workout"
-    }
-    return "Save Progress"
+    return "Complete Workout"
   }
 
   function getSetKey(exerciseIndex: number, setIndex: number) {
@@ -706,8 +706,17 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
     setComplete(true)
   }
 
-  async function handleSave() {
+  async function handleSave(completionConfirmed = false) {
     if (!sessionStats.hasAnyLoggedWork || saving) return
+
+    if (
+      !isEditMode &&
+      getSaveButtonText() === "Complete Workout" &&
+      !completionConfirmed
+    ) {
+      setShowCompletionModal(true)
+      return
+    }
 
     setSaving(true)
     setSaveError("")
@@ -803,27 +812,40 @@ for (const video of data.videos) {
       }
 
       if (detectedPBs.length > 0) {
-        await saveDetectedPBs(detectedPBs)
+  await saveDetectedPBs(detectedPBs)
 
-        const pbAchievementResult = await checkPBAchievements(supabase, userId)
-        const pbUnlock = normaliseAchievementUnlock(pbAchievementResult)
+  const pbAchievementResult = await checkPBAchievements(supabase, userId)
+  const pbUnlock = normaliseAchievementUnlock(pbAchievementResult)
 
-        if (pbUnlock) {
-          setAchievementUnlock(pbUnlock)
-        }
+  if (pbUnlock) {
+    setAchievementUnlock(pbUnlock)
+  }
 
-        setPbResults(detectedPBs)
-        setShowPBModal(true)
-        setMessage("")
-        setUploadingExercise("")
-        setSaving(false)
-        return
-      }
+  setPbResults(detectedPBs)
+  setShowPBModal(true)
+}
 
       if (failedUploads.length > 0) {
   setSaveError(
     "Workout saved, but one or more videos failed to upload. You can retry them later."
   )
+}
+
+const { error: completionError } = await supabase
+  .from("session_completions")
+  .upsert({
+    user_id: userId,
+    programme_id: programmeId,
+    session_id: session.id,
+    completed: true,
+    session_rating: sessionRating
+      ? Number(sessionRating)
+      : null,
+    notes: sessionNotes.trim() || null,
+  })
+
+if (completionError) {
+  throw completionError
 }
 
 setComplete(true)
@@ -1297,7 +1319,7 @@ setSaving(false)
 
             <button
               type="button"
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={saving || !sessionStats.hasAnyLoggedWork}
               className="min-h-12 w-full rounded-2xl bg-smc-gold py-3 text-[15px] font-black text-black shadow-[0_0_20px_rgba(212,175,55,0.18)] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
             >
@@ -1357,70 +1379,170 @@ setSaving(false)
         </div>
       )}
 
+{showCompletionModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-6 backdrop-blur-xl">
+    <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-smc-gold/25 bg-[linear-gradient(180deg,rgba(20,20,20,0.98),rgba(3,3,3,0.99))] p-5 text-white shadow-[0_0_80px_rgba(212,175,55,0.16)]">
+
+      <div className="text-center">
+        <p className="text-[10px] font-black uppercase tracking-[0.32em] text-smc-gold/80">
+          Session Complete
+        </p>
+
+        <h2 className="mt-1 text-2xl font-black tracking-tight text-white">
+          Rate This Session
+        </h2>
+
+        <p className="mt-2 text-sm leading-6 text-white/45">
+          Quick feedback helps improve coaching decisions and tracking.
+        </p>
+      </div>
+
+      <div className="mt-5">
+        <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
+          Session Rating /10
+        </label>
+
+        <input
+          type="number"
+          min="1"
+          max="10"
+          value={sessionRating}
+          onChange={(e) => setSessionRating(e.target.value)}
+          placeholder="8"
+          className="h-12 w-full rounded-2xl border border-white/[0.07] bg-black/35 px-4 text-center text-lg font-black text-white outline-none placeholder:text-white/20 focus:border-smc-gold/70"
+        />
+      </div>
+
+      <div className="mt-4">
+        <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
+          Session Notes
+        </label>
+
+        <textarea
+          value={sessionNotes}
+          onChange={(e) => setSessionNotes(e.target.value)}
+          placeholder="How did the session feel?"
+          rows={4}
+          className="w-full rounded-2xl border border-white/[0.07] bg-black/25 p-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/60"
+        />
+      </div>
+
+      <div className="mt-5 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setShowCompletionModal(false)}
+          className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-black text-white/65"
+        >
+          Back
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setShowCompletionModal(false)
+            handleSave(true)
+          }}
+          className="flex-1 rounded-2xl bg-smc-gold px-4 py-3 text-sm font-black text-black"
+        >
+          Complete Session
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
       {showPBModal && pbResults.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-6 backdrop-blur-xl">
-          <div className="relative flex max-h-[82vh] w-full max-w-md flex-col overflow-hidden rounded-[2rem] border border-smc-gold/25 bg-[linear-gradient(180deg,rgba(20,20,20,0.98),rgba(3,3,3,0.99))] text-white shadow-[0_0_80px_rgba(212,175,55,0.16)]">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.18),transparent_42%)]" />
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-black/95 px-4 py-6 backdrop-blur-xl">
+   <div className="pointer-events-none absolute inset-0 overflow-hidden">
+  {Array.from({ length: 22 }).map((_, index) => (
+    <span
+      key={index}
+      className="absolute h-1.5 w-1.5 animate-[smcConfetti_1.4s_ease-out_forwards] rounded-full bg-smc-gold/80"
+      style={{
+        left: `${8 + Math.random() * 84}%`,
+        top: `${18 + Math.random() * 18}%`,
+        animationDelay: `${Math.random() * 0.25}s`,
+      }}
+    />
+  ))}
+</div>
+    <div className="w-full max-w-sm">
+      <div className="overflow-hidden rounded-[2rem] border border-smc-gold/30 bg-black p-5 text-white shadow-[0_0_80px_rgba(212,175,55,0.18)]">
+        <div className="text-center">
+          <p className="text-[11px] font-black uppercase tracking-[0.34em] text-smc-gold">
+            Steve Moran Coaching
+          </p>
 
-            <div className="relative shrink-0 border-b border-white/10 px-5 py-4 text-center">
-              <p className="text-[10px] font-black uppercase tracking-[0.32em] text-smc-gold/80">
-                Team SMC
-              </p>
-
-              <h2 className="mt-1 text-2xl font-black tracking-tight text-white">
-                NEW PB
-              </h2>
-
-              <p className="mt-1 text-xs leading-5 text-white/45">
-                Strong work. Logged and locked in.
-              </p>
-            </div>
-
-            <div className="relative flex-1 space-y-3 overflow-y-auto px-4 py-4">
-              {pbResults.map((pb, index) => (
-                <div
-                  key={`${pb.exerciseName}-${pb.type}-${index}`}
-                  className="rounded-3xl border border-white/10 bg-white/[0.04] p-4"
-                >
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-smc-gold/80">
-                    {pb.label}
-                  </p>
-
-                  <h3 className="mt-1 text-lg font-black tracking-tight text-white">
-                    {pb.exerciseName}
-                  </h3>
-
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/30 p-4">
-                    <p className="text-3xl font-black tracking-tight text-white">
-                      {pb.weight}kg × {pb.reps}
-                    </p>
-
-                    <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3">
-                      <span className="text-xs font-medium text-white/45">
-                        Estimated 1RM
-                      </span>
-
-                      <span className="text-base font-black text-smc-gold">
-                        {pb.estimated1RM}kg
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="relative shrink-0 border-t border-white/10 bg-black/60 p-4 backdrop-blur-xl">
-              <button
-                type="button"
-                onClick={closePBModal}
-                className="w-full rounded-2xl bg-smc-gold px-5 py-3 text-sm font-black text-black shadow-[0_0_30px_rgba(212,175,55,0.25)] transition hover:brightness-110 active:scale-[0.98]"
-              >
-                Continue
-              </button>
-            </div>
-          </div>
+          <h2 className="mt-3 text-3xl font-black tracking-tight text-white">
+            PBs UNLOCKED
+          </h2>
         </div>
-      )}
+
+        <div className="mt-5 space-y-2">
+  {pbResults.map((pb, index) => {
+    const progress =
+      pb.previousBest && pb.previousBest > 0
+        ? pb.weight - pb.previousBest
+        : null
+
+    function getPBDisplayLabel() {
+      if (pb.type === "estimated_1rm") {
+        return "Estimated 1RM PB"
+      }
+
+      if (pb.type === "heaviest") {
+        return "Heaviest Set PB"
+      }
+
+      if (pb.type === "rep") {
+        return `${pb.reps}RM PB`
+      }
+
+      return "PB"
+    }
+
+    return (
+      <div
+        key={`${pb.exerciseName}-${pb.type}-${index}`}
+        className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5"
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-white">
+            {pb.exerciseName}
+          </p>
+
+          <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold/80">
+            {getPBDisplayLabel()}
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <p className="text-lg font-black text-white">
+            {pb.weight}kg × {pb.reps}
+          </p>
+
+          {progress && progress > 0 ? (
+            <p className="mt-0.5 text-xs font-black text-green-300">
+              ↑ {progress.toFixed(1).replace(".0", "")}kg
+            </p>
+          ) : null}
+        </div>
+      </div>
+    )
+  })}
+</div>
+      </div>
+
+      <button
+  type="button"
+  onClick={closePBModal}
+  className="mt-4 mb-24 w-full rounded-2xl bg-smc-gold px-5 py-3 text-sm font-black text-black"
+>
+  Continue
+</button>
+    </div>
+  </div>
+)}
 
       {complete && !showPBModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 px-5 py-6 backdrop-blur-xl">

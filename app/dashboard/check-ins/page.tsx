@@ -69,16 +69,19 @@ async function submitCheckIn(formData: FormData) {
   }
 
   const { error } = await supabase.from("check_ins").insert({
-    user_id: user.id,
-    bodyweight: Number(formData.get("bodyweight")) || null,
-    training_rating: Number(formData.get("training_rating")) || null,
-    recovery_rating: Number(formData.get("recovery_rating")) || null,
-    nutrition_rating: Number(formData.get("nutrition_rating")) || null,
-    cardio_steps: String(formData.get("cardio_steps") || "").trim(),
-    notes: String(formData.get("notes") || "").trim(),
-    reviewed: false,
-    feedback_seen: true,
-  })
+  user_id: user.id,
+  bodyweight: Number(formData.get("bodyweight")) || null,
+  training_rating: Number(formData.get("training_rating")) || null,
+  recovery_rating: Number(formData.get("recovery_rating")) || null,
+  nutrition_rating: Number(formData.get("nutrition_rating")) || null,
+  cardio_steps: String(formData.get("cardio_steps") || "").trim(),
+  notes: String(formData.get("notes") || "").trim(),
+  reviewed: false,
+  feedback_seen: true,
+  manual_entry: false,
+  submitted_by: "client",
+  coach_id: null,
+})
 
   if (error) {
     console.error("Check-in submit error:", error)
