@@ -228,41 +228,66 @@ function formatPBType(type: string) {
   return "PB"
 }
 
-function calculateTrainingDayStreak(workoutLogs: any[]) {
-  const uniqueDays = Array.from(
-    new Set(
-      workoutLogs.map((log) => {
-        const date = new Date(log.created_at)
-        date.setHours(0, 0, 0, 0)
-        return date.toISOString()
-      })
-    )
-  )
-    .map((date) => new Date(date))
-    .sort((a, b) => b.getTime() - a.getTime())
+function getWeekRange(weeksAgo = 0) {
+  const now = new Date()
+  const day = now.getDay()
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1)
 
-  if (uniqueDays.length === 0) return 0
+  const start = new Date(now)
+  start.setDate(diff - weeksAgo * 7)
+  start.setHours(0, 0, 0, 0)
+
+  const end = new Date(start)
+  end.setDate(start.getDate() + 7)
+
+  return {
+    start,
+    end,
+  }
+}
+
+function calculateAdherenceStreak({
+  workoutLogs,
+  checkIns,
+  sessions,
+}: {
+  workoutLogs: any[]
+  checkIns: any[]
+  sessions: any[]
+}) {
+  if (!sessions.length) return 0
 
   let streak = 0
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
 
-  const latestTrainingDay = uniqueDays[0]
-  const daysSinceLatest = Math.floor(
-    (today.getTime() - latestTrainingDay.getTime()) / 86400000
-  )
+  for (let weeksAgo = 0; weeksAgo < 52; weeksAgo++) {
+    const { start, end } = getWeekRange(weeksAgo)
 
-  if (daysSinceLatest > 1) return 0
+    const weekLogs = workoutLogs.filter((log) => {
+      const createdAt = new Date(log.created_at)
+      return createdAt >= start && createdAt < end
+    })
 
-  let cursor = new Date(latestTrainingDay)
+    const weekCheckIns = checkIns.filter((checkIn) => {
+      const createdAt = new Date(checkIn.created_at)
+      return createdAt >= start && createdAt < end
+    })
 
-  for (const day of uniqueDays) {
-    const matchesCursor = day.getTime() === cursor.getTime()
+    const completedSessionIds = new Set(
+      weekLogs.map((log: any) => log.session_id)
+    )
 
-    if (!matchesCursor) break
+    const completedAllSessions = sessions.every((session: any) =>
+      completedSessionIds.has(session.id)
+    )
 
-    streak += 1
-    cursor.setDate(cursor.getDate() - 1)
+    const completedCheckIn = weekCheckIns.length > 0
+
+    if (completedAllSessions && completedCheckIn) {
+      streak += 1
+      continue
+    }
+
+    break
   }
 
   return streak
@@ -378,6 +403,12 @@ export default async function Dashboard() {
     .order("created_at", { ascending: false })
     .limit(1)
 
+    const { data: allCheckIns } = await supabase
+  .from("check_ins")
+  .select("id, created_at")
+  .eq("user_id", user.id)
+  .order("created_at", { ascending: false })
+
   const { data: achievements } = await supabase
     .from("user_achievements")
     .select(`
@@ -487,7 +518,11 @@ export default async function Dashboard() {
   const unlockedAchievements = achievements || []
   const latestAchievement: any = unlockedAchievements[0] || null
 
-  const trainingDayStreak = calculateTrainingDayStreak(allWorkoutLogs)
+  const adherenceStreak = calculateAdherenceStreak({
+  workoutLogs: allWorkoutLogs,
+  checkIns: allCheckIns || [],
+  sessions,
+})
 
   const primaryAction = unreadFeedbackCount
     ? "feedback"
@@ -520,16 +555,18 @@ export default async function Dashboard() {
       priority: latestPB ? 1 : 7,
     },
     {
-      label: "Streak",
-      value: `${trainingDayStreak}`,
-      sub:
-        trainingDayStreak === 1
-          ? "training day active"
-          : "training days active",
-      icon: "flame" as const,
-      href: "/dashboard/workouts",
-      priority: trainingDayStreak > 0 ? 3 : 9,
-    },
+  label: "Streak",
+  value: adherenceStreak > 0 ? `${adherenceStreak}` : "—",
+  sub:
+    adherenceStreak === 1
+      ? "perfect week"
+      : adherenceStreak > 1
+        ? "perfect weeks"
+        : "Complete all sessions + check-in",
+  icon: "flame" as const,
+  href: "#streak",
+  priority: adherenceStreak > 0 ? 3 : 9,
+},
     {
       label: "Check-In",
       value: checkInDue ? "Due" : "Done",
@@ -579,16 +616,22 @@ export default async function Dashboard() {
 
             <div className="relative z-20 mt-3 flex flex-col items-center gap-2">
               <Link
-                href="/dashboard/messages"
-                className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-smc-gold/35 bg-smc-gold/5 text-smc-gold shadow-[0_0_20px_rgba(212,175,55,0.12)]"
-                aria-label="Open messages"
-              >
-                <Icon type="message" className="h-4.5 w-4.5" />
+  href="#streak"
+  className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border shadow-[0_0_20px_rgba(212,175,55,0.12)] transition active:scale-[0.96] ${
+    adherenceStreak > 0
+      ? "border-smc-gold/35 bg-smc-gold/10 text-smc-gold"
+      : "border-white/[0.08] bg-black/35 text-smc-muted-soft"
+  }`}
+  aria-label="View adherence streak"
+>
+  <Icon type="flame" className="h-4.5 w-4.5" />
 
-                {unreadFeedbackCount > 0 && (
-                  <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-smc-gold shadow-[0_0_10px_rgba(212,175,55,0.9)]" />
-                )}
-              </Link>
+  {adherenceStreak > 0 && (
+    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-smc-gold px-1.5 text-[10px] font-black text-black shadow-[0_0_10px_rgba(212,175,55,0.75)]">
+      {adherenceStreak}
+    </span>
+  )}
+</Link>
 
               <Link
                 href="/dashboard/pbs"
@@ -793,6 +836,48 @@ export default async function Dashboard() {
           </p>
         </div>
       </section>
+
+      <section id="streak" className={`${glassCard} border-smc-gold/20 p-3.5`}>
+  <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-smc-gold/10 blur-3xl" />
+
+  <div className="relative z-10">
+    <div className="flex items-center gap-2.5">
+      <IconBubble type="flame" subtle />
+      <p className={labelStyle}>Adherence Streak</p>
+    </div>
+
+    {adherenceStreak > 0 ? (
+      <>
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-[1.35rem] font-black tracking-[-0.04em] text-smc-text">
+              {adherenceStreak} Perfect Week
+              {adherenceStreak === 1 ? "" : "s"}
+            </h2>
+
+            <p className="mt-1 text-[13px] leading-5 text-smc-muted">
+              All assigned sessions completed plus weekly check-in submitted.
+            </p>
+          </div>
+
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-smc-gold/30 bg-smc-gold/10 text-smc-gold shadow-[0_0_26px_rgba(212,175,55,0.16)]">
+            <Icon type="flame" className="h-6 w-6" />
+          </div>
+        </div>
+      </>
+    ) : (
+      <div className="mt-3 rounded-[1.2rem] border border-white/[0.07] bg-black/35 p-3.5">
+        <p className="text-sm font-black text-smc-text">
+          Streak ready to build.
+        </p>
+
+        <p className="mt-1 text-[13px] leading-5 text-smc-muted">
+          Complete all assigned sessions and submit your weekly check-in to start a perfect week streak.
+        </p>
+      </div>
+    )}
+  </div>
+</section>
 
       {latestPB && (
         <section className={`${glassCard} border-smc-gold/25 p-3.5`}>

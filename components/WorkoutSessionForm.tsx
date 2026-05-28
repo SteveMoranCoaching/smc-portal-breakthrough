@@ -395,6 +395,16 @@ export default function WorkoutSessionForm({
   const [achievementUnlock, setAchievementUnlock] =
     useState<AchievementUnlock | null>(null)
 
+    const biggestLift = useMemo(() => {
+  if (pbResults.length === 0) return null
+
+  return [...pbResults].sort((a, b) => {
+    const aScore = a.weight * a.reps
+    const bScore = b.weight * b.reps
+    return bScore - aScore
+  })[0]
+}, [pbResults])
+
   const sessionStats = useMemo(() => {
     const completedExercises = formData.filter((entry) => {
       const completedSetCount = entry.sets.filter(isCompletedSet).length
