@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import FeedbackReadMarker from "@/components/FeedbackReadMarker"
 import PrefetchSession from "@/components/PrefetchSession"
+import LatestFeedbackCard from "@/components/LatestFeedbackCard"
 
 export const dynamic = "force-dynamic"
 
@@ -1028,29 +1029,13 @@ export default async function Dashboard() {
             </div>
 
             {latestFeedbackItems.map((item, index) => (
-              <div
-                key={`${item.type}-${index}`}
-                className={`mt-3 rounded-[1.2rem] border ${softBorder} bg-black/45 p-3`}
-              >
-                <div className="mb-2 flex items-center gap-3">
-                  <span className="rounded-full bg-smc-gold px-3 py-1 text-[9px] font-black uppercase text-black">
-                    {item.type}
-                  </span>
-
-                  <span className="text-xs text-smc-muted-soft">
-                    {formatTimestamp(item.createdAt)}
-                  </span>
-                </div>
-
-                <p className="text-sm font-black text-smc-text">
-                  {item.exerciseName}
-                </p>
-
-                <p className="mt-1 line-clamp-2 text-sm leading-5 text-zinc-300">
-                  {item.feedback}
-                </p>
-              </div>
-            ))}
+  <LatestFeedbackCard
+    key={`${item.type}-${index}`}
+    item={item}
+    dateLabel={formatTimestamp(item.createdAt)}
+    softBorder={softBorder}
+  />
+))}
 
             <Link
               href="/dashboard/workouts"
