@@ -422,29 +422,40 @@ export default async function WorkoutsPage() {
                 {latestFeedbackItems.length > 0 ? (
                   <div className="mt-3 space-y-2">
                     {latestFeedbackItems.map((item, index) => (
-                      <div
-                        key={`${item.type}-${index}`}
-                        className={`rounded-[1rem] border ${softBorder} bg-[#070707] p-3`}
-                      >
-                        <div className="mb-1.5 flex items-center gap-2">
-                          <span className="rounded-full bg-smc-gold/90 px-2 py-0.5 text-[8px] font-black uppercase text-black">
-                            {item.type}
-                          </span>
+  <details
+    key={`${item.type}-${index}`}
+    className={`rounded-[1rem] border ${softBorder} bg-[#070707] p-3`}
+  >
+    <summary className="cursor-pointer list-none">
 
-                          <span className="text-[11px] text-smc-muted-soft">
-                            {formatDate(item.createdAt)}
-                          </span>
-                        </div>
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="rounded-full bg-smc-gold/90 px-2 py-0.5 text-[8px] font-black uppercase text-black">
+          {item.type}
+        </span>
 
-                        <p className="break-words text-xs font-bold text-smc-text">
-                          {item.exerciseName}
-                        </p>
+        <span className="text-[11px] text-smc-muted-soft">
+          {formatDate(item.createdAt)}
+        </span>
+      </div>
 
-                        <p className="mt-1.5 line-clamp-2 break-words text-xs leading-5 text-zinc-300">
-                          {item.feedback}
-                        </p>
-                      </div>
-                    ))}
+      <p className="break-words text-xs font-bold text-smc-text">
+        {item.exerciseName}
+      </p>
+
+      <p className="mt-1 text-[11px] font-bold text-smc-gold">
+        Tap to read feedback ↓
+      </p>
+
+    </summary>
+
+    <div className="mt-2 border-t border-white/5 pt-2">
+      <p className="whitespace-pre-wrap break-words text-xs leading-5 text-zinc-300">
+        {item.feedback}
+      </p>
+    </div>
+
+  </details>
+))}
                   </div>
                 ) : null}
               </div>
