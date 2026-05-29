@@ -276,7 +276,20 @@ export default async function ClientProfilePage({
 
   const { data: checkIns } = await supabase
     .from("check_ins")
-    .select("id, user_id, created_at, reviewed, manual_entry, submitted_by")
+    .select(`
+  id,
+  user_id,
+  created_at,
+  reviewed,
+  manual_entry,
+  submitted_by,
+  bodyweight,
+  training_rating,
+  recovery_rating,
+  nutrition_rating,
+  cardio_steps,
+  notes
+`)
     .eq("user_id", client.user_id)
     .order("created_at", { ascending: false })
 
@@ -321,9 +334,23 @@ export default async function ClientProfilePage({
     videos?.filter((video: any) => !video.reviewed).length ?? 0
 
   const checkInCount = checkIns?.length ?? 0
+
   const unreviewedCheckInCount =
     checkIns?.filter((checkIn: any) => !checkIn.reviewed).length ?? 0
 
+
+  const latestCheckIn = checkIns?.[0] || null
+
+const latestWorkoutLog = workoutLogs?.[0] || null
+
+const latestVideo = videos?.[0] || null
+
+const attentionFlags = [
+  ...(unreviewedLogCount > 0 ? ["Unreviewed logs"] : []),
+  ...(unreviewedVideoCount > 0 ? ["Unreviewed videos"] : []),
+  ...(unreviewedCheckInCount > 0 ? ["Unreviewed check-ins"] : []),
+]
+  
   const tabs = [
     { label: "Overview", value: "overview", badge: 0 },
     { label: "Programme", value: "programme", badge: 0 },
@@ -481,43 +508,151 @@ export default async function ClientProfilePage({
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className={`${innerPanel} p-3`}>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                    Check-ins
-                  </p>
-                  <p className="mt-1 text-xl font-black text-white">
-                    {checkInCount}
-                  </p>
-                </div>
+              <div className="grid gap-3 lg:grid-cols-2">
 
-                <div className={`${innerPanel} p-3`}>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                    Unreviewed Logs
-                  </p>
-                  <p className="mt-1 text-xl font-black text-smc-gold">
-                    {unreviewedLogCount}
-                  </p>
-                </div>
+  <div className={`${innerPanel} p-4`}>
+    <p className={labelStyle}>Latest Check-In</p>
 
-                <div className={`${innerPanel} p-3`}>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                    Unreviewed Videos
-                  </p>
-                  <p className="mt-1 text-xl font-black text-smc-gold">
-                    {unreviewedVideoCount}
-                  </p>
-                </div>
+    {latestCheckIn ? (
+      <>
+        <p className="mt-2 text-sm text-white/45">
+          {formatDateTime(latestCheckIn.created_at)}
+        </p>
 
-                <div className={`${innerPanel} p-3`}>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                    Active Programmes
-                  </p>
-                  <p className="mt-1 text-xl font-black text-white">
-                    {programmeCount}
-                  </p>
-                </div>
-              </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div>
+            <p className="text-[10px] uppercase text-white/30">Recovery</p>
+            <p className="font-black text-white">
+              {latestCheckIn.recovery_rating ?? "-"} / 10
+            </p>
+          </div>
+
+          <div>
+            <p className="text-[10px] uppercase text-white/30">Training</p>
+            <p className="font-black text-white">
+              {latestCheckIn.training_rating ?? "-"} / 10
+            </p>
+          </div>
+
+          <div>
+            <p className="text-[10px] uppercase text-white/30">Nutrition</p>
+            <p className="font-black text-white">
+              {latestCheckIn.nutrition_rating ?? "-"} / 10
+            </p>
+          </div>
+
+          <div>
+            <p className="text-[10px] uppercase text-white/30">Bodyweight</p>
+            <p className="font-black text-white">
+              {latestCheckIn.bodyweight ?? "-"}
+            </p>
+          </div>
+        </div>
+
+        {latestCheckIn.notes && (
+          <p className="mt-3 text-sm leading-5 text-white/55">
+            {latestCheckIn.notes}
+          </p>
+        )}
+      </>
+    ) : (
+      <p className="mt-2 text-sm text-white/45">
+        No check-ins submitted yet.
+      </p>
+    )}
+  </div>
+
+  <div className={`${innerPanel} p-4`}>
+    <p className={labelStyle}>Latest Activity</p>
+
+    <div className="mt-3 space-y-3">
+      <div>
+        <p className="text-[10px] uppercase text-white/30">
+          Latest Workout Log
+        </p>
+
+        <p className="font-black text-white">
+          {latestWorkoutLog?.exercise_name || "None"}
+        </p>
+
+        <p className="text-xs text-white/40">
+          {latestWorkoutLog
+            ? formatDateTime(latestWorkoutLog.created_at)
+            : "-"}
+        </p>
+      </div>
+
+      <div>
+        <p className="text-[10px] uppercase text-white/30">
+          Latest Video Upload
+        </p>
+
+        <p className="font-black text-white">
+          {latestVideo?.exercise_name || "None"}
+        </p>
+
+        <p className="text-xs text-white/40">
+          {latestVideo
+            ? formatDateTime(latestVideo.created_at)
+            : "-"}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div className={`${innerPanel} p-4`}>
+    <p className={labelStyle}>Coach Attention</p>
+
+    {attentionFlags.length > 0 ? (
+      <div className="mt-3 flex flex-wrap gap-2">
+        {attentionFlags.map((flag) => (
+          <span
+            key={flag}
+            className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-smc-gold"
+          >
+            {flag}
+          </span>
+        ))}
+      </div>
+    ) : (
+      <p className="mt-2 text-sm text-green-300">
+        No attention items.
+      </p>
+    )}
+  </div>
+
+  <div className={`${innerPanel} p-4`}>
+    <p className={labelStyle}>Snapshot</p>
+
+    <div className="mt-3 space-y-2 text-sm">
+      <div className="flex justify-between">
+        <span className="text-white/45">Programmes</span>
+        <span className="font-black">{programmeCount}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span className="text-white/45">Sessions</span>
+        <span className="font-black">{sessionCount}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span className="text-white/45">Workout Logs</span>
+        <span className="font-black">{workoutLogCount}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span className="text-white/45">Videos</span>
+        <span className="font-black">{videoCount}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span className="text-white/45">Check-Ins</span>
+        <span className="font-black">{checkInCount}</span>
+      </div>
+    </div>
+  </div>
+
+</div>
             </div>
           </section>
         )}
