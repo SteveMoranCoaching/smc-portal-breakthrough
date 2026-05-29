@@ -198,6 +198,8 @@ export default async function ClientProfilePage({
     updated?: string
     manualCheckInAdded?: string
     manualCheckInError?: string
+    coachSessionAdded?: string
+    coachSessionError?: string
     tab?: string
   }>
 }) {
@@ -207,12 +209,18 @@ export default async function ClientProfilePage({
     updated,
     manualCheckInAdded,
     manualCheckInError,
+    coachSessionAdded,
+    coachSessionError,
     tab,
   } = await searchParams
 
   const resolvedManualCheckInError = manualCheckInError
     ? decodeURIComponent(manualCheckInError)
     : ""
+
+  const resolvedCoachSessionError = coachSessionError
+  ? decodeURIComponent(coachSessionError)
+  : ""  
 
   const activeTab = tab || "overview"
 
@@ -276,7 +284,7 @@ export default async function ClientProfilePage({
 
     const { data: sessionCompletions } = await supabase
   .from("session_completions")
-  .select("id, session_id, created_at, session_rating, notes, completed")
+  .select("id, session_id, created_at, session_rating, notes, completed, manual_entry, submitted_by")
   .eq("user_id", client.user_id)
   .eq("completed", true)
   .order("created_at", { ascending: false })
@@ -420,6 +428,18 @@ const bodyweightChange =
           </div>
         )}
 
+        {coachSessionAdded === "true" && (
+  <div className="rounded-[1rem] border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
+    Coach session added.
+  </div>
+)}
+
+{resolvedCoachSessionError && (
+  <div className="rounded-[1rem] border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+    Coach session failed: {resolvedCoachSessionError}
+  </div>
+)}
+
         <section className={`${shellCard} p-4 sm:p-5`}>
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/45 to-transparent" />
 
@@ -435,6 +455,13 @@ const bodyweightChange =
                   {client.name}
                 </h1>
                 <p className="mt-0.5 text-sm text-white/45">{client.email}</p>
+
+                <Link
+  href={`/coach/${client.id}/session-entry`}
+  className="mt-3 inline-flex min-h-[40px] items-center rounded-[1rem] bg-smc-gold px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black transition hover:brightness-110"
+>
+  + Add Coach Session
+</Link>
 
                 <div className="mt-2 flex flex-wrap gap-2">
                   <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
@@ -623,6 +650,10 @@ const bodyweightChange =
         <p className="mt-1 text-sm text-white/45">
           {formatDateTime(latestCompletedSession.created_at)}
         </p>
+
+        <p className="mt-1 text-xs text-white/35">
+  {latestCompletedSession.manual_entry ? "Coach entered" : "Client submitted"}
+</p>
 
         <div className="mt-3 rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.06] p-3">
           <p className="text-[10px] uppercase text-smc-gold/70">

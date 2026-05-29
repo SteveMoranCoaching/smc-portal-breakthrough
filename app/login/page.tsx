@@ -17,7 +17,7 @@ export default function LoginPage() {
     setLoading(true)
     setMessage("Sending magic link...")
 
-    const redirectUrl = "http://192.168.4.22:3000/auth/callback?next=/dashboard"
+    const redirectUrl = `${window.location.origin}/auth/callback?next=/post-login`
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
