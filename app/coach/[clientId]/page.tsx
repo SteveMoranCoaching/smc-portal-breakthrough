@@ -274,6 +274,13 @@ export default async function ClientProfilePage({
     .eq("user_id", client.user_id)
     .order("created_at", { ascending: false })
 
+    const { data: sessionCompletions } = await supabase
+  .from("session_completions")
+  .select("id, session_id, created_at, session_rating, notes, completed")
+  .eq("user_id", client.user_id)
+  .eq("completed", true)
+  .order("created_at", { ascending: false })
+
   const { data: checkIns } = await supabase
     .from("check_ins")
     .select(`
@@ -350,7 +357,32 @@ const attentionFlags = [
   ...(unreviewedVideoCount > 0 ? ["Unreviewed videos"] : []),
   ...(unreviewedCheckInCount > 0 ? ["Unreviewed check-ins"] : []),
 ]
-  
+ 
+const latestCompletedSession = sessionCompletions?.[0] || null
+
+const allProgrammeSessions =
+  programmes?.flatMap((programme: any) => programme.programme_sessions || []) ||
+  []
+
+const latestCompletedSessionInfo = latestCompletedSession
+  ? allProgrammeSessions.find(
+      (session: any) => session.id === latestCompletedSession.session_id
+    )
+  : null
+
+const latestBodyweight = latestCheckIn?.bodyweight || null
+
+const previousBodyweightCheckIn =
+  checkIns?.find(
+    (checkIn: any) =>
+      checkIn.id !== latestCheckIn?.id && checkIn.bodyweight
+  ) || null
+
+const bodyweightChange =
+  latestBodyweight && previousBodyweightCheckIn?.bodyweight
+    ? Number(latestBodyweight) - Number(previousBodyweightCheckIn.bodyweight)
+    : null
+
   const tabs = [
     { label: "Overview", value: "overview", badge: 0 },
     { label: "Programme", value: "programme", badge: 0 },
@@ -509,44 +541,61 @@ const attentionFlags = [
               </div>
 
               <div className="grid gap-3 lg:grid-cols-2">
-
   <div className={`${innerPanel} p-4`}>
     <p className={labelStyle}>Latest Check-In</p>
 
     {latestCheckIn ? (
       <>
-        <p className="mt-2 text-sm text-white/45">
-          {formatDateTime(latestCheckIn.created_at)}
-        </p>
-
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-3 grid grid-cols-3 gap-2">
           <div>
             <p className="text-[10px] uppercase text-white/30">Recovery</p>
-            <p className="font-black text-white">
-              {latestCheckIn.recovery_rating ?? "-"} / 10
+            <p className="text-xl font-black text-white">
+              {latestCheckIn.recovery_rating ?? "-"}
             </p>
           </div>
 
           <div>
             <p className="text-[10px] uppercase text-white/30">Training</p>
-            <p className="font-black text-white">
-              {latestCheckIn.training_rating ?? "-"} / 10
+            <p className="text-xl font-black text-white">
+              {latestCheckIn.training_rating ?? "-"}
             </p>
           </div>
 
           <div>
             <p className="text-[10px] uppercase text-white/30">Nutrition</p>
-            <p className="font-black text-white">
-              {latestCheckIn.nutrition_rating ?? "-"} / 10
+            <p className="text-xl font-black text-white">
+              {latestCheckIn.nutrition_rating ?? "-"}
             </p>
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-[1rem] border border-white/[0.05] bg-black/30 p-3">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase text-white/30">
+                Bodyweight
+              </p>
+              <p className="text-lg font-black text-white">
+                {latestBodyweight ?? "-"}
+              </p>
+            </div>
+
+            {bodyweightChange !== null && (
+              <p
+                className={`text-sm font-black ${
+                  bodyweightChange <= 0 ? "text-green-300" : "text-smc-gold"
+                }`}
+              >
+                {bodyweightChange > 0 ? "+" : ""}
+                {bodyweightChange.toFixed(1)}kg
+              </p>
+            )}
           </div>
 
-          <div>
-            <p className="text-[10px] uppercase text-white/30">Bodyweight</p>
-            <p className="font-black text-white">
-              {latestCheckIn.bodyweight ?? "-"}
-            </p>
-          </div>
+          <p className="mt-2 text-xs text-white/35">
+            {formatDateTime(latestCheckIn.created_at)}
+            {latestCheckIn.manual_entry ? " · Coach added" : " · Client submitted"}
+          </p>
         </div>
 
         {latestCheckIn.notes && (
@@ -561,6 +610,123 @@ const attentionFlags = [
       </p>
     )}
   </div>
+
+  <div className={`${innerPanel} p-4`}>
+    <p className={labelStyle}>Latest Completed Session</p>
+
+    {latestCompletedSession ? (
+      <>
+        <h3 className="mt-2 text-xl font-black text-white">
+          {latestCompletedSessionInfo?.title || "Completed Session"}
+        </h3>
+
+        <p className="mt-1 text-sm text-white/45">
+          {formatDateTime(latestCompletedSession.created_at)}
+        </p>
+
+        <div className="mt-3 rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.06] p-3">
+          <p className="text-[10px] uppercase text-smc-gold/70">
+            Session Rating
+          </p>
+
+          <p className="mt-1 text-2xl font-black text-white">
+            {latestCompletedSession.session_rating ?? "-"} / 10
+          </p>
+        </div>
+
+        {latestCompletedSession.notes && (
+          <p className="mt-3 text-sm leading-5 text-white/55">
+            {latestCompletedSession.notes}
+          </p>
+        )}
+      </>
+    ) : (
+      <p className="mt-2 text-sm text-white/45">
+        No completed sessions yet.
+      </p>
+    )}
+  </div>
+
+  <div className={`${innerPanel} p-4`}>
+    <p className={labelStyle}>Coach Attention</p>
+
+    {attentionFlags.length > 0 ? (
+      <>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {attentionFlags.map((flag) => (
+            <span
+              key={flag}
+              className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-smc-gold"
+            >
+              {flag}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-4 space-y-2 text-sm">
+          {unreviewedLogCount > 0 && (
+            <Link
+              href={`/coach/${client.id}?tab=logs`}
+              className="flex justify-between rounded-[0.9rem] border border-white/[0.05] bg-black/25 px-3 py-2 text-white/65 hover:text-white"
+            >
+              <span>Logs awaiting review</span>
+              <span className="font-black text-smc-gold">{unreviewedLogCount}</span>
+            </Link>
+          )}
+
+          {unreviewedVideoCount > 0 && (
+            <Link
+              href={`/coach/${client.id}?tab=videos`}
+              className="flex justify-between rounded-[0.9rem] border border-white/[0.05] bg-black/25 px-3 py-2 text-white/65 hover:text-white"
+            >
+              <span>Videos awaiting review</span>
+              <span className="font-black text-smc-gold">{unreviewedVideoCount}</span>
+            </Link>
+          )}
+        </div>
+      </>
+    ) : (
+      <p className="mt-2 text-sm text-green-300">
+        Clear — no attention items.
+      </p>
+    )}
+  </div>
+
+  <div className={`${innerPanel} p-4`}>
+    <p className={labelStyle}>Snapshot</p>
+
+    <div className="mt-3 space-y-2 text-sm">
+      <div className="flex justify-between">
+        <span className="text-white/45">Latest workout log</span>
+        <span className="font-black text-white">
+          {latestWorkoutLog ? formatDateTime(latestWorkoutLog.created_at) : "-"}
+        </span>
+      </div>
+
+      <div className="flex justify-between">
+        <span className="text-white/45">Latest video</span>
+        <span className="font-black text-white">
+          {latestVideo ? formatDateTime(latestVideo.created_at) : "-"}
+        </span>
+      </div>
+
+      <div className="flex justify-between">
+        <span className="text-white/45">Workout logs</span>
+        <span className="font-black">{workoutLogCount}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span className="text-white/45">Videos</span>
+        <span className="font-black">{videoCount}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span className="text-white/45">Check-ins</span>
+        <span className="font-black">{checkInCount}</span>
+      </div>
+    </div>
+  </div>
+</div>
 
   <div className={`${innerPanel} p-4`}>
     <p className={labelStyle}>Latest Activity</p>
