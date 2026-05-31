@@ -52,12 +52,13 @@ export default async function CoachReviewPage() {
     .limit(100)
 
   const { data: checkIns } = await supabase
-    .from("check_ins")
-    .select(
-      "id, user_id, created_at, bodyweight, training_rating, recovery_rating, nutrition_rating, cardio_steps, notes, reviewed"
-    )
-    .order("created_at", { ascending: false })
-    .limit(100)
+  .from("check_ins")
+  .select(
+    "id, user_id, created_at, bodyweight, training_rating, recovery_rating, nutrition_rating, cardio_steps, notes, reviewed"
+  )
+  .eq("reviewed", false)
+  .order("created_at", { ascending: false })
+  .limit(100)
 
   const coachAttentionItems = buildCoachAttentionItems({
     clients: clients || [],
@@ -135,9 +136,31 @@ export default async function CoachReviewPage() {
     notes: log.notes,
   }))
 
+  const checkInItems = (checkIns || []).map((checkIn) => ({
+  type: "check-in" as const,
+  id: checkIn.id,
+  user_id: checkIn.user_id,
+  clientId: clientMap[checkIn.user_id]?.id,
+  clientName: clientMap[checkIn.user_id]?.name || "Unknown client",
+  created_at: checkIn.created_at,
+  bodyweight: checkIn.bodyweight,
+  training_rating: checkIn.training_rating,
+  recovery_rating: checkIn.recovery_rating,
+  nutrition_rating: checkIn.nutrition_rating,
+  cardio_steps: checkIn.cardio_steps,
+  notes: checkIn.notes,
+}))
+
   const rawItems = [...videosWithUrls, ...logItems].filter(
     (item) => item.clientId && item.session_id
   )
+
+  const standaloneCheckInItems = checkInItems
+  .filter((item) => item.clientId)
+  .map((item) => ({
+    ...item,
+    attention: attentionByUserId[item.user_id] || null,
+  }))    
 
   const groupedReviewItems = Object.values(
     rawItems.reduce((acc: Record<string, any>, item: any) => {
@@ -205,7 +228,9 @@ export default async function CoachReviewPage() {
           </Link>
         </div>
 
-        <ReviewSession items={groupedReviewItems as any} />
+        <ReviewSession
+  items={[...standaloneCheckInItems, ...(groupedReviewItems as any)]}
+/>
       </div>
     </main>
   )

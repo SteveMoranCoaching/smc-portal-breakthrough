@@ -268,45 +268,65 @@ export default async function ClientProfilePage({
     .order("created_at", { ascending: false })
 
   const { data: workoutLogs, error: workoutLogsError } = await supabase
-    .from("workout_logs")
-    .select(`
-      id,
-      user_id,
-      exercise_name,
-      sets_completed,
-      notes,
-      created_at,
-      reviewed,
-      coach_feedback
-    `)
-    .eq("user_id", client.user_id)
-    .order("created_at", { ascending: false })
+  .from("workout_logs")
+  .select(`
+    id,
+    user_id,
+    programme_id,
+    session_id,
+    exercise_name,
+    sets_completed,
+    notes,
+    created_at,
+    reviewed,
+    coach_feedback,
+    feedback_read,
+    manual_entry,
+    submitted_by,
+    source
+  `)
+  .eq("user_id", client.user_id)
+  .order("created_at", { ascending: false })
 
     const { data: sessionCompletions } = await supabase
   .from("session_completions")
-  .select("id, session_id, created_at, session_rating, notes, completed, manual_entry, submitted_by")
+  .select(`
+    id,
+    programme_id,
+    session_id,
+    created_at,
+    session_rating,
+    duration_minutes,
+    notes,
+    completed,
+    manual_entry,
+    submitted_by,
+    source
+  `)
   .eq("user_id", client.user_id)
   .eq("completed", true)
   .order("created_at", { ascending: false })
 
   const { data: checkIns } = await supabase
-    .from("check_ins")
-    .select(`
-  id,
-  user_id,
-  created_at,
-  reviewed,
-  manual_entry,
-  submitted_by,
-  bodyweight,
-  training_rating,
-  recovery_rating,
-  nutrition_rating,
-  cardio_steps,
-  notes
-`)
-    .eq("user_id", client.user_id)
-    .order("created_at", { ascending: false })
+  .from("check_ins")
+  .select(`
+    id,
+    user_id,
+    created_at,
+    reviewed,
+    manual_entry,
+    submitted_by,
+    bodyweight,
+    training_rating,
+    recovery_rating,
+    nutrition_rating,
+    cardio_steps,
+    notes,
+    coach_feedback,
+    feedback_seen
+  `)
+  .eq("user_id", client.user_id)
+  .order("created_at", { ascending: false })
 
   const videosWithUrls = await Promise.all(
     (videos ?? []).map(async (video) => {
@@ -372,6 +392,45 @@ const allProgrammeSessions =
   programmes?.flatMap((programme: any) => programme.programme_sessions || []) ||
   []
 
+const groupedSessionLogs =
+  sessionCompletions?.map((completion: any) => {
+    const logsForSession =
+      workoutLogs?.filter(
+        (log: any) => log.session_id === completion.session_id
+      ) || []
+
+    const sessionInfo = allProgrammeSessions.find(
+      (session: any) => session.id === completion.session_id
+    )
+
+    const unreviewedCount = logsForSession.filter(
+      (log: any) => !log.reviewed
+    ).length
+
+    return {
+      completion,
+      sessionInfo,
+      logs: logsForSession,
+      unreviewedCount,
+      allReviewed:
+        logsForSession.length > 0 &&
+        unreviewedCount === 0,
+    }
+  }) || []
+
+const completedSessionIds = new Set(
+  (sessionCompletions || []).map(
+    (completion: any) => completion.session_id
+  )
+)
+
+const orphanWorkoutLogs =
+  workoutLogs?.filter(
+    (log: any) =>
+      log.session_id &&
+      !completedSessionIds.has(log.session_id)
+  ) || []
+
 const latestCompletedSessionInfo = latestCompletedSession
   ? allProgrammeSessions.find(
       (session: any) => session.id === latestCompletedSession.session_id
@@ -391,14 +450,125 @@ const bodyweightChange =
     ? Number(latestBodyweight) - Number(previousBodyweightCheckIn.bodyweight)
     : null
 
+const timelineEvents = [
+  ...(sessionCompletions || []).map((session: any) => {
+    const sessionInfo = allProgrammeSessions.find(
+      (s: any) => s.id === session.session_id
+    )
+
+    const isCoachEntry =
+      session.manual_entry || session.submitted_by === "coach"
+
+    return {
+      type: isCoachEntry ? "coach_session" : "session",
+      created_at: session.created_at,
+      title: isCoachEntry ? "Coach Added Session" : "Session Completed",
+      subtitle: sessionInfo?.title || "Workout Session",
+      meta: [
+        session.session_rating ? `${session.session_rating}/10` : null,
+        session.duration_minutes ? `${session.duration_minutes} mins` : null,
+      ].filter(Boolean),
+    }
+  }),
+
+  ...(checkIns || []).map((checkIn: any) => {
+    const isCoachEntry =
+      checkIn.manual_entry || checkIn.submitted_by === "coach"
+
+    return {
+      type: isCoachEntry ? "coach_checkin" : "checkin",
+      created_at: checkIn.created_at,
+      title: isCoachEntry ? "Coach Added Check-In" : "Check-In Submitted",
+      subtitle: [
+        checkIn.recovery_rating ? `Recovery ${checkIn.recovery_rating}/10` : null,
+        checkIn.training_rating ? `Training ${checkIn.training_rating}/10` : null,
+        checkIn.nutrition_rating ? `Nutrition ${checkIn.nutrition_rating}/10` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      meta: checkIn.bodyweight ? [`${checkIn.bodyweight}kg`] : [],
+    }
+  }),
+
+  ...(videos || []).map((video: any) => ({
+    type: "video",
+    created_at: video.created_at,
+    title: "Video Uploaded",
+    subtitle: video.exercise_name,
+    meta: [],
+  })),
+].sort(
+  (a, b) =>
+    new Date(b.created_at).getTime() -
+    new Date(a.created_at).getTime()
+)
+
+const groupedTimeline = timelineEvents.reduce(
+  (acc: Record<string, any[]>, event: any) => {
+    const day = getTimelineDay(event.created_at)
+
+    if (!acc[day]) {
+      acc[day] = []
+    }
+
+    acc[day].push(event)
+
+    return acc
+  },
+  {}
+)
+
+
   const tabs = [
     { label: "Overview", value: "overview", badge: 0 },
+    { label: "Timeline", value: "timeline", badge: 0 },
     { label: "Programme", value: "programme", badge: 0 },
     { label: "Check-ins", value: "check-ins", badge: unreviewedCheckInCount },
-    { label: "Logs", value: "logs", badge: unreviewedLogCount },
+    { label: "Logs", value: "logs", badge: groupedSessionLogs.filter(
+  (session) => !session.allReviewed
+).length },
     { label: "Videos", value: "videos", badge: unreviewedVideoCount },
     { label: "Notes", value: "notes", badge: 0 },
   ]
+
+  function getTimelineIcon(type: string) {
+  if (type === "session") return "🏋️"
+  if (type === "coach_session") return "✍️"
+  if (type === "checkin") return "📋"
+  if (type === "coach_checkin") return "📝"
+  if (type === "video") return "🎥"
+
+  return "•"
+}
+
+function getTimelineLabel(type: string) {
+  if (type === "session") return "Session"
+  if (type === "coach_session") return "Coach Entry"
+  if (type === "checkin") return "Check-In"
+  if (type === "coach_checkin") return "Coach Check-In"
+  if (type === "video") return "Video"
+
+  return "Activity"
+}
+
+function getTimelineDay(dateString: string) {
+  const date = new Date(dateString)
+
+  const today = new Date()
+  const yesterday = new Date()
+
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  const dateKey = date.toDateString()
+
+  if (dateKey === today.toDateString()) return "Today"
+  if (dateKey === yesterday.toDateString()) return "Yesterday"
+
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  })
+}
 
   return (
     <main className="min-h-screen bg-black px-4 py-5 text-white sm:px-6 sm:py-8">
@@ -639,23 +809,37 @@ const bodyweightChange =
   </div>
 
   <div className={`${innerPanel} p-4`}>
-    <p className={labelStyle}>Latest Completed Session</p>
+  <p className={labelStyle}>Latest Completed Session</p>
 
-    {latestCompletedSession ? (
-      <>
-        <h3 className="mt-2 text-xl font-black text-white">
-          {latestCompletedSessionInfo?.title || "Completed Session"}
-        </h3>
+  {latestCompletedSession ? (
+    <>
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-black text-white">
+            {latestCompletedSessionInfo?.title || "Completed Session"}
+          </h3>
 
-        <p className="mt-1 text-sm text-white/45">
-          {formatDateTime(latestCompletedSession.created_at)}
-        </p>
+          <p className="mt-1 text-sm text-white/45">
+            {latestCompletedSessionInfo?.day
+              ? `${latestCompletedSessionInfo.day} · `
+              : ""}
+            {formatDateTime(latestCompletedSession.created_at)}
+          </p>
+        </div>
 
-        <p className="mt-1 text-xs text-white/35">
-  {latestCompletedSession.manual_entry ? "Coach entered" : "Client submitted"}
-</p>
+        <span
+          className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${
+            latestCompletedSession.manual_entry
+              ? "border-smc-gold/25 bg-smc-gold/10 text-smc-gold"
+              : "border-white/[0.08] bg-white/[0.04] text-white/45"
+          }`}
+        >
+          {latestCompletedSession.manual_entry ? "Coach Entered" : "Client"}
+        </span>
+      </div>
 
-        <div className="mt-3 rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.06] p-3">
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.06] p-3">
           <p className="text-[10px] uppercase text-smc-gold/70">
             Session Rating
           </p>
@@ -665,18 +849,38 @@ const bodyweightChange =
           </p>
         </div>
 
-        {latestCompletedSession.notes && (
-          <p className="mt-3 text-sm leading-5 text-white/55">
-            {latestCompletedSession.notes}
+        <div className="rounded-[1rem] border border-white/[0.06] bg-black/30 p-3">
+          <p className="text-[10px] uppercase text-white/30">
+            Duration
           </p>
-        )}
-      </>
-    ) : (
-      <p className="mt-2 text-sm text-white/45">
-        No completed sessions yet.
+
+          <p className="mt-1 text-2xl font-black text-white">
+            {latestCompletedSession.duration_minutes
+              ? `${latestCompletedSession.duration_minutes}m`
+              : "-"}
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs text-white/35">
+        Source:{" "}
+        {latestCompletedSession.submitted_by === "coach"
+          ? "Coach entered session"
+          : "Client submitted session"}
       </p>
-    )}
-  </div>
+
+      {latestCompletedSession.notes && (
+        <p className="mt-3 rounded-[1rem] border border-white/[0.05] bg-black/30 p-3 text-sm leading-5 text-white/55">
+          {latestCompletedSession.notes}
+        </p>
+      )}
+    </>
+  ) : (
+    <p className="mt-2 text-sm text-white/45">
+      No completed sessions yet.
+    </p>
+  )}
+</div>
 
   <div className={`${innerPanel} p-4`}>
     <p className={labelStyle}>Coach Attention</p>
@@ -943,6 +1147,209 @@ const bodyweightChange =
                   Add Manual Check-In
                 </button>
               </form>
+              <div className="mt-6 border-t border-white/[0.06] pt-5">
+  <div className="mb-4">
+    <p className={labelStyle}>Submitted Check-Ins</p>
+
+    <h3 className="mt-1 text-lg font-black text-white">
+      Check-In History
+    </h3>
+  </div>
+
+  {checkIns && checkIns.length > 0 ? (
+    <div className="space-y-3">
+      {checkIns.map((checkIn: any) => (
+        <div
+          key={checkIn.id}
+          className={`${innerPanel} p-4`}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h4 className="font-black text-white">
+                {formatDateTime(checkIn.created_at)}
+              </h4>
+
+              <p className="mt-1 text-xs text-white/35">
+                {checkIn.manual_entry
+                  ? "Coach added"
+                  : "Client submitted"}
+              </p>
+            </div>
+
+            <span
+              className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${
+                checkIn.reviewed
+                  ? "border-green-500/25 bg-green-500/10 text-green-300"
+                  : "border-red-500/25 bg-red-500/10 text-red-300"
+              }`}
+            >
+              {checkIn.reviewed ? "Reviewed" : "Needs Review"}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-4">
+            <div className="rounded-[0.9rem] border border-white/[0.05] bg-black/30 p-3">
+              <p className="text-[10px] uppercase text-white/30">
+                Bodyweight
+              </p>
+              <p className="mt-1 text-lg font-black text-white">
+                {checkIn.bodyweight ?? "-"}
+              </p>
+            </div>
+
+            <div className="rounded-[0.9rem] border border-white/[0.05] bg-black/30 p-3">
+              <p className="text-[10px] uppercase text-white/30">
+                Recovery
+              </p>
+              <p className="mt-1 text-lg font-black text-white">
+                {checkIn.recovery_rating ?? "-"} / 10
+              </p>
+            </div>
+
+            <div className="rounded-[0.9rem] border border-white/[0.05] bg-black/30 p-3">
+              <p className="text-[10px] uppercase text-white/30">
+                Training
+              </p>
+              <p className="mt-1 text-lg font-black text-white">
+                {checkIn.training_rating ?? "-"} / 10
+              </p>
+            </div>
+
+            <div className="rounded-[0.9rem] border border-white/[0.05] bg-black/30 p-3">
+              <p className="text-[10px] uppercase text-white/30">
+                Nutrition
+              </p>
+              <p className="mt-1 text-lg font-black text-white">
+                {checkIn.nutrition_rating ?? "-"} / 10
+              </p>
+            </div>
+          </div>
+
+          {checkIn.cardio_steps && (
+            <div className="mt-3 rounded-[1rem] border border-white/[0.05] bg-black/30 p-3">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold/70">
+                Steps / Cardio
+              </p>
+              <p className="text-sm text-white/55">
+                {checkIn.cardio_steps}
+              </p>
+            </div>
+          )}
+
+          {checkIn.notes && (
+            <div className="mt-3 rounded-[1rem] border border-white/[0.05] bg-black/30 p-3">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold/70">
+                Check-In Notes
+              </p>
+              <p className="whitespace-pre-wrap text-sm text-white/55">
+                {checkIn.notes}
+              </p>
+            </div>
+          )}
+
+          {checkIn.coach_feedback && (
+            <div className="mt-3 rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.06] p-3">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold">
+                Coach Feedback
+              </p>
+              <p className="whitespace-pre-wrap text-sm text-white/70">
+                {checkIn.coach_feedback}
+              </p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className={`${innerPanel} p-4 text-sm text-white/45`}>
+      No check-ins submitted yet.
+    </div>
+  )}
+</div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "timeline" && (
+          <section className={`${shellCard} p-4 sm:p-5`}>
+            <div className="relative z-10">
+              <div className="mb-4">
+                <p className={labelStyle}>Client Activity</p>
+
+                <h2 className="mt-1 text-xl font-black text-white">
+                  Timeline
+                </h2>
+
+                <p className="mt-1 text-sm text-white/45">
+                  Recent client activity and coach actions.
+                </p>
+              </div>
+
+              {timelineEvents.length === 0 ? (
+                <div className={`${innerPanel} p-4 text-sm text-white/45`}>
+                  No timeline events yet.
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {Object.entries(groupedTimeline).map(([day, events]) => (
+                    <div key={day} className="space-y-3">
+                      <div className="sticky top-0 z-10">
+                        <span className="rounded-full border border-smc-gold/20 bg-black/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold backdrop-blur-xl">
+                          {day}
+                        </span>
+                      </div>
+
+                      {(events as any[]).map((event: any, index: number) => (
+                        <div
+                          key={`${event.type}-${event.created_at}-${index}`}
+                          className={`${innerPanel} p-4`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-smc-gold/20 bg-smc-gold/10 text-lg">
+                              {getTimelineIcon(event.type)}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <h3 className="font-black text-white">
+                                    {event.title}
+                                  </h3>
+
+                                  {event.subtitle && (
+                                    <p className="mt-1 text-sm text-white/45">
+                                      {event.subtitle}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <span className="shrink-0 whitespace-nowrap text-xs text-white/35">
+                                  {formatDateTime(event.created_at)}
+                                </span>
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
+                                  {getTimelineLabel(event.type)}
+                                </span>
+
+                                {event.meta?.map((item: string) => (
+                                  <span
+                                    key={item}
+                                    className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/50"
+                                  >
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -1130,42 +1537,140 @@ const bodyweightChange =
         )}
 
         {activeTab === "logs" && (
-          <section className={`${shellCard} p-4 sm:p-5`}>
-            <div className="relative z-10">
-              <div className="mb-4 flex items-end justify-between gap-3">
-                <div>
-                  <p className={labelStyle}>Training Review</p>
-                  <h2 className="mt-1 text-xl font-black text-white">
-                    Workout Logs
-                  </h2>
-                </div>
+  <section className={`${shellCard} p-4 sm:p-5`}>
+    <div className="relative z-10">
 
-                <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[10px] font-black uppercase text-smc-gold">
-                  {unreviewedLogCount} new
-                </span>
-              </div>
+      <div className="mb-5">
+        <p className={labelStyle}>Training Review</p>
 
-              {workoutLogsError && (
-                <div className="mb-4 rounded-[1rem] border border-red-500/30 bg-red-950/40 p-4 text-sm text-red-200">
-                  {workoutLogsError.message}
-                </div>
-              )}
+        <h2 className="mt-1 text-xl font-black text-white">
+          Training Sessions
+        </h2>
 
-              {!workoutLogs || workoutLogs.length === 0 ? (
-                <div className={`${innerPanel} p-4 text-sm text-white/45`}>
-                  No workout logs submitted yet.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {workoutLogs.map((log: any) => (
-                    <div key={log.id} className={`${innerPanel} p-3.5`}>
+        <p className="mt-1 text-sm text-white/45">
+          Completed sessions grouped by workout.
+          Open a session to review individual exercises.
+        </p>
+      </div>
+
+      {groupedSessionLogs.length === 0 ? (
+        <div className={`${innerPanel} p-4 text-sm text-white/45`}>
+          No completed sessions yet.
+        </div>
+      ) : (
+        <div className="space-y-3">
+
+          {groupedSessionLogs.map((group: any) => {
+            const {
+              completion,
+              sessionInfo,
+              logs,
+              unreviewedCount,
+              allReviewed,
+            } = group
+
+            return (
+              <details
+                key={completion.id}
+                className={`${innerPanel} overflow-hidden`}
+              >
+                <summary className="cursor-pointer list-none p-4">
+
+                  <div className="flex items-start justify-between gap-3">
+
+                    <div>
+                      <h3 className="text-base font-black text-white">
+                        {sessionInfo?.title || "Completed Session"}
+                      </h3>
+
+                      <p className="mt-1 text-xs text-white/40">
+                        {sessionInfo?.day
+                          ? `${sessionInfo.day} · `
+                          : ""}
+                        {formatDateTime(completion.created_at)}
+                      </p>
+
+                      <div className="mt-2 flex flex-wrap gap-2">
+
+                        <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[9px] font-black uppercase text-white/60">
+                          {logs.length} exercises logged
+                        </span>
+
+                        {completion.session_rating && (
+                          <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2 py-1 text-[9px] font-black uppercase text-smc-gold">
+                            {completion.session_rating}/10
+                          </span>
+                        )}
+
+                        {completion.duration_minutes && (
+                          <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[9px] font-black uppercase text-white/60">
+                            {completion.duration_minutes} mins
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2">
+
+                      <span
+                        className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em]
+                        ${
+                          completion.manual_entry ||
+                          completion.submitted_by === "coach"
+                            ? "border border-smc-gold/25 bg-smc-gold/10 text-smc-gold"
+                            : "border border-white/[0.08] bg-white/[0.04] text-white/55"
+                        }`}
+                      >
+                        {completion.manual_entry ||
+                        completion.submitted_by === "coach"
+                          ? "Coach Entered"
+                          : "Client Submitted"}
+                      </span>
+
+                      <span
+                        className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em]
+                        ${
+                          allReviewed
+                            ? "border border-green-500/25 bg-green-500/10 text-green-300"
+                            : "border border-red-500/25 bg-red-500/10 text-red-300"
+                        }`}
+                      >
+                        {allReviewed
+                          ? "Reviewed"
+                          : `Needs Review (${unreviewedCount})`}
+                      </span>
+                    </div>
+                  </div>
+
+                </summary>
+
+                <div className="border-t border-white/[0.06] p-4 space-y-3">
+
+                  {completion.notes && (
+                    <div className="rounded-[1rem] border border-white/[0.05] bg-black/30 p-3">
+                      <p className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold/70">
+                        Session Notes
+                      </p>
+
+                      <p className="text-sm text-white/55">
+                        {completion.notes}
+                      </p>
+                    </div>
+                  )}
+
+                  {logs.map((log: any) => (
+                    <div
+                      key={log.id}
+                      className="rounded-[1rem] border border-white/[0.05] bg-black/30 p-3"
+                    >
                       <div className="mb-3 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="truncate text-base font-black text-white">
-                            {log.exercise_name}
-                          </h3>
 
-                          <p className="mt-0.5 text-xs text-white/35">
+                        <div>
+                          <h4 className="font-black text-white">
+                            {log.exercise_name}
+                          </h4>
+
+                          <p className="text-xs text-white/35">
                             {formatDateTime(log.created_at)}
                           </p>
                         </div>
@@ -1177,47 +1682,44 @@ const bodyweightChange =
                       </div>
 
                       <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                        {log.sets_completed?.map((set: any, index: number) => (
-                          <div
-                            key={index}
-                            className="grid grid-cols-3 gap-2 rounded-[0.85rem] border border-white/[0.045] bg-black/35 p-2.5 text-xs"
-                          >
-                            <p>
-                              <span className="block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
-                                Weight
-                              </span>
-                              <span className="font-bold text-white/80">
-                                {set.weight || "-"}kg
-                              </span>
-                            </p>
+                        {log.sets_completed?.map(
+                          (set: any, index: number) => (
+                            <div
+                              key={index}
+                              className="grid grid-cols-3 gap-2 rounded-[0.85rem] border border-white/[0.045] bg-black/35 p-2.5 text-xs"
+                            >
+                              <div>
+                                <p className="text-[9px] uppercase text-white/30">
+                                  Weight
+                                </p>
+                                <p>{set.weight || "-"}kg</p>
+                              </div>
 
-                            <p>
-                              <span className="block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
-                                Reps
-                              </span>
-                              <span className="font-bold text-white/80">
-                                {set.reps || "-"}
-                              </span>
-                            </p>
+                              <div>
+                                <p className="text-[9px] uppercase text-white/30">
+                                  Reps
+                                </p>
+                                <p>{set.reps || "-"}</p>
+                              </div>
 
-                            <p>
-                              <span className="block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
-                                RPE
-                              </span>
-                              <span className="font-bold text-white/80">
-                                {set.rpe || "-"}
-                              </span>
-                            </p>
-                          </div>
-                        ))}
+                              <div>
+                                <p className="text-[9px] uppercase text-white/30">
+                                  RPE
+                                </p>
+                                <p>{set.rpe || "-"}</p>
+                              </div>
+                            </div>
+                          )
+                        )}
                       </div>
 
                       {log.notes && (
                         <div className="mt-3 rounded-[0.95rem] border border-white/[0.05] bg-black/35 p-3">
                           <p className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold/70">
-                            Client notes
+                            Client Notes
                           </p>
-                          <p className="text-sm leading-5 text-white/55">
+
+                          <p className="text-sm text-white/55">
                             {log.notes}
                           </p>
                         </div>
@@ -1231,10 +1733,14 @@ const bodyweightChange =
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          </section>
-        )}
+              </details>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  </section>
+)}
 
         {activeTab === "videos" && (
           <section className={`${shellCard} p-4 sm:p-5`}>

@@ -1,25 +1,26 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { supabase } from "../lib/supabase";
+import { useState } from "react"
+import { supabase } from "../lib/supabase"
 
 export default function Home() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
 
   async function login(e: React.FormEvent) {
-    e.preventDefault();
+    e.preventDefault()
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
-    });
+    })
 
     if (error) {
-      alert(error.message);
-    } else {
-      window.location.href = "/dashboard";
+      alert(error.message)
+      return
     }
+
+    window.location.href = "/post-login"
   }
 
   return (
@@ -51,5 +52,5 @@ export default function Home() {
         </button>
       </form>
     </main>
-  );
+  )
 }

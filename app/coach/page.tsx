@@ -57,106 +57,6 @@ async function createTeamFeedPost(formData: FormData) {
   redirect("/coach?posted=true")
 }
 
-async function approvePBToTeamFeed(formData: FormData) {
-  "use server"
-
-  const pbId = String(formData.get("pbId") || "")
-  if (!pbId) return
-
-  const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "coach") return
-
-  const { data: pb } = await supabase
-    .from("exercise_pbs")
-    .select("id, user_id, exercise_name, pb_type, weight, reps, estimated_1rm")
-    .eq("id", pbId)
-    .single()
-
-  if (!pb) return
-
-  const { data: client } = await supabase
-    .from("clients")
-    .select("name")
-    .eq("user_id", pb.user_id)
-    .single()
-
-  const clientName = client?.name || "Team SMC lifter"
-
-  const pbLabel =
-    pb.pb_type === "heaviest"
-      ? "new heaviest lift"
-      : pb.pb_type === "estimated_1rm"
-        ? "new estimated 1RM"
-        : "new rep PB"
-
-  await supabase.from("team_feed_posts").insert({
-    title: `${clientName} hit a ${pbLabel}`,
-    body: `${clientName} just logged ${pb.weight}kg × ${pb.reps} on ${pb.exercise_name}. Estimated 1RM: ${pb.estimated_1rm}kg.`,
-    type: "PB",
-  })
-
-  await supabase
-    .from("exercise_pbs")
-    .update({
-      team_feed_status: "approved",
-      approved_at: new Date().toISOString(),
-      approved_by: user.id,
-    })
-    .eq("id", pbId)
-
-  revalidatePath("/dashboard")
-  revalidatePath("/coach")
-
-  redirect("/coach?posted=true")
-}
-
-async function dismissPBFromTeamFeed(formData: FormData) {
-  "use server"
-
-  const pbId = String(formData.get("pbId") || "")
-  if (!pbId) return
-
-  const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "coach") return
-
-  await supabase
-    .from("exercise_pbs")
-    .update({
-      team_feed_status: "dismissed",
-      approved_at: null,
-      approved_by: user.id,
-    })
-    .eq("id", pbId)
-
-  revalidatePath("/coach")
-}
-
 function formatDate(dateString: string) {
   const date = new Date(dateString)
   const day = date.getDate().toString().padStart(2, "0")
@@ -204,6 +104,7 @@ export default async function CoachDashboard({
       "id, user_id, exercise_name, pb_type, weight, reps, estimated_1rm, previous_best, created_at, team_feed_status"
     )
     .eq("team_feed_status", "pending")
+    .eq("pb_type", "estimated_1rm")
     .order("created_at", { ascending: false })
     .limit(10)
 
@@ -247,12 +148,11 @@ export default async function CoachDashboard({
   const pendingPBCount = pendingPBs?.length || 0
   const unreadMessageCount = unreadMessages || 0
 
-  const totalNewItems =
-    newVideoCount +
-    newLogCount +
-    newCheckInCount +
-    unreadMessageCount +
-    pendingPBCount
+  const reviewQueueCount =
+  newVideoCount + newLogCount + newCheckInCount
+
+const totalNewItems =
+  reviewQueueCount + unreadMessageCount + pendingPBCount
 
   videos?.forEach((video) => {
     if (!video.reviewed) {
@@ -369,9 +269,13 @@ const clientsNeedingAttention = coachAttentionItems.length
       .slice(0, 6) || []
 
   const missionTitle =
-    totalNewItems > 0
-      ? `${totalNewItems} items need your eyes`
-      : "All clear for now"
+  reviewQueueCount > 0
+    ? `${reviewQueueCount} review item${reviewQueueCount === 1 ? "" : "s"} need your eyes`
+    : pendingPBCount > 0
+      ? `${pendingPBCount} PB${pendingPBCount === 1 ? "" : "s"} pending approval`
+      : unreadMessageCount > 0
+        ? `${unreadMessageCount} unread message${unreadMessageCount === 1 ? "" : "s"}`
+        : "All clear for now"
 
   const missionSubtitle =
     clientsNeedingAttention > 0
@@ -410,32 +314,25 @@ const clientsNeedingAttention = coachAttentionItems.length
 
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
-                href="/coach/review"
-                className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] bg-smc-gold px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black shadow-[0_0_26px_rgba(212,175,55,0.34)] transition hover:brightness-110 active:scale-[0.98]"
-              >
-                Start Review
-              </Link>
-
-              <Link
-                href="/coach/calendar"
-                className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] border border-smc-gold/35 bg-black/42 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold backdrop-blur-md transition hover:border-smc-gold/60 hover:bg-smc-gold/10"
-              >
-                Calendar
-              </Link>
-
-              <Link
-                href="/coach/clients"
-                className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] border border-smc-gold/35 bg-black/42 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold backdrop-blur-md transition hover:border-smc-gold/60 hover:bg-smc-gold/10"
-              >
-                Clients
-              </Link>
-
-              <Link
-                href="/coach/clients/new"
-                className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] border border-white/[0.12] bg-black/42 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/76 backdrop-blur-md transition hover:border-smc-gold/40 hover:text-white"
-              >
-                Add Client
-              </Link>
+  href={
+    reviewQueueCount > 0
+      ? "/coach/review"
+      : pendingPBCount > 0
+        ? "/coach/pbs/review"
+        : unreadMessageCount > 0
+          ? "/coach/messages"
+          : "/coach/calendar"
+  }
+  className="inline-flex min-h-[36px] items-center justify-center rounded-[0.9rem] bg-smc-gold px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black shadow-[0_0_26px_rgba(212,175,55,0.34)] transition hover:brightness-110 active:scale-[0.98]"
+>
+  {reviewQueueCount > 0
+    ? "Start Review"
+    : pendingPBCount > 0
+      ? "Review PBs"
+      : unreadMessageCount > 0
+        ? "Open Messages"
+        : "Open Calendar"}
+</Link>
             </div>
           </div>
 
@@ -448,7 +345,7 @@ const clientsNeedingAttention = coachAttentionItems.length
                 Waiting
               </p>
               <p className="mt-1 text-xl font-black text-smc-gold">
-                {totalNewItems}
+                {reviewQueueCount}
               </p>
             </Link>
 
@@ -482,16 +379,17 @@ const clientsNeedingAttention = coachAttentionItems.length
             </Link>
 
             <Link
-              href="/coach/calendar"
-              className={`${innerCard} min-h-[68px] bg-black/50 transition hover:border-smc-gold/40`}
-            >
-              <p className="text-[8px] uppercase tracking-[0.18em] text-white/42">
-                Calendar
-              </p>
-              <p className="mt-1 text-xl font-black text-white">
-                {clientsNeedingAttention}
-              </p>
-            </Link>
+  href="/coach/pbs/review"
+  className={`${innerCard} min-h-[68px] bg-black/50 transition hover:border-smc-gold/40`}
+>
+  <p className="text-[8px] uppercase tracking-[0.18em] text-white/42">
+    PBs
+  </p>
+
+  <p className="mt-1 text-xl font-black text-white">
+    {pendingPBCount}
+  </p>
+</Link>
           </div>
         </div>
       </section>
@@ -502,119 +400,87 @@ const clientsNeedingAttention = coachAttentionItems.length
         </div>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-        <Link
-          href="/coach/review"
-          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
-        >
-          <div className="relative z-10">
+      <section className="relative overflow-hidden rounded-[1.25rem] border border-white/[0.06] bg-black p-3 shadow-[0_16px_38px_rgba(0,0,0,0.72)]">
+  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/50 to-transparent" />
+
+  <div className="relative z-10">
+    <div className="mb-3">
+      <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/85">
+        Review Centre
+      </p>
+
+      <h2 className="mt-1 text-base font-black text-white">
+        Action Queues
+      </h2>
+    </div>
+
+    <div className="grid gap-2 md:grid-cols-3">
+      <Link
+        href="/coach/review"
+        className={`${shellCard} block min-h-[96px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
+      >
+        <div className="relative z-10">
+          <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
+            Reviews
+          </p>
+
+          <h2 className="mt-1.5 text-2xl font-black text-white">
+            {reviewQueueCount}
+          </h2>
+
+          <p className="mt-1 text-[11px] leading-4 text-white/42">
+            {newLogCount} logs · {newVideoCount} videos · {newCheckInCount} check-ins
+          </p>
+        </div>
+      </Link>
+
+      <Link
+        href="/coach/pbs/review"
+        className={`${shellCard} block min-h-[96px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
+      >
+        <div className="relative z-10">
+          <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
+            PB Approvals
+          </p>
+
+          <h2 className="mt-1.5 text-2xl font-black text-white">
+            {pendingPBCount}
+          </h2>
+
+          <p className="mt-1 text-[11px] leading-4 text-white/42">
+            Estimated 1RM PBs awaiting community approval.
+          </p>
+        </div>
+      </Link>
+
+      <Link
+        href="/coach/messages"
+        className={`${shellCard} block min-h-[96px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
+      >
+        <div className="relative z-10 flex items-start justify-between gap-3">
+          <div>
             <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
-              Focus
+              Messages
             </p>
-            <h2 className="mt-1.5 text-sm font-black text-white">
-              Coaching Queue
+
+            <h2 className="mt-1.5 text-2xl font-black text-white">
+              <RealtimeUnreadMessageCount
+                initialCount={unreadMessageCount}
+                currentUserId={user.id}
+                mode="coach"
+                variant="number"
+              />
             </h2>
+
             <p className="mt-1 text-[11px] leading-4 text-white/42">
-              {newLogCount} logs · {newVideoCount} videos · {newCheckInCount}{" "}
-              check-ins
+              Unread coach messages.
             </p>
           </div>
-        </Link>
-
-        <Link
-          href="/coach/calendar"
-          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
-        >
-          <div className="relative z-10">
-            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
-              Calendar
-            </p>
-            <h2 className="mt-1.5 text-sm font-black text-white">
-              Coaching Tasks
-            </h2>
-            <p className="mt-1 text-[11px] leading-4 text-white/42">
-              Today, this week and who needs eyes.
-            </p>
-          </div>
-        </Link>
-
-        <Link
-          href="/coach/clients"
-          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
-        >
-          <div className="relative z-10">
-            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
-              Roster
-            </p>
-            <h2 className="mt-1.5 text-sm font-black text-white">
-              Client Hub
-            </h2>
-            <p className="mt-1 text-[11px] leading-4 text-white/42">
-              Search, filter and manage all clients.
-            </p>
-          </div>
-        </Link>
-
-        <Link
-          href="/coach/messages"
-          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
-        >
-          <div className="relative z-10 flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
-                Comms
-              </p>
-              <h2 className="mt-1.5 text-sm font-black text-white">Messages</h2>
-              <p className="mt-1 text-[11px] leading-4 text-white/42">
-                Keep support moving.
-              </p>
-            </div>
-
-            <div className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2 py-1 text-[10px] font-black text-smc-gold">
-  <RealtimeUnreadMessageCount
-    initialCount={unreadMessageCount}
-    currentUserId={user.id}
-    mode="coach"
-    variant="number"
-  />
-</div>
-          </div>
-        </Link>
-
-                <Link
-          href="/coach/programmes"
-          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
-        >
-          <div className="relative z-10">
-            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
-              Build
-            </p>
-            <h2 className="mt-1.5 text-sm font-black text-white">
-              Programming
-            </h2>
-            <p className="mt-1 text-[11px] leading-4 text-white/42">
-              Upload, edit and manage blocks.
-            </p>
-          </div>
-        </Link>
-
-        <Link
-          href="/coach/exercise-demos"
-          className={`${shellCard} block min-h-[92px] transition hover:border-smc-gold/35 hover:bg-white/[0.035]`}
-        >
-          <div className="relative z-10">
-            <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
-              Library
-            </p>
-            <h2 className="mt-1.5 text-sm font-black text-white">
-              Exercise Demos
-            </h2>
-            <p className="mt-1 text-[11px] leading-4 text-white/42">
-              Add, edit and manage exercise videos.
-            </p>
-          </div>
-        </Link>
-      </div>
+        </div>
+      </Link>
+    </div>
+  </div>
+</section>
 
       {coachAttentionItems.length > 0 && (
         <section className="relative overflow-hidden rounded-[1.25rem] border border-smc-gold/16 bg-black p-3 shadow-[0_16px_38px_rgba(0,0,0,0.72)]">

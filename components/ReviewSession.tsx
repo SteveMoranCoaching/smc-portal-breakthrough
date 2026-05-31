@@ -43,7 +43,31 @@ type SessionReviewItem = {
   videos: VideoItem[]
 }
 
-export default function ReviewSession({ items }: { items: SessionReviewItem[] }) {
+type CheckInReviewItem = {
+  type: "check-in"
+  id: string
+  user_id: string
+  clientId: string
+  clientName: string
+  created_at: string
+  bodyweight?: number | null
+  training_rating?: number | null
+  recovery_rating?: number | null
+  nutrition_rating?: number | null
+  cardio_steps?: string | null
+  notes?: string | null
+  coach_feedback?: string | null
+  feedback_seen?: boolean | null
+  attention?: any
+}
+
+type ReviewItem = SessionReviewItem | CheckInReviewItem
+
+export default function ReviewSession({
+  items,
+}: {
+  items: ReviewItem[]
+}) {
   const [reviewItems, setReviewItems] = useState(items)
   const [savingId, setSavingId] = useState("")
   const [message, setMessage] = useState("")
@@ -93,7 +117,7 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
     item: LogItem | VideoItem
     markReviewed: boolean
   }) {
-    if (!current) return
+    if (!current || current.type !== "session") return
 
     setSavingId(`${type}-${item.id}`)
     setMessage("")
@@ -128,7 +152,9 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
       setReviewItems((currentItems) =>
         currentItems
           .map((session) => {
-            if (session.id !== current.id) return session
+            if (session.id !== current.id || session.type !== "session") {
+              return session
+            }
 
             return {
               ...session,
@@ -142,18 +168,23 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
                   : session.videos,
             }
           })
-          .filter((session) => session.logs.length > 0 || session.videos.length > 0)
+          .filter(
+            (session) =>
+              session.type !== "session" ||
+              session.logs.length > 0 ||
+              session.videos.length > 0
+          )
       )
     }
   }
 
   async function markWholeSessionReviewed() {
-    if (!current) return
+    if (!current || current.type !== "session") return
 
     setSavingId("whole-session")
     setMessage("")
 
-    const logUpdates = current.logs.map((log) =>
+    const logUpdates = session.logs.map((log) =>
       supabase
         .from("workout_logs")
         .update({
@@ -164,7 +195,7 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
         .eq("id", log.id)
     )
 
-    const videoUpdates = current.videos.map((video) =>
+    const videoUpdates = session.videos.map((video) =>
       supabase
         .from("exercise_videos")
         .update({
@@ -209,6 +240,159 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
     )
   }
 
+  if (current.type === "check-in") {
+    const checkInFeedbackKey = `check-in-${current.id}`
+
+    const checkInFeedback =
+      feedbackById[checkInFeedbackKey] !== undefined
+        ? feedbackById[checkInFeedbackKey]
+        : current.coach_feedback || ""
+
+    function setCheckInFeedback(value: string) {
+      setFeedbackById((currentFeedback) => ({
+        ...currentFeedback,
+        [checkInFeedbackKey]: value,
+      }))
+    }
+
+    async function markCheckInReviewed() {
+      setSavingId(`check-in-${current.id}`)
+      setMessage("")
+
+      const { error } = await supabase
+        .from("check_ins")
+        .update({
+          reviewed: true,
+          coach_feedback: checkInFeedback,
+          feedback_seen: false,
+        })
+        .eq("id", current.id)
+
+      setSavingId("")
+
+      if (error) {
+        setMessage(`Save failed: ${error.message}`)
+        return
+      }
+
+      setReviewItems((items) => items.filter((item) => item.id !== current.id))
+      setMessage("Check-in reviewed.")
+    }
+
+    return (
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+        <p className="text-sm text-zinc-400">Check-In Review</p>
+
+        <h2 className="mt-1 text-2xl font-bold">{current.clientName}</h2>
+
+        <p className="mt-1 text-sm text-zinc-400">
+          Check-in · {formatDateTime(current.created_at)}
+        </p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-zinc-800 bg-black p-3">
+            <p className="text-xs uppercase text-zinc-500">Bodyweight</p>
+            <p className="mt-1 text-xl font-bold text-white">
+              {current.bodyweight ?? "-"}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-black p-3">
+            <p className="text-xs uppercase text-zinc-500">Recovery</p>
+            <p className="mt-1 text-xl font-bold text-white">
+              {current.recovery_rating ?? "-"} / 10
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-black p-3">
+            <p className="text-xs uppercase text-zinc-500">Training</p>
+            <p className="mt-1 text-xl font-bold text-white">
+              {current.training_rating ?? "-"} / 10
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-black p-3">
+            <p className="text-xs uppercase text-zinc-500">Nutrition</p>
+            <p className="mt-1 text-xl font-bold text-white">
+              {current.nutrition_rating ?? "-"} / 10
+            </p>
+          </div>
+        </div>
+
+        {current.cardio_steps && (
+          <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+              Steps / Cardio
+            </p>
+
+            <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-300">
+              {current.cardio_steps}
+            </p>
+          </div>
+        )}
+
+        {current.notes && (
+          <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
+              Check-in Notes
+            </p>
+
+            <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">
+              {current.notes}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-yellow-400">
+            Coach Feedback
+          </p>
+
+          <textarea
+            value={checkInFeedback}
+            onChange={(event) => setCheckInFeedback(event.target.value)}
+            rows={4}
+            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-yellow-500"
+            placeholder="Feedback for this check-in..."
+          />
+        </div>
+
+        {message && <p className="mt-4 text-sm text-zinc-400">{message}</p>}
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Link
+            href={`/coach/${current.clientId}?tab=check-ins`}
+            className="rounded-xl border border-zinc-700 px-4 py-2 text-center text-sm text-zinc-300 transition hover:border-yellow-500 hover:text-white"
+          >
+            Open client check-ins
+          </Link>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={skipSession}
+              disabled={savingId !== ""}
+              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 disabled:opacity-50"
+            >
+              Skip →
+            </button>
+
+            <button
+              onClick={markCheckInReviewed}
+              disabled={savingId !== ""}
+              className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+            >
+              {savingId === `check-in-${current.id}`
+                ? "Saving..."
+                : "Review Complete"}
+            </button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  const session = current as SessionReviewItem
+
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -216,7 +400,7 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
           <p className="text-sm text-zinc-400">Session 1 of {reviewItems.length}</p>
           <h2 className="mt-1 text-2xl font-bold">{current.clientName}</h2>
           <p className="mt-1 text-sm text-zinc-400">
-            {current.logs.length} logs · {current.videos.length} videos ·{" "}
+            {session.logs.length} logs · {session.videos.length} videos ·{" "}
             {formatDateTime(current.created_at)}
           </p>
         </div>
@@ -253,7 +437,7 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
                     Session Rating
                   </p>
                   <p className="mt-1 text-lg font-bold text-white">
-                    {current.completion?.session_rating || "-"}
+                    {session.completion?.session_rating || "-"}
                     <span className="ml-1 text-sm text-zinc-500">/10</span>
                   </p>
                 </div>
@@ -263,7 +447,7 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
                     Recovery
                   </p>
                   <p className="mt-1 text-lg font-bold text-white">
-                    {current.latestCheckIn?.recovery_rating || "-"}
+                    {session.latestCheckIn?.recovery_rating || "-"}
                     <span className="ml-1 text-sm text-zinc-500">/10</span>
                   </p>
                 </div>
@@ -273,43 +457,43 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
                     Training
                   </p>
                   <p className="mt-1 text-lg font-bold text-white">
-                    {current.latestCheckIn?.training_rating || "-"}
+                    {session.latestCheckIn?.training_rating || "-"}
                     <span className="ml-1 text-sm text-zinc-500">/10</span>
                   </p>
                 </div>
 
-                {current.attention && (
+                {session.attention && (
                   <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-red-300/70">
                       Attention Score
                     </p>
                     <p className="mt-1 text-lg font-bold text-red-300">
-                      {current.attention.score}
+                      {session.attention.score}
                     </p>
                   </div>
                 )}
               </div>
 
-              {current.completion?.notes && (
+              {session.completion?.notes && (
                 <div className="rounded-xl border border-zinc-800 bg-black/40 p-3">
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
                     Session Notes
                   </p>
                   <p className="whitespace-pre-wrap text-sm text-zinc-300">
-                    {current.completion.notes}
+                    {session.completion.notes}
                   </p>
                 </div>
               )}
             </div>
 
-            {current.attention?.flags?.length > 0 && (
+            {session.attention?.flags?.length > 0 && (
               <div className="w-full max-w-xs rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4">
                 <p className="text-[11px] font-black uppercase tracking-[0.22em] text-red-300">
                   Coach Attention
                 </p>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {current.attention.flags.map((flag: string) => (
+                  {session.attention.flags.map((flag: string) => (
                     <span
                       key={flag}
                       className="rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold capitalize text-red-200"
@@ -323,7 +507,58 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
           </div>
         </div>
 
-        {current.logs.map((log) => {
+        {session.videos.map((video) => {
+          const saving = savingId === `video-${video.id}`
+
+          return (
+            <div key={video.id} className="rounded-xl border border-zinc-800 bg-black p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
+                Video
+              </p>
+              <h3 className="mt-1 text-lg font-bold text-white">{video.exercise_name}</h3>
+
+              {video.signedUrl ? (
+                <video
+                  src={video.signedUrl}
+                  controls
+                  className="mt-3 max-h-[260px] w-full rounded-xl bg-black object-contain"
+                />
+              ) : (
+                <p className="mt-3 text-sm text-zinc-400">Video unavailable.</p>
+              )}
+
+              <textarea
+                value={getFeedbackValue("video", video)}
+                onChange={(event) => setFeedbackValue("video", video.id, event.target.value)}
+                rows={4}
+                className="mt-4 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-yellow-500"
+                placeholder={`Feedback for ${video.exercise_name} video...`}
+              />
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() =>
+                    saveItemFeedback({ type: "video", item: video, markReviewed: false })
+                  }
+                  disabled={saving}
+                  className="rounded-xl border border-yellow-500/40 px-4 py-2 text-sm font-semibold text-yellow-400 disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Save Feedback"}
+                </button>
+
+                <button
+                  onClick={() =>
+                    saveItemFeedback({ type: "video", item: video, markReviewed: true })
+                  }
+                  disabled={saving}
+                  className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Review Video"}
+                </button>
+              </div>
+            </div>
+          )
+        })}        {session.logs.map((log) => {
           const saving = savingId === `log-${log.id}`
 
           return (
@@ -385,58 +620,7 @@ export default function ReviewSession({ items }: { items: SessionReviewItem[] })
           )
         })}
 
-        {current.videos.map((video) => {
-          const saving = savingId === `video-${video.id}`
 
-          return (
-            <div key={video.id} className="rounded-xl border border-zinc-800 bg-black p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
-                Video
-              </p>
-              <h3 className="mt-1 text-lg font-bold text-white">{video.exercise_name}</h3>
-
-              {video.signedUrl ? (
-                <video
-                  src={video.signedUrl}
-                  controls
-                  className="mt-3 max-h-[520px] w-full rounded-xl bg-black object-contain"
-                />
-              ) : (
-                <p className="mt-3 text-sm text-zinc-400">Video unavailable.</p>
-              )}
-
-              <textarea
-                value={getFeedbackValue("video", video)}
-                onChange={(event) => setFeedbackValue("video", video.id, event.target.value)}
-                rows={4}
-                className="mt-4 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-yellow-500"
-                placeholder={`Feedback for ${video.exercise_name} video...`}
-              />
-
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <button
-                  onClick={() =>
-                    saveItemFeedback({ type: "video", item: video, markReviewed: false })
-                  }
-                  disabled={saving}
-                  className="rounded-xl border border-yellow-500/40 px-4 py-2 text-sm font-semibold text-yellow-400 disabled:opacity-50"
-                >
-                  {saving ? "Saving..." : "Save Feedback"}
-                </button>
-
-                <button
-                  onClick={() =>
-                    saveItemFeedback({ type: "video", item: video, markReviewed: true })
-                  }
-                  disabled={saving}
-                  className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
-                >
-                  {saving ? "Saving..." : "Review Video"}
-                </button>
-              </div>
-            </div>
-          )
-        })}
       </div>
 
       {message && <p className="mt-4 text-sm text-zinc-400">{message}</p>}

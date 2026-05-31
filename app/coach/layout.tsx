@@ -6,6 +6,28 @@ import GlobalMessageNotifications from "@/components/GlobalMessageNotifications"
 
 export const dynamic = "force-dynamic"
 
+function SidebarBadge({
+  count,
+  muted = false,
+}: {
+  count: number
+  muted?: boolean
+}) {
+  return (
+    <span
+      className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-black ${
+        muted
+          ? "border border-white/[0.08] bg-white/[0.04] text-white/45"
+          : count > 0
+            ? "border border-smc-gold/25 bg-smc-gold/15 text-smc-gold"
+            : "border border-white/[0.08] bg-white/[0.04] text-white/35"
+      }`}
+    >
+      {count}
+    </span>
+  )
+}
+
 export default async function CoachLayout({
   children,
 }: {
@@ -17,9 +39,7 @@ export default async function CoachLayout({
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    redirect("/login")
-  }
+  if (!user) redirect("/login")
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -35,58 +55,138 @@ export default async function CoachLayout({
     )
   }
 
+  const { count: unreadMessages } = await supabase
+    .from("messages")
+    .select("*", { count: "exact", head: true })
+    .neq("sender_id", user.id)
+    .eq("read_by_coach", false)
+
+  const { count: clientCount } = await supabase
+    .from("clients")
+    .select("*", { count: "exact", head: true })
+
+  const { count: videoCount } = await supabase
+    .from("exercise_videos")
+    .select("*", { count: "exact", head: true })
+    .eq("reviewed", false)
+
+  const { count: logCount } = await supabase
+    .from("workout_logs")
+    .select("*", { count: "exact", head: true })
+    .eq("reviewed", false)
+
+  const { count: checkInCount } = await supabase
+    .from("check_ins")
+    .select("*", { count: "exact", head: true })
+    .eq("reviewed", false)
+
+  const { count: pendingPBCount } = await supabase
+    .from("exercise_pbs")
+    .select("*", { count: "exact", head: true })
+    .eq("team_feed_status", "pending")
+    .eq("pb_type", "estimated_1rm")
+
+  const reviewQueueCount =
+    (videoCount || 0) + (logCount || 0) + (checkInCount || 0)
+
+  const navItems = [
+    { label: "Dashboard", href: "/coach", icon: "⌂" },
+    {
+      label: "Review Queue",
+      href: "/coach/review",
+      icon: "✓",
+      badge: reviewQueueCount,
+    },
+    {
+      label: "PB Approvals",
+      href: "/coach/pbs/review",
+      icon: "★",
+      badge: pendingPBCount || 0,
+    },
+    {
+      label: "Messages",
+      href: "/coach/messages",
+      icon: "✉",
+      badge: unreadMessages || 0,
+    },
+    {
+      label: "Clients",
+      href: "/coach/clients",
+      icon: "◉",
+      badge: clientCount || 0,
+      mutedBadge: true,
+    },
+    { label: "Programming", href: "/coach/programmes", icon: "▦" },
+    { label: "Calendar", href: "/coach/calendar", icon: "◷" },
+    { label: "Exercise Demos", href: "/coach/exercise-demos", icon: "▶" },
+  ]
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-black px-4 py-6 pb-28 text-white sm:px-6">
+    <main className="relative min-h-screen overflow-hidden bg-black text-white">
       <div className="pointer-events-none absolute inset-x-[-120px] top-[-180px] h-[420px] rounded-full bg-smc-gold/10 blur-[120px]" />
       <div className="pointer-events-none absolute right-[-120px] top-[260px] h-[320px] w-[320px] rounded-full bg-smc-gold/6 blur-[120px]" />
 
       <GlobalMessageNotifications currentUserId={user.id} />
 
-      <div className="relative z-10 mx-auto max-w-5xl space-y-6">
-        <header className="relative overflow-hidden rounded-[2rem] border border-smc-gold/18 bg-black shadow-[0_18px_44px_rgba(0,0,0,0.78)]">
-          <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),transparent_30%,rgba(212,175,55,0.045)_75%,transparent)]" />
-
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(212,175,55,0.14),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent)]" />
-
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/70 to-transparent" />
-
-          <div className="relative z-10 flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.34em] text-smc-gold">
-                SMC Coach
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1500px]">
+        <aside className="hidden w-[245px] shrink-0 border-r border-white/[0.06] bg-black/80 px-4 py-5 backdrop-blur-xl lg:block">
+          <div className="sticky top-5">
+            <div className="mb-6">
+              <p className="text-[10px] font-black uppercase tracking-[0.32em] text-smc-gold">
+                Steve Moran
               </p>
-
-              <h1 className="mt-1 text-[1.75rem] font-black tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.8)]">
-                Coach Portal
+              <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
+                Coaching
               </h1>
             </div>
 
-            <nav className="flex flex-wrap gap-2">
-              <Link
-                href="/coach"
-                className="inline-flex min-h-[42px] items-center justify-center rounded-full border border-white/[0.08] bg-black/38 px-5 py-2 text-sm font-semibold text-white/72 backdrop-blur-md transition hover:border-smc-gold/35 hover:bg-smc-gold/10 hover:text-white"
-              >
-                Dashboard
-              </Link>
+            <nav className="space-y-1.5">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="group flex min-h-[44px] items-center gap-3 rounded-2xl border border-transparent px-3 py-2 text-sm font-bold text-white/56 transition hover:border-smc-gold/25 hover:bg-smc-gold/[0.07] hover:text-white"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.035] text-sm text-smc-gold/80 transition group-hover:border-smc-gold/25 group-hover:bg-smc-gold/10">
+                    {item.icon}
+                  </span>
 
-              <Link
-                href="/coach/messages"
-                className="inline-flex min-h-[42px] items-center justify-center rounded-full border border-white/[0.08] bg-black/38 px-5 py-2 text-sm font-semibold text-white/72 backdrop-blur-md transition hover:border-smc-gold/35 hover:bg-smc-gold/10 hover:text-white"
-              >
-                Messages
-              </Link>
+                  <span>{item.label}</span>
 
-              <Link
-                href="/coach/review"
-                className="inline-flex min-h-[42px] items-center justify-center rounded-full bg-smc-gold px-5 py-2 text-sm font-black text-black shadow-[0_0_28px_rgba(212,175,55,0.28)] transition hover:brightness-110 active:scale-[0.98]"
-              >
-                Review
-              </Link>
+                  {typeof item.badge === "number" ? (
+                    <SidebarBadge count={item.badge} muted={item.mutedBadge} />
+                  ) : null}
+                </Link>
+              ))}
             </nav>
           </div>
-        </header>
+        </aside>
 
-        {children}
+        <section className="flex min-w-0 flex-1 flex-col px-4 py-5 pb-28 sm:px-6 lg:px-7 lg:pb-8">
+          <header className="mb-5 rounded-[1.5rem] border border-smc-gold/18 bg-black/78 p-4 shadow-[0_18px_44px_rgba(0,0,0,0.62)] backdrop-blur-xl lg:hidden">
+            <p className="text-[10px] font-black uppercase tracking-[0.32em] text-smc-gold">
+              SMC Coach
+            </p>
+
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
+              Coach Portal
+            </h1>
+
+            <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {navItems.slice(0, 5).map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="shrink-0 rounded-full border border-white/[0.08] bg-black/38 px-4 py-2 text-xs font-black text-white/70 backdrop-blur-md"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </header>
+
+          <div className="w-full">{children}</div>
+        </section>
       </div>
     </main>
   )

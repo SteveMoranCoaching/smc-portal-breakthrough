@@ -120,6 +120,23 @@ function estimateOneRM(weight: number, reps: number) {
   return Math.round(weight * (1 + reps / 30))
 }
 
+function isMainLift(exerciseName: string) {
+  const name = exerciseName.toLowerCase().trim()
+
+  return (
+    name === "squat" ||
+    name === "competition squat" ||
+    name === "comp squat" ||
+    name === "bench" ||
+    name === "bench press" ||
+    name === "competition bench press" ||
+    name === "comp bench" ||
+    name === "deadlift" ||
+    name === "competition deadlift" ||
+    name === "comp deadlift"
+  )
+}
+
 function formatLogDate(dateString?: string | null) {
   if (!dateString) return "No date"
 
@@ -284,18 +301,21 @@ function detectPBs({
     })
   }
 
-  if (bestCurrentEstimated.estimated1RM > previousBestEstimated) {
-    pbResults.push({
-      exerciseName,
-      type: "estimated_1rm",
-      weight: bestCurrentEstimated.weight,
-      reps: bestCurrentEstimated.reps,
-      estimated1RM: bestCurrentEstimated.estimated1RM,
-      previousBest: previousBestEstimated,
-      label: "New Estimated Max",
-      summary: `${bestCurrentEstimated.estimated1RM}kg estimated 1RM`,
-    })
-  }
+  if (
+  isMainLift(exerciseName) &&
+  bestCurrentEstimated.estimated1RM > previousBestEstimated
+) {
+  pbResults.push({
+    exerciseName,
+    type: "estimated_1rm",
+    weight: bestCurrentEstimated.weight,
+    reps: bestCurrentEstimated.reps,
+    estimated1RM: bestCurrentEstimated.estimated1RM,
+    previousBest: previousBestEstimated,
+    label: "New Estimated Max",
+    summary: `${bestCurrentEstimated.estimated1RM}kg estimated 1RM`,
+  })
+}
 
   return groupPBResults(
     pbResults.filter((pb, index, array) => {
@@ -1486,9 +1506,40 @@ setSaving(false)
           <h2 className="mt-3 text-3xl font-black tracking-tight text-white">
             PBs UNLOCKED
           </h2>
+
+          {biggestLift && (
+  <div className="mt-5 overflow-hidden rounded-[1.7rem] border border-smc-gold/30 bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.14),transparent_72%),#0a0a0a] p-5 text-left shadow-[0_0_40px_rgba(212,175,55,0.12)]">
+    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-smc-gold/75">
+      Biggest Lift Today
+    </p>
+
+    <h3 className="mt-2 text-2xl font-black text-white">
+      {biggestLift.exerciseName}
+    </h3>
+
+    <div className="mt-3 flex items-end justify-between gap-3">
+      <p className="text-4xl font-black leading-none text-white">
+        {biggestLift.weight}kg × {biggestLift.reps}
+      </p>
+
+      {biggestLift.previousBest &&
+      biggestLift.previousBest > 0 ? (
+        <div className="rounded-full border border-green-400/20 bg-green-400/10 px-3 py-1.5 text-sm font-black text-green-300">
+          ↑{" "}
+          {(
+            biggestLift.weight - biggestLift.previousBest
+          )
+            .toFixed(1)
+            .replace(".0", "")}
+          kg
+        </div>
+      ) : null}
+    </div>
+  </div>
+)}
         </div>
 
-        <div className="mt-5 space-y-2">
+        <div className="mt-4 space-y-2">
   {pbResults.map((pb, index) => {
     const progress =
       pb.previousBest && pb.previousBest > 0

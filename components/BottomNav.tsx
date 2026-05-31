@@ -7,9 +7,9 @@ import { supabase } from "@/lib/supabase"
 
 const navItems = [
   { label: "Home", href: "/dashboard", icon: "⌂" },
-  { label: "Workout", href: "/dashboard/workouts", icon: "＋" },
-  { label: "SMC", href: "/dashboard/smc-home", isCentre: true },
-  { label: "History", href: "/dashboard/history", icon: "↗" },
+  { label: "Workout", href: "/dashboard/workouts", icon: "✚" },
+  { label: "Community", href: "/dashboard/smc-home", icon: "SMC" },
+  { label: "History", href: "/dashboard/history", icon: "⟳" },
   { label: "Messages", href: "/dashboard/messages", icon: "✉" },
 ]
 
@@ -74,27 +74,6 @@ export default function BottomNav({
 
             const isMessages = item.href === "/dashboard/messages"
 
-            if (item.isCentre) {
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={isActive ? "page" : undefined}
-                  className="relative flex min-h-[50px] items-center justify-center rounded-[1.15rem] transition active:scale-[0.98]"
-                >
-                  <div
-                    className={`flex h-[52px] w-[52px] items-center justify-center rounded-full border text-[0.82rem] font-black tracking-[-0.04em] transition-all duration-200 ${
-                      isActive
-                        ? "border-smc-gold/45 bg-smc-gold/16 text-smc-gold shadow-[0_0_18px_rgba(212,175,55,0.18)]"
-                        : "border-smc-gold/30 bg-black/75 text-white shadow-[0_0_14px_rgba(212,175,55,0.10)]"
-                    }`}
-                  >
-                    SMC
-                  </div>
-                </Link>
-              )
-            }
-
             return (
               <Link
                 key={item.href}
@@ -103,7 +82,7 @@ export default function BottomNav({
                 className={`relative flex min-h-[44px] flex-col items-center justify-center rounded-[1.1rem] px-1.5 py-1.5 text-[10px] font-semibold transition-all duration-200 active:scale-[0.98] ${
                   isActive
                     ? "bg-[rgba(212,175,55,0.12)] text-smc-gold shadow-[inset_0_0_0_1px_rgba(212,175,55,0.18)]"
-                    : "text-smc-muted-soft hover:bg-white/[0.03] hover:text-white"
+                    : "text-white/80 hover:bg-white/[0.03] hover:text-white"
                 }`}
               >
                 {isMessages && liveUnreadMessages > 0 && (
@@ -112,17 +91,23 @@ export default function BottomNav({
                   </span>
                 )}
 
-                <span
-                  className={`text-[16px] leading-none transition ${
-                    isActive ? "scale-105 text-smc-gold" : ""
-                  }`}
-                >
-                  {item.icon}
-                </span>
+                <div className="flex h-[20px] items-center justify-center">
+  <span
+    className={`leading-none transition ${
+      item.icon === "SMC"
+  ? "text-[15px] font-black tracking-[-0.04em] text-smc-gold"
+        : item.label === "History"
+        ? "text-[18px]"
+        : "text-[16px]"
+    } ${isActive ? "scale-105 text-smc-gold" : ""}`}
+  >
+    {item.icon}
+  </span>
+</div>
 
-                <span className="mt-1 leading-none tracking-[-0.01em]">
-                  {item.label}
-                </span>
+               <span className="mt-1 leading-none tracking-[-0.01em]">
+  {item.label}
+</span>
 
                 <span
                   className={`mt-1 h-[2px] rounded-full transition-all ${

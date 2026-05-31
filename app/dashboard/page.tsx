@@ -525,6 +525,17 @@ export default async function Dashboard() {
   sessions,
 })
 
+const thisWeekAssigned = sessions.length
+
+const thisWeekCompleted = sessions.filter((session: any) =>
+  completedSessionIds.has(session.id)
+).length
+
+const thisWeekRemaining = Math.max(
+  thisWeekAssigned - thisWeekCompleted,
+  0
+)
+
   const primaryAction = unreadFeedbackCount
     ? "feedback"
     : checkInDue
