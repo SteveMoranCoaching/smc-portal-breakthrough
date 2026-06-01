@@ -1,67 +1,19 @@
-"use client"
+import { redirect } from "next/navigation"
+import { createSupabaseServerClient } from "@/lib/supabaseServer"
+import LoginForm from "@/components/LoginForm"
 
-import { useState } from "react"
-import { supabase } from "@/lib/supabase"
+export const dynamic = "force-dynamic"
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("")
-  const [message, setMessage] = useState("")
-  const [loading, setLoading] = useState(false)
+export default async function LoginPage() {
+  const supabase = await createSupabaseServerClient()
 
-  async function handleLogin() {
-    if (!email) {
-      setMessage("Please enter your email.")
-      return
-    }
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    setLoading(true)
-    setMessage("Sending magic link...")
-
-    const redirectUrl = `${window.location.origin}/auth/callback?next=/post-login`
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: redirectUrl,
-      },
-    })
-
-    if (error) {
-      setMessage(`Error: ${error.message}`)
-      setLoading(false)
-      return
-    }
-
-    setMessage("Magic link sent — check your email 📩")
-    setLoading(false)
+  if (user) {
+    redirect("/post-login")
   }
 
-  return (
-    <main className="min-h-screen bg-black flex items-center justify-center text-white">
-      <div className="w-full max-w-sm space-y-4 px-4">
-        <h1 className="text-2xl font-bold">Login</h1>
-
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 p-3"
-        />
-
-        <button
-          type="button"
-          onClick={handleLogin}
-          disabled={loading}
-          className="w-full rounded-lg bg-yellow-500 p-3 font-bold text-black disabled:opacity-50"
-        >
-          {loading ? "Sending..." : "Send login link"}
-        </button>
-
-        {message && (
-          <p className="text-center text-sm text-zinc-400">{message}</p>
-        )}
-      </div>
-    </main>
-  )
+  return <LoginForm />
 }

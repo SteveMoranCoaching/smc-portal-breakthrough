@@ -664,6 +664,19 @@ const thisWeekRemaining = Math.max(
               </span>
             </h1>
 
+            <form
+  action="/auth/sign-out"
+  method="post"
+  className="mt-3 flex justify-center"
+>
+  <button
+  type="submit"
+  className="inline-flex items-center rounded-full border border-white/[0.08] bg-black/25 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-smc-muted-soft transition hover:border-smc-gold/25 hover:text-smc-gold active:scale-[0.98]"
+>
+  Log Out
+</button>
+</form>
+
             <p className="mt-2 text-[13px] leading-5 text-smc-muted">
               {unreadFeedbackCount > 0
                 ? "Steve has fresh feedback waiting for you."
