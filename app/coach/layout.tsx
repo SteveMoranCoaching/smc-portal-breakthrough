@@ -164,13 +164,26 @@ export default async function CoachLayout({
 
         <section className="flex min-w-0 flex-1 flex-col px-4 py-5 pb-28 sm:px-6 lg:px-7 lg:pb-8">
           <header className="mb-5 rounded-[1.5rem] border border-smc-gold/18 bg-black/78 p-4 shadow-[0_18px_44px_rgba(0,0,0,0.62)] backdrop-blur-xl lg:hidden">
-            <p className="text-[10px] font-black uppercase tracking-[0.32em] text-smc-gold">
-              SMC Coach
-            </p>
+            <div className="flex items-start justify-between gap-3">
+  <div>
+    <p className="text-[10px] font-black uppercase tracking-[0.32em] text-smc-gold">
+      SMC Coach
+    </p>
 
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
-              Coach Portal
-            </h1>
+    <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
+      Coach Portal
+    </h1>
+  </div>
+
+  <form action="/auth/sign-out" method="post">
+    <button
+      type="submit"
+      className="rounded-full border border-white/[0.08] bg-black/25 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-white/60 transition hover:border-smc-gold/25 hover:text-smc-gold"
+    >
+      Log Out
+    </button>
+  </form>
+</div>
 
             <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {navItems.slice(0, 5).map((item) => (

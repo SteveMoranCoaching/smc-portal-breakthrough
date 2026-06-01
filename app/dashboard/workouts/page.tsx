@@ -110,6 +110,7 @@ export default async function WorkoutsPage() {
     { data: programmes, error: programmesError },
     { data: videos, error: videosError },
     { data: workoutLogs, error: workoutLogsError },
+    { data: sessionCompletions, error: sessionCompletionsError },
   ] = await Promise.all([
     supabase.from("clients").select("name").eq("user_id", user.id).single(),
 
@@ -152,9 +153,21 @@ export default async function WorkoutsPage() {
       `)
       .eq("user_id", user.id)
       .order("created_at", { ascending: false }),
+
+    supabase
+      .from("session_completions")
+      .select("id, session_id, completed, created_at")
+      .eq("user_id", user.id)
+      .eq("completed", true)
+      .order("created_at", { ascending: false }),
   ])
 
-  if (programmesError || videosError || workoutLogsError) {
+  if (
+    programmesError ||
+    videosError ||
+    workoutLogsError ||
+    sessionCompletionsError
+  ) {
     throw new Error("Workouts failed to load")
   }
 
@@ -171,17 +184,12 @@ export default async function WorkoutsPage() {
     ([weekA], [weekB]) => Number(weekA) - Number(weekB)
   )
 
-  const startOfWeek = getStartOfWeek()
-
-  const thisWeekLogs =
-    workoutLogs?.filter(
-      (log: any) =>
-        new Date(log.created_at).getTime() >= new Date(startOfWeek).getTime()
-    ) || []
-
-  const completedSessionIds = new Set(
-    thisWeekLogs.map((log: any) => log.session_id)
-  )
+  const completedSessionIds = new Set([
+    ...(sessionCompletions || []).map(
+      (completion: any) => completion.session_id
+    ),
+    ...(workoutLogs || []).map((log: any) => log.session_id),
+  ])
 
   const completedCount = sessions.filter((session: any) =>
     completedSessionIds.has(session.id)
