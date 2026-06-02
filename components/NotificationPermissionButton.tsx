@@ -122,14 +122,29 @@ export default function NotificationPermissionButton() {
   }
 
   if (permission === "granted") {
-    return (
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-3">
-        <div>
-          <p className="text-xs font-semibold text-gray-300">
-            Notifications enabled
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-800 bg-gray-950 px-4 py-3">
+      <div>
+        <p className="text-xs font-semibold text-gray-300">
+          Notifications enabled
+        </p>
+
+        {message && (
+          <p className="mt-1 text-[11px] text-gray-500">
+            {message}
           </p>
-          {message && <p className="mt-1 text-[11px] text-gray-500">{message}</p>}
-        </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 gap-2">
+        <button
+          type="button"
+          onClick={registerPushSubscription}
+          disabled={loading}
+          className="rounded-xl border border-yellow-400/30 bg-yellow-400/10 px-3 py-2 text-xs font-bold text-yellow-300 disabled:opacity-50"
+        >
+          {loading ? "Saving..." : "Save"}
+        </button>
 
         <button
           type="button"
@@ -139,8 +154,9 @@ export default function NotificationPermissionButton() {
           Test
         </button>
       </div>
-    )
-  }
+    </div>
+  )
+}
 
   if (permission === "denied") {
     return (
