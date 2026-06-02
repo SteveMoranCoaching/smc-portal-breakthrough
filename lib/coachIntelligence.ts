@@ -31,6 +31,34 @@ function isTuesdayOrLater() {
   return day >= 2
 }
 
+export function getFlagLabel(flag: CoachAttentionFlag) {
+  switch (flag) {
+    case "inactive":
+      return "Inactive 3+ days"
+
+    case "missing_check_in":
+      return "Missing check-in"
+
+    case "low_recovery":
+      return "Recovery ≤ 3/10"
+
+    case "missed_sessions":
+      return "Missed sessions"
+
+    case "unreviewed_logs":
+      return "Workout logs waiting"
+
+    case "unreviewed_videos":
+      return "Videos waiting"
+
+    case "incomplete_week":
+      return "Incomplete week"
+
+    default:
+      return flag
+  }
+}
+
 export function buildCoachAttentionItems({
   clients,
   workoutLogs,

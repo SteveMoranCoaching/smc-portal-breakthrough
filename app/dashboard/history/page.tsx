@@ -92,6 +92,54 @@ export default async function ExerciseHistoryPage() {
           </p>
         </div>
 
+        <section className="grid gap-3 sm:grid-cols-2">
+  <Link
+    href="/dashboard/history/feedback"
+    className={`${shellCard} block p-4`}
+  >
+    <div className="relative z-10">
+      <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-smc-gold">
+        Coach Feedback
+      </p>
+
+      <h2 className="mt-2 text-xl font-black text-white">
+        Feedback Hub
+      </h2>
+
+      <p className="mt-2 text-sm leading-6 text-white/55">
+        View all workout and video feedback from Steve in one place.
+      </p>
+
+      <p className="mt-3 text-[11px] font-semibold text-white/40">
+        Open feedback →
+      </p>
+    </div>
+  </Link>
+
+  <Link
+    href="/dashboard/achievements"
+    className={`${shellCard} block p-4`}
+  >
+    <div className="relative z-10">
+      <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-smc-gold">
+        Achievements
+      </p>
+
+      <h2 className="mt-2 text-xl font-black text-white">
+        Achievement Board
+      </h2>
+
+      <p className="mt-2 text-sm leading-6 text-white/55">
+        Track unlocked milestones, consistency wins and PB achievements.
+      </p>
+
+      <p className="mt-3 text-[11px] font-semibold text-white/40">
+        Open achievements →
+      </p>
+    </div>
+  </Link>
+</section>
+
         {exercises.length === 0 ? (
           <EmptyStateCard
             eyebrow="Exercise history"

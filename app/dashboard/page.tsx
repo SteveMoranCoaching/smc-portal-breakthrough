@@ -4,7 +4,10 @@ import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import FeedbackReadMarker from "@/components/FeedbackReadMarker"
 import PrefetchSession from "@/components/PrefetchSession"
-import LatestFeedbackCard from "@/components/LatestFeedbackCard"
+import MomentumCard from "@/components/MomentumCard"
+import WeeklySummaryCard from "@/components/WeeklySummaryCard"
+import ClosestAchievementsCard from "@/components/ClosestAchievementsCard"
+import { calculateAchievementProgress } from "@/lib/achievementProgress"
 
 export const dynamic = "force-dynamic"
 
@@ -393,7 +396,7 @@ export default async function Dashboard() {
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-    .limit(1)
+    .limit(20)
 
   const { data: thisWeeksCheckIns } = await supabase
     .from("check_ins")
@@ -410,6 +413,10 @@ export default async function Dashboard() {
   .eq("user_id", user.id)
   .order("created_at", { ascending: false })
 
+  const { data: achievementDefinitions } = await supabase
+  .from("achievement_definitions")
+  .select("*")
+
   const { data: achievements } = await supabase
     .from("user_achievements")
     .select(`
@@ -425,7 +432,6 @@ export default async function Dashboard() {
     `)
     .eq("user_id", user.id)
     .order("unlocked_at", { ascending: false })
-    .limit(4)
 
   const currentProgramme: any =
     programmes?.find((programme: any) => programme.is_active) || programmes?.[0]
@@ -443,6 +449,10 @@ export default async function Dashboard() {
     ) || []
 
   const completedSessionIds = new Set(
+    allWorkoutLogs.map((log: any) => log.session_id)
+  )
+
+  const thisWeekCompletedSessionIds = new Set(
     thisWeekLogs.map((log: any) => log.session_id)
   )
 
@@ -478,46 +488,16 @@ export default async function Dashboard() {
   const unreadFeedbackCount =
     unreadLogFeedbackIds.length + unreadVideoFeedbackIds.length
 
-  const latestLogFeedback =
-    allWorkoutLogs?.filter((log: any) => log.coach_feedback)?.[0] || null
-
-  const latestVideoFeedback =
-    videos?.filter((video: any) => video.feedback)?.[0] || null
-
-  const latestFeedbackItems = [
-    ...(latestLogFeedback
-      ? [
-          {
-            type: "Workout log",
-            exerciseName: latestLogFeedback.exercise_name,
-            feedback: latestLogFeedback.coach_feedback,
-            createdAt: latestLogFeedback.created_at,
-          },
-        ]
-      : []),
-    ...(latestVideoFeedback
-      ? [
-          {
-            type: "Video review",
-            exerciseName: latestVideoFeedback.exercise_name,
-            feedback: latestVideoFeedback.feedback,
-            createdAt: latestVideoFeedback.created_at,
-          },
-        ]
-      : []),
-  ]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-    .slice(0, 1)
-
   const hasCheckedInThisWeek = Boolean(thisWeeksCheckIns?.[0])
   const checkInDue = !hasCheckedInThisWeek
   const latestPB: any = latestPBs?.[0] || null
 
-  const unlockedAchievements = achievements || []
-  const latestAchievement: any = unlockedAchievements[0] || null
+  const unlockedCodes =
+  achievements?.map((achievement: any) => achievement.achievement_code) || []
+
+  const workoutCount = completedSessionIds.size
+const pbCount = latestPBs?.length || 0
+const checkInCount = allCheckIns?.length || 0
 
   const adherenceStreak = calculateAdherenceStreak({
   workoutLogs: allWorkoutLogs,
@@ -525,16 +505,82 @@ export default async function Dashboard() {
   sessions,
 })
 
-const thisWeekAssigned = sessions.length
+const currentWeekNumber =
+  currentProgramme?.week_number || sessions[0]?.week_number || 1
 
-const thisWeekCompleted = sessions.filter((session: any) =>
-  completedSessionIds.has(session.id)
+const thisWeekSessions = sessions.filter(
+  (session: any) =>
+    Number(session.week_number || 1) === Number(currentWeekNumber)
+)
+
+const thisWeekAssigned = thisWeekSessions.length
+
+const thisWeekCompleted = thisWeekSessions.filter((session: any) =>
+  thisWeekCompletedSessionIds.has(session.id)
 ).length
+
+const thisWeekPBs =
+  latestPBs?.filter(
+    (pb: any) =>
+      new Date(pb.created_at).getTime() >=
+      new Date(startOfWeek).getTime()
+  ) || []
 
 const thisWeekRemaining = Math.max(
   thisWeekAssigned - thisWeekCompleted,
   0
 )
+
+const momentumItems = [
+  {
+    label: "Logged activity this week",
+    complete: thisWeekLogs.length > 0,
+  },
+  {
+    label: "Submitted check-in",
+    complete: hasCheckedInThisWeek,
+  },
+  {
+    label: "Coach feedback reviewed",
+    complete: unreadFeedbackCount === 0,
+  },
+  {
+    label: "Completed all workouts",
+    complete:
+      thisWeekAssigned > 0 &&
+      thisWeekCompleted >= thisWeekAssigned,
+  },
+  {
+    label: "Maintained streak",
+    complete: adherenceStreak > 0,
+  },
+  {
+    label: "Hit a PB",
+    complete:
+      latestPB &&
+      new Date(latestPB.created_at).getTime() >=
+        new Date(startOfWeek).getTime(),
+  },
+]
+
+const momentumScore =
+  momentumItems.filter((item) => item.complete).length
+
+  const achievementProgress = calculateAchievementProgress({
+  definitions: achievementDefinitions || [],
+  unlockedCodes,
+  workoutCount,
+  pbCount,
+  checkInCount,
+})
+
+const closestAchievements = achievementProgress
+  .filter(
+    (achievement) =>
+      !achievement.unlocked && achievement.progress < 100
+  )
+  .sort((a, b) => b.progress - a.progress)
+  .slice(0, 3)
 
   const primaryAction = unreadFeedbackCount
     ? "feedback"
@@ -568,13 +614,8 @@ const thisWeekRemaining = Math.max(
     },
     {
   label: "Streak",
-  value: adherenceStreak > 0 ? `${adherenceStreak}` : "—",
-  sub:
-    adherenceStreak === 1
-      ? "perfect week"
-      : adherenceStreak > 1
-        ? "perfect weeks"
-        : "Complete all sessions + check-in",
+  value: adherenceStreak > 0 ? `${adherenceStreak}` : "-",
+  sub: adherenceStreak > 0 ? "Current streak" : "New streak building",
   icon: "flame" as const,
   href: "#streak",
   priority: adherenceStreak > 0 ? 3 : 9,
@@ -677,7 +718,7 @@ const thisWeekRemaining = Math.max(
 </button>
 </form>
 
-            <p className="mt-2 text-[13px] leading-5 text-smc-muted">
+            <p className="mt-1.5 text-[12px] leading-5 text-smc-muted">
               {unreadFeedbackCount > 0
                 ? "Steve has fresh feedback waiting for you."
                 : checkInDue
@@ -692,7 +733,7 @@ const thisWeekRemaining = Math.max(
         </div>
       </section>
 
-      <section className={`${glassCard} mt-0.5 p-3.5`}>
+      <section className={`${glassCard} mt-0.5 p-3`}>
         <div
           className="pointer-events-none absolute inset-y-0 right-0 w-[64%] bg-cover bg-center opacity-55"
           style={{
@@ -711,18 +752,18 @@ const thisWeekRemaining = Math.max(
                 <p className={labelStyle}>Priority</p>
               </div>
 
-              <h2 className="mt-2.5 text-[1.42rem] font-black tracking-[-0.04em] text-smc-text">
+              <h2 className="mt-2 text-[1.18rem] font-black tracking-[-0.04em] text-smc-text">
                 New Coach Feedback
               </h2>
 
-              <p className="mt-1 text-[13px] leading-5 text-smc-muted">
+              <p className="mt-1 text-[12px] leading-5 text-smc-muted">
                 {unreadFeedbackCount} new feedback item
                 {unreadFeedbackCount === 1 ? "" : "s"} waiting.
               </p>
 
               <Link
                 href="/dashboard/workouts"
-                className="mt-3 flex min-h-[40px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
+                className="mt-2.5 flex min-h-[34px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
               >
                 View Feedback <span className="ml-3 text-lg">→</span>
               </Link>
@@ -736,17 +777,17 @@ const thisWeekRemaining = Math.max(
                 <p className={labelStyle}>Priority</p>
               </div>
 
-              <h2 className="mt-2.5 text-[1.42rem] font-black tracking-[-0.04em] text-smc-text">
+              <h2 className="mt-2 text-[1.18rem] font-black tracking-[-0.04em] text-smc-text">
                 Weekly Check-In Due
               </h2>
 
-              <p className="mt-1 text-[13px] leading-5 text-smc-muted">
+              <p className="mt-1 text-[12px] leading-5 text-smc-muted">
                 Submit your weekly update so Steve can review your progress.
               </p>
 
               <Link
                 href="/dashboard/check-ins"
-                className="mt-3 flex min-h-[40px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
+                className="mt-2.5 flex min-h-[34px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
               >
                 Start Check-In <span className="ml-3 text-lg">→</span>
               </Link>
@@ -760,7 +801,7 @@ const thisWeekRemaining = Math.max(
                 <p className={labelStyle}>Next Workout</p>
               </div>
 
-              <h2 className="mt-2.5 text-[1.42rem] font-black tracking-[-0.04em] text-smc-text">
+              <h2 className="mt-2 text-[1.18rem] font-black tracking-[-0.04em] text-smc-text">
                 {nextWorkout.title}
               </h2>
 
@@ -782,7 +823,7 @@ const thisWeekRemaining = Math.max(
 
               <Link
                 href={`/dashboard/session/${nextWorkout.id}?programmeId=${currentProgramme.id}`}
-                className="mt-3 flex min-h-[40px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
+                className="mt-2.5 flex min-h-[34px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
               >
                 Start Workout <span className="ml-3 text-lg">→</span>
               </Link>
@@ -796,11 +837,11 @@ const thisWeekRemaining = Math.max(
                 <p className={labelStyle}>Current Status</p>
               </div>
 
-              <h2 className="mt-2.5 text-[1.42rem] font-black tracking-[-0.04em] text-smc-text">
+              <h2 className="mt-2 text-[1.18rem] font-black tracking-[-0.04em] text-smc-text">
                 Programme Pending
               </h2>
 
-              <p className="mt-1 text-[13px] leading-5 text-smc-muted">
+              <p className="mt-1 text-[12px] leading-4 text-smc-muted">
                 Your programme will appear here once it has been assigned.
               </p>
             </>
@@ -808,33 +849,41 @@ const thisWeekRemaining = Math.max(
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-2.5">
-        {dashboardStats.map((stat) => (
-          <Link key={stat.label} href={stat.href} className={`${glassCard} p-3`}>
-            <div className="relative z-10">
-              <div className="mb-2.5 flex items-center justify-between gap-2">
-                <p className="text-[8px] font-black uppercase tracking-[0.22em] text-smc-muted-soft">
-                  {stat.label}
-                </p>
+       <MomentumCard
+        score={momentumScore}
+        items={momentumItems}
+        />    
 
-                <span className="flex h-7 w-7 items-center justify-center rounded-full border border-smc-gold/20 bg-smc-gold/10 text-smc-gold">
-                  <Icon type={stat.icon} className="h-3.5 w-3.5" />
-                </span>
-              </div>
+      <section className="grid grid-cols-4 gap-2">
+  {dashboardStats.map((stat) => (
+    <Link
+      key={stat.label}
+      href={stat.href}
+      className={`${glassCard} flex min-h-[94px] items-center justify-center p-2 text-center`}
+    >
+      <div className="relative z-10">
+        <p className="text-[7px] font-black uppercase tracking-[0.18em] text-smc-muted-soft">
+          {stat.label}
+        </p>
 
-              <p className="text-[1.45rem] font-black tracking-[-0.055em] text-smc-text">
-                {stat.value}
-              </p>
+        <p className="mt-2 text-[1.05rem] font-black leading-tight tracking-[-0.045em] text-smc-text">
+          {stat.value}
+        </p>
 
-              <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 text-smc-muted">
-                {stat.sub}
-              </p>
-            </div>
-          </Link>
-        ))}
-      </section>
+        <p className="mt-1 line-clamp-3 text-[9px] leading-4 text-smc-muted">
+          {stat.sub}
+        </p>
+      </div>
+    </Link>
+  ))}
+</section>
 
-      <section className={`${glassCard} px-3.5 py-3`}>
+      <WeeklySummaryCard
+        workoutsCompleted={thisWeekCompleted}
+        pbCount={thisWeekPBs.length}
+      />
+
+      <section className={`${glassCard} px-3 py-2.5`}>
         <div className="relative z-10">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -849,7 +898,7 @@ const thisWeekRemaining = Math.max(
             </p>
           </div>
 
-          <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-black/70 ring-1 ring-[rgba(255,255,255,0.06)]">
+          <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-black/70 ring-1 ring-[rgba(255,255,255,0.06)]">
             <div
               className="h-full rounded-full bg-smc-gold shadow-[0_0_16px_rgba(212,175,55,0.5)] transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
@@ -880,7 +929,7 @@ const thisWeekRemaining = Math.max(
               {adherenceStreak === 1 ? "" : "s"}
             </h2>
 
-            <p className="mt-1 text-[13px] leading-5 text-smc-muted">
+            <p className="mt-1 text-[12px] leading-5 text-smc-muted">
               All assigned sessions completed plus weekly check-in submitted.
             </p>
           </div>
@@ -896,7 +945,7 @@ const thisWeekRemaining = Math.max(
           Streak ready to build.
         </p>
 
-        <p className="mt-1 text-[13px] leading-5 text-smc-muted">
+        <p className="mt-1 text-[12px] leading-5 text-smc-muted">
           Complete all assigned sessions and submit your weekly check-in to start a perfect week streak.
         </p>
       </div>
@@ -904,172 +953,8 @@ const thisWeekRemaining = Math.max(
   </div>
 </section>
 
-      {latestPB && (
-        <section className={`${glassCard} border-smc-gold/25 p-3.5`}>
-          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-smc-gold/10 blur-3xl" />
+      <ClosestAchievementsCard achievements={closestAchievements} />
 
-          <div className="relative z-10">
-            <div className="flex items-center gap-2.5">
-              <IconBubble type="trophy" subtle />
-              <p className={labelStyle}>Latest PB</p>
-            </div>
-
-            <div className="mt-2.5 flex items-end justify-between gap-3">
-              <div>
-                <h2 className="text-[1.15rem] font-black tracking-[-0.04em] text-smc-text">
-                  {latestPB.exercise_name}
-                </h2>
-
-                <p className="mt-1 text-[13px] text-smc-muted">
-                  {formatPBType(latestPB.pb_type)} ·{" "}
-                  {formatTimestamp(latestPB.created_at)}
-                </p>
-              </div>
-
-              <div className="text-right">
-                <p className="text-[1.7rem] font-black tracking-[-0.06em] text-smc-gold">
-                  {latestPB.weight}kg
-                </p>
-
-                <p className="text-xs text-smc-muted-soft">
-                  {latestPB.reps} rep{latestPB.reps === 1 ? "" : "s"}
-                </p>
-              </div>
-            </div>
-
-            <Link
-              href="/dashboard/pbs"
-              className="mt-2.5 flex items-center justify-center gap-3 text-sm font-black text-smc-gold"
-            >
-              View PB board <span className="text-lg">→</span>
-            </Link>
-          </div>
-        </section>
-      )}
-
-      <section className={`${glassCard} p-3.5`}>
-        <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-smc-gold/10 blur-3xl" />
-
-        <div className="relative z-10">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <IconBubble type="trophy" subtle />
-              <div>
-                <p className={labelStyle}>Achievements</p>
-                <h2 className="mt-1 text-[1.05rem] font-black tracking-[-0.035em] text-smc-text">
-                  Momentum Board
-                </h2>
-              </div>
-            </div>
-
-            <Link
-              href="/dashboard/pbs"
-              className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold"
-            >
-              PBs
-            </Link>
-          </div>
-
-          {latestAchievement ? (
-            <>
-              <div className="mt-3 rounded-[1.2rem] border border-smc-gold/25 bg-smc-gold/[0.07] p-3.5 shadow-[0_0_22px_rgba(212,175,55,0.08)]">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-smc-gold/30 bg-black/35 text-smc-gold">
-                    <Icon type="spark" className="h-4.5 w-4.5" />
-                  </span>
-
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
-                      Latest Unlock
-                    </p>
-
-                    <h3 className="mt-1 text-[0.98rem] font-black text-smc-text">
-                      {latestAchievement.achievement_definitions?.title ||
-                        "Achievement Unlocked"}
-                    </h3>
-
-                    <p className="mt-1 text-[13px] leading-5 text-smc-muted">
-                      {latestAchievement.achievement_definitions?.description ||
-                        "Another marker of progress ticked off."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {unlockedAchievements.slice(1, 4).map((achievement: any) => (
-                  <div
-                    key={achievement.id}
-                    className={`rounded-[1rem] border ${softBorder} bg-black/35 p-3`}
-                  >
-                    <p className="text-[13px] font-black text-smc-text">
-                      {achievement.achievement_definitions?.title ||
-                        "Achievement"}
-                    </p>
-
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-smc-muted-soft">
-                      {achievement.achievement_definitions?.description ||
-                        "Unlocked through training consistency."}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="mt-3 rounded-[1.2rem] border border-[rgba(255,255,255,0.07)] bg-black/35 p-3.5">
-              <p className="text-sm font-black text-smc-text">
-                No achievements unlocked yet.
-              </p>
-
-              <p className="mt-1 text-[13px] leading-5 text-smc-muted">
-                Log your first workout, hit a PB, or submit your first check-in
-                to start building your achievement board.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {latestFeedbackItems.length > 0 && (
-        <section className={`${glassCard} border-smc-gold/25 p-3.5`}>
-          <div className="relative z-10">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <IconBubble type="chat" subtle />
-                  <p className={labelStyle}>Latest Coach Feedback</p>
-                </div>
-
-                <p className="mt-2 text-[13px] text-zinc-300">
-                  Recent notes from Steve.
-                </p>
-              </div>
-
-              {unreadFeedbackCount > 0 && (
-                <span className="rounded-full bg-smc-gold px-3 py-1.5 text-xs font-black text-black shadow-[0_0_18px_rgba(212,175,55,0.25)]">
-                  {unreadFeedbackCount} NEW
-                </span>
-              )}
-            </div>
-
-            {latestFeedbackItems.map((item, index) => (
-  <LatestFeedbackCard
-    key={`${item.type}-${index}`}
-    item={item}
-    dateLabel={formatTimestamp(item.createdAt)}
-    softBorder={softBorder}
-  />
-))}
-
-            <Link
-              href="/dashboard/workouts"
-              className="mt-3 flex items-center justify-center gap-3 text-sm font-black text-smc-gold"
-            >
-              View workout feedback <span className="text-lg">→</span>
-            </Link>
-          </div>
-        </section>
-      )}
     </div>
   )
 }

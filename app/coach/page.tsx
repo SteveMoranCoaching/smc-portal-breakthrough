@@ -5,7 +5,10 @@ import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import CoachActivityFeed from "@/components/CoachActivityFeed"
 import RealtimeUnreadMessageCount from "@/components/RealtimeUnreadMessageCount"
 import { requireCoach } from "@/lib/authGuards"
-import { buildCoachAttentionItems } from "@/lib/coachIntelligence"
+import {
+  buildCoachAttentionItems,
+  getFlagLabel,
+} from "@/lib/coachIntelligence"
 
 export const dynamic = "force-dynamic"
 
@@ -308,6 +311,20 @@ const clientsNeedingAttention = coachAttentionItems.length
               {missionTitle}
             </h1>
 
+            {coachAttentionItems.length > 0 && (
+  <div className="mt-3 flex flex-wrap gap-2">
+    {coachAttentionItems.slice(0, 3).map((client) => (
+      <Link
+        key={client.clientId}
+        href={`/coach/${client.clientId}`}
+        className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-[10px] font-black text-red-300 transition hover:border-red-500/40"
+      >
+        {client.name} · {getFlagLabel(client.flags[0])}
+      </Link>
+    ))}
+  </div>
+)}
+
             <p className="mt-1.5 max-w-xl text-sm leading-6 text-white/64">
               {missionSubtitle}
             </p>
@@ -537,9 +554,16 @@ const clientsNeedingAttention = coachAttentionItems.length
                         </span>
                       </div>
 
-                      <p className="mt-1.5 text-[10px] text-white/34">
-  Attention score: {client.score}
-</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+  {client.flags?.map((flag: string) => (
+    <span
+      key={flag}
+      className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-300"
+    >
+      {flag}
+    </span>
+  ))}
+</div>
                     </div>
                   </div>
                 </Link>

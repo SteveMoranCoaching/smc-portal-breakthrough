@@ -6,26 +6,26 @@ export const dynamic = "force-dynamic"
 
 type AchievementDefinition = {
   id: string
-  key: string
+  code: string
   title: string
   description: string | null
   category: string | null
   icon: string | null
-  points: number | null
+  target_value: number | null
   created_at: string | null
 }
 
 type UserAchievement = {
   id: string
   user_id: string
-  achievement_key: string
+  achievement_code: string
   unlocked_at: string | null
 }
 
 const softBorder = "border-[rgba(255,255,255,0.08)]"
 
 const glassCard =
-  "relative overflow-hidden rounded-[1.75rem] border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] shadow-[0_18px_48px_rgba(0,0,0,0.68)]"
+  "relative overflow-hidden rounded-[1.45rem] border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] shadow-[0_14px_34px_rgba(0,0,0,0.66)]"
 
 const categoryLabels: Record<string, string> = {
   workouts: "Workouts",
@@ -43,7 +43,7 @@ function formatDate(date: string | null) {
   }).format(new Date(date))
 }
 
-function TrophyIcon({ className = "h-5 w-5" }: { className?: string }) {
+function TrophyIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path
@@ -78,7 +78,7 @@ function TrophyIcon({ className = "h-5 w-5" }: { className?: string }) {
   )
 }
 
-function LockIcon({ className = "h-5 w-5" }: { className?: string }) {
+function LockIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path
@@ -107,37 +107,37 @@ export default async function AchievementsPage() {
   if (!user) redirect("/login")
 
   const [{ data: definitions }, { data: unlockedRows }] = await Promise.all([
-    supabase
-      .from("achievement_definitions")
-      .select("*")
-      .order("category", { ascending: true })
-      .order("created_at", { ascending: true }),
+  supabase
+    .from("achievement_definitions")
+    .select("*")
+    .order("category", { ascending: true })
+    .order("display_order", { ascending: true }),
 
-    supabase
-      .from("user_achievements")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("unlocked_at", { ascending: false }),
-  ])
+  supabase
+    .from("user_achievements")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("unlocked_at", { ascending: false }),
+])
 
   const achievementDefinitions = (definitions || []) as AchievementDefinition[]
   const userAchievements = (unlockedRows || []) as UserAchievement[]
 
   const unlockedMap = new Map(
     userAchievements.map((achievement) => [
-      achievement.achievement_key,
+      achievement.achievement_code,
       achievement,
     ])
   )
 
   const unlockedCount = achievementDefinitions.filter((achievement) =>
-    unlockedMap.has(achievement.key)
+    unlockedMap.has(achievement.code)
   ).length
 
   const latestUnlock = userAchievements[0]
   const latestDefinition = latestUnlock
     ? achievementDefinitions.find(
-        (achievement) => achievement.key === latestUnlock.achievement_key
+        (achievement) => achievement.code === latestUnlock.achievement_code
       )
     : null
 
@@ -151,53 +151,53 @@ export default async function AchievementsPage() {
   }, {})
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#242018_0%,#090909_42%,#000_100%)] px-4 py-6 text-white">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#242018_0%,#090909_42%,#000_100%)] px-4 pb-28 pt-4 text-white">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
         <Link
           href="/dashboard"
-          className="text-xs font-semibold uppercase tracking-[0.22em] text-smc-gold/80"
+          className="text-[11px] font-semibold uppercase tracking-[0.22em] text-smc-gold/80"
         >
           ← Dashboard
         </Link>
 
-        <section className={`${glassCard} p-5 sm:p-7`}>
-          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-smc-gold/15 blur-3xl" />
+        <section className={`${glassCard} p-3.5`}>
+          <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-smc-gold/15 blur-3xl" />
 
-          <div className="relative z-10 flex flex-col gap-5">
+          <div className="relative z-10 flex flex-col gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-smc-gold">
+              <p className="text-[9px] font-bold uppercase tracking-[0.28em] text-smc-gold">
                 SMC Momentum
               </p>
-              <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">
+              <h1 className="mt-1 text-[1.55rem] font-black tracking-tight">
                 Achievements
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">
+              <p className="mt-1.5 max-w-2xl text-[11px] leading-5 text-white/50">
                 Track training consistency, PB milestones and check-in momentum
                 as your progress builds inside the portal.
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className={`rounded-3xl border ${softBorder} bg-black/28 p-4`}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/40">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className={`rounded-[1.15rem] border ${softBorder} bg-black/28 p-3`}>
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/40">
                   Unlocked
                 </p>
-                <p className="mt-2 text-3xl font-black text-smc-gold">
+                <p className="mt-1 text-2xl font-black text-smc-gold">
                   {unlockedCount}
-                  <span className="text-base text-white/35">
+                  <span className="text-sm text-white/35">
                     /{achievementDefinitions.length}
                   </span>
                 </p>
               </div>
 
-              <div className={`rounded-3xl border ${softBorder} bg-black/28 p-4`}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/40">
+              <div className={`rounded-[1.15rem] border ${softBorder} bg-black/28 p-3`}>
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/40">
                   Latest unlock
                 </p>
-                <p className="mt-2 text-lg font-black">
+                <p className="mt-1 text-base font-black">
                   {latestDefinition?.title || "Nothing unlocked yet"}
                 </p>
-                <p className="mt-1 text-xs text-white/45">
+                <p className="mt-1 text-[11px] text-white/45">
                   {latestUnlock
                     ? formatDate(latestUnlock.unlocked_at)
                     : "Complete a workout, hit a PB or submit a check-in."}
@@ -208,7 +208,7 @@ export default async function AchievementsPage() {
         </section>
 
         {achievementDefinitions.length === 0 ? (
-          <section className={`${glassCard} p-5 text-center`}>
+          <section className={`${glassCard} p-4 text-center`}>
             <p className="text-sm font-bold">No achievements found yet.</p>
             <p className="mt-2 text-xs text-white/45">
               Once definitions are added, they’ll appear here automatically.
@@ -216,13 +216,13 @@ export default async function AchievementsPage() {
           </section>
         ) : (
           Object.entries(groupedAchievements).map(([category, achievements]) => (
-            <section key={category} className="flex flex-col gap-3">
-              <div className="flex items-end justify-between px-1">
+            <section key={category} className="flex flex-col gap-2">
+              <div className="flex items-end justify-between px-1 pt-1">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-smc-gold">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-smc-gold">
                     Category
                   </p>
-                  <h2 className="text-xl font-black">
+                  <h2 className="text-[1.1rem] font-black">
                     {categoryLabels[category] ||
                       category.replaceAll("_", " ").replace(/\b\w/g, (char) =>
                         char.toUpperCase()
@@ -233,34 +233,34 @@ export default async function AchievementsPage() {
                 <p className="text-xs font-semibold text-white/40">
                   {
                     achievements.filter((achievement) =>
-                      unlockedMap.has(achievement.key)
+                      unlockedMap.has(achievement.code)
                     ).length
                   }
                   /{achievements.length}
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {achievements.map((achievement) => {
-                  const unlocked = unlockedMap.get(achievement.key)
+                  const unlocked = unlockedMap.get(achievement.code)
                   const isUnlocked = Boolean(unlocked)
 
                   return (
                     <article
-                      key={achievement.key}
-                      className={`relative overflow-hidden rounded-[1.5rem] border p-4 transition ${
+                      key={achievement.code}
+                      className={`relative overflow-hidden rounded-[1.15rem] border p-2.5 transition ${
                         isUnlocked
-                          ? "border-smc-gold/35 bg-[linear-gradient(180deg,rgba(212,175,55,0.16),rgba(255,255,255,0.035))] shadow-[0_16px_42px_rgba(212,175,55,0.08)]"
+                          ? "border-smc-gold/35 bg-[linear-gradient(180deg,rgba(212,175,55,0.16),rgba(255,255,255,0.035))] shadow-[0_12px_30px_rgba(212,175,55,0.08)]"
                           : "border-[rgba(255,255,255,0.06)] bg-black/24 opacity-55"
                       }`}
                     >
                       {isUnlocked && (
-                        <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-smc-gold/20 blur-2xl" />
+                        <div className="pointer-events-none absolute -right-10 -top-10 h-20 w-20 rounded-full bg-smc-gold/20 blur-2xl" />
                       )}
 
-                      <div className="relative z-10 flex items-start gap-3">
+                      <div className="relative z-10 flex items-start gap-2.5">
                         <div
-                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.9rem] border ${
                             isUnlocked
                               ? "border-smc-gold/35 bg-smc-gold/15 text-smc-gold"
                               : "border-white/10 bg-white/[0.03] text-white/35"
@@ -270,18 +270,18 @@ export default async function AchievementsPage() {
                         </div>
 
                         <div className="min-w-0">
-                          <h3 className="text-sm font-black leading-tight">
+                          <h3 className="text-[13px] font-black leading-tight">
                             {achievement.title}
                           </h3>
 
-                          <p className="mt-1 text-xs leading-5 text-white/48">
+                          <p className="mt-0.5 text-[10.5px] leading-4 text-white/45">
                             {achievement.description ||
                               "Keep building momentum to unlock this."}
                           </p>
 
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
                             <span
-                              className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${
+                              className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.16em] ${
                                 isUnlocked
                                   ? "border-smc-gold/30 bg-smc-gold/10 text-smc-gold"
                                   : "border-white/10 bg-white/[0.03] text-white/35"
@@ -291,7 +291,7 @@ export default async function AchievementsPage() {
                             </span>
 
                             {isUnlocked && (
-                              <span className="text-[11px] font-semibold text-white/45">
+                              <span className="text-[10.5px] font-semibold text-white/45">
                                 {formatDate(unlocked?.unlocked_at || null)}
                               </span>
                             )}
