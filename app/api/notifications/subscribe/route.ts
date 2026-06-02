@@ -2,47 +2,81 @@ import { NextResponse } from "next/server"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 
 export async function POST(request: Request) {
-  const supabase = await createSupabaseServerClient()
+  try {
+    const supabase = await createSupabaseServerClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
-  }
+    if (userError) {
+      return NextResponse.json(
+        { error: "User lookup failed", detail: userError.message },
+        { status: 500 }
+      )
+    }
 
-  const subscription = await request.json()
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+    }
 
-  const endpoint = subscription?.endpoint
-  const p256dh = subscription?.keys?.p256dh
-  const auth = subscription?.keys?.auth
+    const subscription = await request.json()
 
-  if (!endpoint || !p256dh || !auth) {
+    const endpoint = subscription?.endpoint
+    const p256dh = subscription?.keys?.p256dh
+    const auth = subscription?.keys?.auth
+
+    if (!endpoint || !p256dh || !auth) {
+      return NextResponse.json(
+        {
+          error: "Invalid subscription",
+          detail: {
+            hasEndpoint: Boolean(endpoint),
+            hasP256dh: Boolean(p256dh),
+            hasAuth: Boolean(auth),
+          },
+        },
+        { status: 400 }
+      )
+    }
+
+    const { data, error } = await supabase
+      .from("notification_subscriptions")
+      .upsert(
+        {
+          user_id: user.id,
+          endpoint,
+          p256dh,
+          auth,
+          user_agent: request.headers.get("user-agent"),
+        },
+        {
+          onConflict: "endpoint",
+        }
+      )
+      .select("id")
+      .single()
+
+    if (error) {
+      return NextResponse.json(
+        {
+          error: "Subscription insert failed",
+          detail: error.message,
+          code: error.code,
+        },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ success: true, id: data?.id })
+  } catch (error) {
     return NextResponse.json(
-      { error: "Invalid subscription" },
-      { status: 400 }
-    )
-  }
-
-  const { error } = await supabase
-    .from("notification_subscriptions")
-    .upsert(
       {
-        user_id: user.id,
-        endpoint,
-        p256dh,
-        auth,
-        user_agent: request.headers.get("user-agent"),
+        error: "Unexpected subscribe error",
+        detail: error instanceof Error ? error.message : String(error),
       },
-      {
-        onConflict: "endpoint",
-      }
+      { status: 500 }
     )
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
-  return NextResponse.json({ success: true })
 }
