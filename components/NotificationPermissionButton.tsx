@@ -38,11 +38,11 @@ export default function NotificationPermissionButton() {
   }, [])
 
   async function registerPushSubscription() {
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const keyResponse = await fetch("/api/notifications/public-key")
+const keyData = await keyResponse.json()
+const publicKey = keyData.publicKey
 
-console.log("NEXT_PUBLIC_VAPID_PUBLIC_KEY:", publicKey)
-
-  console.log("Public key:", publicKey)
+console.log("Public key:", publicKey)
 
   if (!publicKey) {
     setMessage("Missing VAPID public key.")
