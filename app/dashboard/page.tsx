@@ -8,6 +8,7 @@ import MomentumCard from "@/components/MomentumCard"
 import WeeklySummaryCard from "@/components/WeeklySummaryCard"
 import ClosestAchievementsCard from "@/components/ClosestAchievementsCard"
 import { calculateAchievementProgress } from "@/lib/achievementProgress"
+import NotificationPermissionButton from "@/components/NotificationPermissionButton"
 
 export const dynamic = "force-dynamic"
 
@@ -717,6 +718,8 @@ const closestAchievements = achievementProgress
   Log Out
 </button>
 </form>
+
+<NotificationPermissionButton />
 
             <p className="mt-1.5 text-[12px] leading-5 text-smc-muted">
               {unreadFeedbackCount > 0
