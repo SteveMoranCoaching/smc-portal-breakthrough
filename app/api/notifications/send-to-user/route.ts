@@ -58,6 +58,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
   success: true,
+  requestedUserId: userId,
   subscriptionCount: subscriptions?.length || 0,
   subscriptions,
   sent: results.filter((result) => result.status === "fulfilled").length,
