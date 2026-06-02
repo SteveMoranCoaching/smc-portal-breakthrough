@@ -57,8 +57,10 @@ export async function POST(request: Request) {
   )
 
   return NextResponse.json({
-    success: true,
-    sent: results.filter((result) => result.status === "fulfilled").length,
-    failed: results.filter((result) => result.status === "rejected").length,
-  })
+  success: true,
+  subscriptionCount: subscriptions?.length || 0,
+  subscriptions,
+  sent: results.filter((result) => result.status === "fulfilled").length,
+  failed: results.filter((result) => result.status === "rejected").length,
+})
 }
