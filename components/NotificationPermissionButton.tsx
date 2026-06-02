@@ -76,10 +76,13 @@ console.log("Public key:", publicKey)
     console.log("Response data:", data)
 
     if (!response.ok) {
-      throw new Error("Subscription failed")
-    }
+  setMessage(
+    data?.detail || data?.error || `Subscription failed: ${response.status}`
+  )
+  return
+}
 
-    setMessage("Notifications are enabled.")
+setMessage("Notifications are enabled.")
   } catch (error) {
     console.error(error)
     setMessage("Subscription failed.")
