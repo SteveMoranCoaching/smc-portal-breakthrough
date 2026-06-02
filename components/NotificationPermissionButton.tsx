@@ -40,6 +40,8 @@ export default function NotificationPermissionButton() {
   async function registerPushSubscription() {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
+console.log("NEXT_PUBLIC_VAPID_PUBLIC_KEY:", publicKey)
+
   console.log("Public key:", publicKey)
 
   if (!publicKey) {
