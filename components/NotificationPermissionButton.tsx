@@ -38,19 +38,26 @@ export default function NotificationPermissionButton() {
   }, [])
 
   async function registerPushSubscription() {
-    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
-    if (!publicKey) {
-      setMessage("Missing VAPID public key.")
-      return
-    }
+  console.log("Public key:", publicKey)
 
+  if (!publicKey) {
+    setMessage("Missing VAPID public key.")
+    return
+  }
+
+  try {
     const registration = await navigator.serviceWorker.register("/sw.js")
+
+    console.log("SW registered", registration)
 
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(publicKey),
     })
+
+    console.log("Subscription:", subscription)
 
     const response = await fetch("/api/notifications/subscribe", {
       method: "POST",
@@ -60,12 +67,22 @@ export default function NotificationPermissionButton() {
       body: JSON.stringify(subscription),
     })
 
+    console.log("Response status:", response.status)
+
+    const data = await response.json()
+
+    console.log("Response data:", data)
+
     if (!response.ok) {
       throw new Error("Subscription failed")
     }
 
     setMessage("Notifications are enabled.")
+  } catch (error) {
+    console.error(error)
+    setMessage("Subscription failed.")
   }
+}
 
   async function requestPermission() {
     if (typeof window === "undefined") return
