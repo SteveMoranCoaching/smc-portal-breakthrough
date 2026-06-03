@@ -1,0 +1,21 @@
+{
+  "name": "Steve Moran Coaching",
+  "short_name": "SMC Portal",
+  "start_url": "/post-login",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#d4af37",
+  "icons": [
+    {
+      "src": "/images/steve-avatar.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/images/steve-avatar.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}

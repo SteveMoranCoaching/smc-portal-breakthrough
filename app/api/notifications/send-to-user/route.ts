@@ -34,9 +34,31 @@ export async function POST(request: Request) {
   const isCoach = profile?.role === "coach"
   const sendingToSelf = user.id === userId
 
-  if (!isCoach && !sendingToSelf) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  let allowed = false
+
+if (isCoach) {
+  allowed = true
+}
+
+if (sendingToSelf) {
+  allowed = true
+}
+
+if (!isCoach && !sendingToSelf) {
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("coach_id")
+    .eq("user_id", user.id)
+    .single()
+
+  if (clientRow?.coach_id === userId) {
+    allowed = true
   }
+}
+
+if (!allowed) {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+}
 
   console.log(
   "SERVICE ROLE EXISTS:",
