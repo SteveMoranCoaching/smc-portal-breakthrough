@@ -159,6 +159,19 @@ export default async function CoachLayout({
                 </Link>
               ))}
             </nav>
+
+            <form action="/auth/sign-out" method="post" className="mt-6">
+  <button
+    type="submit"
+    className="flex min-h-[44px] w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-2 text-sm font-bold text-white/56 transition hover:border-red-500/25 hover:bg-red-500/[0.07] hover:text-white"
+  >
+    <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.035] text-sm text-red-400">
+      ↩
+    </span>
+
+    <span>Log Out</span>
+  </button>
+</form>
           </div>
         </aside>
 
