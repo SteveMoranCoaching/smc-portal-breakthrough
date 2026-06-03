@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import { sendPushNotification } from "@/lib/sendPushNotification"
+import { createClient } from "@supabase/supabase-js"
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
@@ -37,8 +38,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  const { data: subscriptions, error } = await supabase
-    .from("notification_subscriptions")
+  const adminSupabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+  const { data: subscriptions, error } = await adminSupabase
+  .from("notification_subscriptions")
     .select("endpoint, p256dh, auth")
     .eq("user_id", userId)
 
