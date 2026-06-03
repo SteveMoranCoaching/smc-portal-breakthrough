@@ -51,6 +51,26 @@ export default async function CoachReviewPage() {
     .order("created_at", { ascending: false })
     .limit(100)
 
+  const sessionIds = Array.from(
+    new Set([
+      ...(videos || []).map((video) => video.session_id),
+      ...(workoutLogs || []).map((log) => log.session_id),
+    ])
+  ).filter(Boolean)
+
+  const { data: programmeSessions } = await supabase
+    .from("programme_sessions")
+    .select("id, title, day, exercises, week_number")
+    .in("id", sessionIds)
+
+  const programmeSessionById = (programmeSessions || []).reduce(
+    (acc: Record<string, any>, session: any) => {
+      acc[session.id] = session
+      return acc
+    },
+    {}
+  )
+
   const { data: checkIns } = await supabase
   .from("check_ins")
   .select(
@@ -170,41 +190,60 @@ export default async function CoachReviewPage() {
         const completion = completionBySessionId[key]
         const latestCheckIn = latestCheckInByUserId[item.user_id]
         const attention = attentionByUserId[item.user_id]
+        const programmeSession = programmeSessionById[item.session_id]
 
         acc[key] = {
-          type: "session",
-          id: key,
-          session_id: item.session_id,
-          programme_id: item.programme_id,
-          user_id: item.user_id,
-          clientId: item.clientId,
-          clientName: item.clientName,
-          created_at: item.created_at,
-          completion: completion || null,
-          latestCheckIn: latestCheckIn || null,
-          attention: attention || null,
-          logs: [],
-          videos: [],
-        }
+  type: "session",
+  id: key,
+  session_id: item.session_id,
+  programme_id: item.programme_id,
+  user_id: item.user_id,
+  clientId: item.clientId,
+  clientName: item.clientName,
+  created_at: item.created_at,
+
+  session_title: programmeSession?.title || null,
+  session_day: programmeSession?.day || null,
+  week_number: programmeSession?.week_number || null,
+  prescribed_exercises: programmeSession?.exercises || [],
+
+  completion: completion || null,
+  latestCheckIn: latestCheckIn || null,
+  attention: attention || null,
+  logs: [],
+  videos: [],
+}
       }
 
       if (new Date(item.created_at) > new Date(acc[key].created_at)) {
         acc[key].created_at = item.created_at
       }
 
-      if (item.type === "log") acc[key].logs.push(item)
+            if (item.type === "log") acc[key].logs.push(item)
       if (item.type === "video") acc[key].videos.push(item)
 
       return acc
     }, {})
-  ).sort((a: any, b: any) => {
-    const scoreA = a.attention?.score || 0
-    const scoreB = b.attention?.score || 0
+  )
+    .map((session: any) => ({
+      ...session,
+      logs: session.logs.sort(
+        (a: any, b: any) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      ),
+      videos: session.videos.sort(
+        (a: any, b: any) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      ),
+    }))
+    .sort((a: any, b: any) => {
+      const scoreA = a.attention?.score || 0
+      const scoreB = b.attention?.score || 0
 
-    if (scoreB !== scoreA) return scoreB - scoreA
+      if (scoreB !== scoreA) return scoreB - scoreA
 
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  })
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
 
   return (
     <main className="min-h-screen bg-black p-6 text-white">

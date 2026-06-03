@@ -15,6 +15,28 @@ function formatDate(dateString: string) {
   })
 }
 
+function cleanFeedback(value: any) {
+  if (!value) return ""
+
+  if (Array.isArray(value)) {
+    return value.join("\n")
+  }
+
+  const asString = String(value)
+
+  try {
+    const parsed = JSON.parse(asString)
+
+    if (Array.isArray(parsed)) {
+      return parsed.join("\n")
+    }
+
+    return String(parsed)
+  } catch {
+    return asString
+  }
+}
+
 export default async function FeedbackHistoryPage() {
   const supabase = await createSupabaseServerClient()
 
@@ -27,18 +49,20 @@ export default async function FeedbackHistoryPage() {
   const [{ data: workoutLogs }, { data: videos }] = await Promise.all([
     supabase
       .from("workout_logs")
-      .select(
-        "id, exercise_name, sets_completed, coach_feedback, created_at"
-      )
+      .select("id, exercise_name, sets_completed, coach_feedback, created_at")
       .eq("user_id", user.id)
+      .eq("reviewed", true)
       .not("coach_feedback", "is", null)
+      .neq("coach_feedback", "")
       .order("created_at", { ascending: false }),
 
     supabase
       .from("exercise_videos")
       .select("id, exercise_name, feedback, created_at")
       .eq("user_id", user.id)
+      .eq("reviewed", true)
       .not("feedback", "is", null)
+      .neq("feedback", "")
       .order("created_at", { ascending: false }),
   ])
 
@@ -60,7 +84,7 @@ export default async function FeedbackHistoryPage() {
         type: "Workout Log",
         exerciseName: log.exercise_name,
         context: setSummary,
-        feedback: log.coach_feedback,
+        feedback: cleanFeedback(log.coach_feedback),
         createdAt: log.created_at,
       }
     }),
@@ -70,13 +94,15 @@ export default async function FeedbackHistoryPage() {
       type: "Video Review",
       exerciseName: video.exercise_name,
       context: "Video feedback",
-      feedback: video.feedback,
+      feedback: cleanFeedback(video.feedback),
       createdAt: video.created_at,
     })),
-  ].sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  )
+  ]
+    .filter((item) => item.feedback.trim().length > 0)
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
 
   return (
     <main className="min-h-screen bg-black px-4 pb-28 pt-6 text-white">

@@ -28,20 +28,27 @@ type VideoItem = {
 }
 
 type SessionReviewItem = {
-  type: "session"
-  id: string
-  session_id: string
-  programme_id: string
-  user_id: string
-  clientId: string
-  clientName: string
-  created_at: string
-  completion?: any
-  latestCheckIn?: any
-  attention?: any
-  logs: LogItem[]
-  videos: VideoItem[]
+type: "session"
+id: string
+session_id: string
+programme_id: string
+user_id: string
+clientId: string
+clientName: string
+created_at: string
+
+session_title?: string | null
+session_day?: string | null
+week_number?: number | null
+prescribed_exercises?: any[] | null
+
+completion?: any
+latestCheckIn?: any
+attention?: any
+logs: LogItem[]
+videos: VideoItem[]
 }
+
 
 type CheckInReviewItem = {
   type: "check-in"
@@ -75,6 +82,13 @@ export default function ReviewSession({
 
   const current = reviewItems[0]
 
+    function scrollReviewToTop() {
+requestAnimationFrame(() => {
+window.scrollTo(0, 0)
+})
+}
+
+
   function formatDateTime(dateString: string) {
     return new Date(dateString).toLocaleString("en-GB", {
       day: "2-digit",
@@ -91,6 +105,19 @@ export default function ReviewSession({
   function formatFlag(flag: string) {
     return flag.replaceAll("_", " ")
   }
+
+  function getPrescriptionForExercise(exerciseName: string) {
+if (!current || current.type !== "session") return ""
+
+const prescribedExercise = current.prescribed_exercises?.find(
+(exercise: any) =>
+exercise.name?.toLowerCase().trim() ===
+exerciseName.toLowerCase().trim()
+)
+
+return prescribedExercise?.prescription || ""
+}
+
 
   function getFeedbackValue(type: "log" | "video", item: LogItem | VideoItem) {
     const key = `${type}-${item.id}`
@@ -175,6 +202,8 @@ export default function ReviewSession({
               session.videos.length > 0
           )
       )
+
+      scrollReviewToTop()
     }
   }
 
@@ -217,11 +246,20 @@ export default function ReviewSession({
 
     setReviewItems((items) => items.filter((item) => item.id !== current.id))
     setMessage("Session reviewed.")
+    scrollReviewToTop()
   }
 
   function skipSession() {
-    setReviewItems((items) => [...items.slice(1), items[0]])
-  }
+  setReviewItems((items) => {
+    const updated = [...items.slice(1), items[0]]
+
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0)
+    })
+
+    return updated
+  })
+}
 
   if (!current) {
     return (
@@ -277,6 +315,7 @@ export default function ReviewSession({
 
       setReviewItems((items) => items.filter((item) => item.id !== current.id))
       setMessage("Check-in reviewed.")
+      scrollReviewToTop()
     }
 
     return (
@@ -567,6 +606,23 @@ export default function ReviewSession({
                 Workout Log
               </p>
               <h3 className="mt-1 text-lg font-bold text-white">{log.exercise_name}</h3>
+
+              {getPrescriptionForExercise(log.exercise_name) && (
+
+  <div className="mt-3 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3">
+    <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
+      Prescribed
+    </p>
+
+```
+<p className="mt-1 text-sm font-semibold text-white">
+  {getPrescriptionForExercise(log.exercise_name)}
+</p>
+```
+
+  </div>
+)}
+
 
               <div className="mt-3 space-y-2">
                 {log.sets_completed?.map((set, index) => (
