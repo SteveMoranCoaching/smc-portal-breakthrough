@@ -32,7 +32,13 @@ export default async function PreviewSessionPage({
     .eq("id", sessionId)
     .maybeSingle()
 
-  if (sessionError || !session) notFound()
+  if (sessionError || !session) {
+  return (
+    <pre className="text-white p-4">
+      Session ID: {sessionId}
+    </pre>
+  )
+}
 
   const { data: programme } = await supabase
     .from("programmes")

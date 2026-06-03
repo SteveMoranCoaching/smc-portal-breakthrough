@@ -127,7 +127,7 @@ export default async function SessionPage({
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <Link
-            href={`/dashboard/workouts/preview/${matchedSession.id}`}
+            href={`/dashboard/workouts/${matchedSession.id}/preview`}
             className="inline-flex min-h-[40px] w-fit items-center gap-2 rounded-full border border-smc-gold/15 bg-smc-gold/[0.06] px-3 py-2 text-xs font-black text-smc-gold transition hover:border-smc-gold/30 hover:bg-smc-gold/10 active:scale-[0.98]"
           >
             ← Preview
