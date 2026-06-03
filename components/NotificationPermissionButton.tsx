@@ -10,7 +10,7 @@ function urlBase64ToUint8Array(base64String: string) {
   const rawData = window.atob(base64)
   const outputArray = new Uint8Array(rawData.length)
 
-  for (let i = 0; i < rawData.length; ++i) {
+  for (let i = 0; i < rawData.length; i += 1) {
     outputArray[i] = rawData.charCodeAt(i)
   }
 
@@ -34,11 +34,15 @@ export default function NotificationPermissionButton() {
 
       setPermission(Notification.permission as PermissionState)
 
-      const registration = await navigator.serviceWorker.getRegistration("/sw.js")
-      const existingSubscription =
-        await registration?.pushManager.getSubscription()
+      try {
+        const registration = await navigator.serviceWorker.getRegistration("/sw.js")
+        const existingSubscription =
+          await registration?.pushManager.getSubscription()
 
-      setSubscribed(Boolean(existingSubscription))
+        setSubscribed(Boolean(existingSubscription))
+      } catch {
+        setSubscribed(false)
+      }
     }
 
     checkStatus()
@@ -80,7 +84,9 @@ export default function NotificationPermissionButton() {
       const data = await response.json()
 
       if (!response.ok) {
-        setMessage(data?.detail || data?.error || "Notifications could not be enabled.")
+        setMessage(
+          data?.detail || data?.error || "Notifications could not be enabled."
+        )
         return
       }
 
@@ -126,9 +132,17 @@ export default function NotificationPermissionButton() {
         await subscription.unsubscribe()
       }
 
-      await fetch("/api/notifications/unsubscribe", {
+      const response = await fetch("/api/notifications/unsubscribe", {
         method: "POST",
       })
+
+      if (!response.ok) {
+        const data = await response.json()
+        setMessage(
+          data?.detail || data?.error || "Notifications could not be disabled."
+        )
+        return
+      }
 
       setSubscribed(false)
       setMessage("")
@@ -141,16 +155,26 @@ export default function NotificationPermissionButton() {
 
   if (permission === "unsupported") {
     return (
-      <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-xs text-white/45">
-        Notifications are available from the Home Screen app.
+      <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+        <p className="text-xs font-black text-white/70">
+          Notifications unavailable
+        </p>
+        <p className="mt-1 text-[11px] leading-4 text-white/45">
+          Notifications are available from the Home Screen app.
+        </p>
       </div>
     )
   }
 
   if (permission === "denied") {
     return (
-      <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-xs text-white/45">
-        Notifications are blocked in this browser.
+      <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+        <p className="text-xs font-black text-white/70">
+          Notifications blocked
+        </p>
+        <p className="mt-1 text-[11px] leading-4 text-white/45">
+          Enable notifications in your device settings to receive SMC alerts.
+        </p>
       </div>
     )
   }
@@ -159,18 +183,25 @@ export default function NotificationPermissionButton() {
     return (
       <div className="flex items-center justify-between gap-3 rounded-[1.25rem] border border-smc-gold/20 bg-smc-gold/[0.06] px-4 py-3">
         <div>
-          <p className="text-xs font-black text-white">Notifications Enabled</p>
-          <p className="mt-1 text-[11px] text-white/45">
+          <p className="text-xs font-black text-white">
+            Notifications Enabled
+          </p>
+          <p className="mt-1 text-[11px] leading-4 text-white/45">
             SMC alerts are active on this device.
           </p>
-          {message && <p className="mt-1 text-[11px] text-white/45">{message}</p>}
+
+          {message && (
+            <p className="mt-1 text-[11px] leading-4 text-white/45">
+              {message}
+            </p>
+          )}
         </div>
 
         <button
           type="button"
           onClick={disableNotifications}
           disabled={loading}
-          className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs font-bold text-white/70 disabled:opacity-50"
+          className="shrink-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs font-bold text-white/70 transition active:scale-[0.98] disabled:opacity-50"
         >
           {loading ? "..." : "Disable"}
         </button>
@@ -188,10 +219,16 @@ export default function NotificationPermissionButton() {
       <p className="text-xs font-black text-smc-gold">
         {loading ? "Enabling..." : "Enable Notifications"}
       </p>
-      <p className="mt-1 text-[11px] text-white/45">
+
+      <p className="mt-1 text-[11px] leading-4 text-white/45">
         Get message alerts, coach feedback and check-in reminders.
       </p>
-      {message && <p className="mt-1 text-[11px] text-white/45">{message}</p>}
+
+      {message && (
+        <p className="mt-1 text-[11px] leading-4 text-white/45">
+          {message}
+        </p>
+      )}
     </button>
   )
 }

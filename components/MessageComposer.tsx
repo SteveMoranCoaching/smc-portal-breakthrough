@@ -57,6 +57,54 @@ export default function MessageComposer({
     )}px`
   }, [body])
 
+  function getMessagePreview({
+    messageBody,
+    attachmentType,
+    attachmentName,
+  }: {
+    messageBody: string
+    attachmentType: string | null
+    attachmentName: string | null
+  }) {
+    if (messageBody.trim()) return messageBody.trim()
+    if (attachmentType === "image") return "Sent an image"
+    if (attachmentType === "video") return "Sent a video"
+    if (attachmentName) return `Sent ${attachmentName}`
+
+    return "Sent an attachment"
+  }
+
+  async function sendMessagePushNotification({
+    messageBody,
+    attachmentType,
+    attachmentName,
+  }: {
+    messageBody: string
+    attachmentType: string | null
+    attachmentName: string | null
+  }) {
+    const preview = getMessagePreview({
+      messageBody,
+      attachmentType,
+      attachmentName,
+    })
+
+    await fetch("/api/notifications/send-to-user", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: recipientId,
+        title: "New SMC message",
+        body: preview,
+        url: isCoach
+          ? "/dashboard/messages"
+          : `/coach/messages/${clientUserId}`,
+      }),
+    })
+  }
+
   function handleBodyChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const value = event.target.value
     setBody(value)
@@ -168,6 +216,14 @@ export default function MessageComposer({
         setError(`Message failed: ${messageError.message}`)
         return
       }
+
+      sendMessagePushNotification({
+        messageBody: trimmedBody,
+        attachmentType,
+        attachmentName,
+      }).catch((notificationError) => {
+        console.error("Message push notification failed:", notificationError)
+      })
 
       setBody("")
       clearFile()
