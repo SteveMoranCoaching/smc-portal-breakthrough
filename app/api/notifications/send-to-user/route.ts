@@ -38,6 +38,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
+  console.log(
+  "SERVICE ROLE EXISTS:",
+  !!process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
   const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
