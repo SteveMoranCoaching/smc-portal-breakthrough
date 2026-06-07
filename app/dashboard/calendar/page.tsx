@@ -115,6 +115,7 @@ function ActivityDot({
   activity,
 }: {
   activity?: {
+    planned: boolean
     workout: boolean
     checkIn: boolean
     pb: boolean

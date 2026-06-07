@@ -75,7 +75,7 @@ const currentWeekNumber = Number(body.weekNumber || 1)
     planned_order: Number(item.dayIndex) + 1,
   }
 })
-  .filter((row) => row !== null)
+  .filter(Boolean)
 
   if (rows.length > 0) {
     const { error: insertError } = await supabase
