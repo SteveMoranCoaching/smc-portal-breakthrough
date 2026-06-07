@@ -4,6 +4,7 @@ import EmptyStateCard from "@/components/ui/EmptyStateCard"
 import FeedbackReadMarker from "@/components/FeedbackReadMarker"
 import StartWorkoutButton from "@/components/StartWorkoutButton"
 import PrefetchSession from "@/components/PrefetchSession"
+import WeeklyWorkoutPlanner from "@/components/WeeklyWorkoutPlanner"
 
 export const dynamic = "force-dynamic"
 
@@ -74,6 +75,42 @@ function sortProgrammeSessions(sessions: any[]) {
 
     return getDayOrder(a.day) - getDayOrder(b.day)
   })
+}
+
+function getEffectiveWeekNumber({
+  programmeWeekNumber,
+  sessions,
+  completedSessionIds,
+}: {
+  programmeWeekNumber: number
+  programmeCreatedAt?: string | null
+  sessions: any[]
+  completedSessionIds: Set<string>
+}) {
+  const weeks = Array.from(
+    new Set(sessions.map((session: any) => Number(session.week_number || 1)))
+  ).sort((a, b) => a - b)
+
+  if (!weeks.length) return programmeWeekNumber || 1
+
+  const maxWeek = weeks[weeks.length - 1]
+  let effectiveWeek = programmeWeekNumber || weeks[0]
+
+  const currentWeekSessions = sessions.filter(
+    (session: any) => Number(session.week_number || 1) === effectiveWeek
+  )
+
+  const currentWeekComplete =
+    currentWeekSessions.length > 0 &&
+    currentWeekSessions.every((session: any) =>
+      completedSessionIds.has(session.id)
+    )
+
+  if (currentWeekComplete && effectiveWeek < maxWeek) {
+    effectiveWeek += 1
+  }
+
+  return Math.min(effectiveWeek, maxWeek)
 }
 
 function groupSessionsByWeek(sessions: any[]) {
@@ -178,18 +215,52 @@ export default async function WorkoutsPage() {
     currentProgramme?.programme_sessions || []
   )
 
+  const startOfWeek = getStartOfWeek()
+const endOfWeekDate = new Date(startOfWeek)
+endOfWeekDate.setDate(endOfWeekDate.getDate() + 7)
+const endOfWeek = endOfWeekDate.toISOString()
+
+const completedSessionIds = new Set(
+  (sessionCompletions || []).map(
+    (completion: any) => completion.session_id
+  )
+)
+
+const { data: existingWeeklySchedule } = await supabase
+  .from("client_weekly_session_schedule")
+  .select("id, session_id, planned_date, planned_order, week_number")
+  .eq("user_id", user.id)
+  .eq("programme_id", currentProgramme?.id || "")
+  .gte("planned_date", startOfWeek)
+  .lt("planned_date", endOfWeek)
+  .order("planned_order", { ascending: true })
+
+const scheduledWeekNumber =
+  existingWeeklySchedule?.[0]?.week_number
+    ? Number(existingWeeklySchedule[0].week_number)
+    : null
+
+const plannerWeekNumber = getEffectiveWeekNumber({
+  programmeWeekNumber: Number(
+    scheduledWeekNumber ||
+      currentProgramme?.week_number ||
+      sessions[0]?.week_number ||
+      1
+  ),
+  programmeCreatedAt: currentProgramme?.created_at,
+  sessions,
+  completedSessionIds,
+})
+
+const weeklySchedule = (existingWeeklySchedule || []).filter(
+  (item: any) => Number(item.week_number || 1) === Number(plannerWeekNumber)
+)
+
   const sessionsByWeek = groupSessionsByWeek(sessions)
 
   const weekEntries = Object.entries(sessionsByWeek).sort(
     ([weekA], [weekB]) => Number(weekA) - Number(weekB)
   )
-
-  const completedSessionIds = new Set([
-    ...(sessionCompletions || []).map(
-      (completion: any) => completion.session_id
-    ),
-    ...(workoutLogs || []).map((log: any) => log.session_id),
-  ])
 
   const completedCount = sessions.filter((session: any) =>
     completedSessionIds.has(session.id)
@@ -199,9 +270,32 @@ export default async function WorkoutsPage() {
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
-  const nextWorkout =
-    sessions.find((session: any) => !completedSessionIds.has(session.id)) ||
-    sessions[0]
+  const scheduledSessionIds = (weeklySchedule || []).map(
+  (item: any) => item.session_id
+)
+
+const scheduledSessions = scheduledSessionIds
+  .map((sessionId: string) =>
+    sessions.find((session: any) => session.id === sessionId)
+  )
+  .filter(Boolean)
+
+const nextWorkout =
+  scheduledSessions.find(
+    (session: any) => !completedSessionIds.has(session.id)
+  ) ||
+  sessions.find(
+    (session: any) =>
+      Number(session.week_number || 1) === Number(plannerWeekNumber) &&
+      !completedSessionIds.has(session.id)
+  ) ||
+  sessions.find((session: any) => !completedSessionIds.has(session.id)) ||
+  sessions[0]
+
+const thisWeekPlannerSessions = sessions.filter(
+  (session: any) =>
+    Number(session.week_number || 1) === Number(plannerWeekNumber)
+)
 
   const unreadLogFeedbackIds =
     workoutLogs
@@ -469,6 +563,17 @@ export default async function WorkoutsPage() {
               </div>
             </section>
           ) : null}
+
+          <WeeklyWorkoutPlanner
+  programmeId={currentProgramme.id}
+  weekNumber={plannerWeekNumber}
+  sessions={thisWeekPlannerSessions.map((session: any) => ({
+    id: session.id,
+    title: `${session.day || "Session"} · ${session.title}`,
+  }))}
+  existingSchedule={weeklySchedule || []}
+  completedSessionIds={Array.from(completedSessionIds) as string[]}
+/>
 
           <section className={premiumCard}>
             <div className="relative z-10">

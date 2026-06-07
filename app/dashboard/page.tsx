@@ -9,6 +9,7 @@ import WeeklySummaryCard from "@/components/WeeklySummaryCard"
 import ClosestAchievementsCard from "@/components/ClosestAchievementsCard"
 import { calculateAchievementProgress } from "@/lib/achievementProgress"
 import NotificationPermissionButton from "@/components/NotificationPermissionButton"
+import DashboardCalendarPreview from "@/components/DashboardCalendarPreview"
 
 export const dynamic = "force-dynamic"
 
@@ -209,6 +210,18 @@ function getStartOfWeek() {
   return monday.toISOString()
 }
 
+function getStartOfWeekDate(dateInput?: string | Date) {
+  const date = dateInput ? new Date(dateInput) : new Date()
+  const day = date.getDay()
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
+
+  const monday = new Date(date)
+  monday.setDate(diff)
+  monday.setHours(0, 0, 0, 0)
+
+  return monday
+}
+
 function getEndOfWeek() {
   const start = new Date(getStartOfWeek())
   const end = new Date(start)
@@ -335,6 +348,66 @@ function getProgressMessage({
   return "Ready to get the first session ticked off."
 }
 
+function getEffectiveWeekNumber({
+  programmeWeekNumber,
+  programmeCreatedAt,
+  sessions,
+  completedSessionIds,
+}: {
+  programmeWeekNumber: number
+  programmeCreatedAt?: string | null
+  sessions: any[]
+  completedSessionIds: Set<string>
+}) {
+  const weeks = Array.from(
+    new Set(sessions.map((session: any) => Number(session.week_number || 1)))
+  ).sort((a, b) => a - b)
+
+  if (!weeks.length) return programmeWeekNumber || 1
+
+  const minWeek = weeks[0]
+  const maxWeek = weeks[weeks.length - 1]
+
+  const programmeStartWeek = programmeCreatedAt
+    ? getStartOfWeekDate(programmeCreatedAt)
+    : getStartOfWeekDate()
+
+  const currentWeekStart = getStartOfWeekDate()
+
+  const weeksElapsed = Math.max(
+    0,
+    Math.floor(
+      (currentWeekStart.getTime() - programmeStartWeek.getTime()) /
+        (1000 * 60 * 60 * 24 * 7)
+    )
+  )
+
+  const calendarWeekNumber = minWeek + weeksElapsed
+
+  let effectiveWeek = Math.max(
+    programmeWeekNumber || minWeek,
+    calendarWeekNumber
+  )
+
+  effectiveWeek = Math.min(effectiveWeek, maxWeek)
+
+  const currentWeekSessions = sessions.filter(
+    (session: any) => Number(session.week_number || 1) === effectiveWeek
+  )
+
+  const currentWeekComplete =
+    currentWeekSessions.length > 0 &&
+    currentWeekSessions.every((session: any) =>
+      completedSessionIds.has(session.id)
+    )
+
+  if (currentWeekComplete && effectiveWeek < maxWeek) {
+    effectiveWeek += 1
+  }
+
+  return Math.min(effectiveWeek, maxWeek)
+}
+
 export default async function Dashboard() {
   const supabase = await createSupabaseServerClient()
 
@@ -383,6 +456,11 @@ export default async function Dashboard() {
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
+
+  const { data: sessionCompletions } = await supabase
+  .from("session_completions")
+  .select("id, session_id, created_at")
+  .eq("user_id", user.id)  
 
   const { data: videos } = await supabase
     .from("exercise_videos")
@@ -437,7 +515,17 @@ export default async function Dashboard() {
   const currentProgramme: any =
     programmes?.find((programme: any) => programme.is_active) || programmes?.[0]
 
-  const sessions = sortProgrammeSessions(
+  const { data: weeklySchedule } = await supabase
+  .from("client_weekly_session_schedule")
+  .select("id, session_id, planned_date, planned_order")
+  .eq("user_id", user.id)
+  .eq("programme_id", currentProgramme?.id || "")
+  .gte("planned_date", startOfWeek)
+  .lt("planned_date", endOfWeek)
+  .order("planned_date", { ascending: true })
+  .order("planned_order", { ascending: true })
+  
+    const sessions = sortProgrammeSessions(
     currentProgramme?.programme_sessions || []
   )
 
@@ -450,12 +538,18 @@ export default async function Dashboard() {
     ) || []
 
   const completedSessionIds = new Set(
-    allWorkoutLogs.map((log: any) => log.session_id)
-  )
+  (sessionCompletions || []).map((completion: any) => completion.session_id)
+)
 
   const thisWeekCompletedSessionIds = new Set(
-    thisWeekLogs.map((log: any) => log.session_id)
-  )
+  (sessionCompletions || [])
+    .filter(
+      (completion: any) =>
+        new Date(completion.created_at).getTime() >=
+        new Date(startOfWeek).getTime()
+    )
+    .map((completion: any) => completion.session_id)
+)
 
   const completedCount = sessions.filter((session: any) =>
     completedSessionIds.has(session.id)
@@ -472,9 +566,35 @@ export default async function Dashboard() {
     progressPercent,
   })
 
-  const nextWorkout =
-    sessions.find((session: any) => !completedSessionIds.has(session.id)) ||
-    sessions[0]
+  const currentWeekNumber = getEffectiveWeekNumber({
+  programmeWeekNumber: Number(
+    currentProgramme?.week_number || sessions[0]?.week_number || 1
+  ),
+  programmeCreatedAt: currentProgramme?.created_at,
+  sessions,
+  completedSessionIds,
+})
+
+  const scheduledSessionIds = (weeklySchedule || []).map(
+  (item: any) => item.session_id
+)
+
+const scheduledSessions = scheduledSessionIds
+  .map((sessionId: string) =>
+    sessions.find((session: any) => session.id === sessionId)
+  )
+  .filter(Boolean)
+
+const nextWorkout =
+  scheduledSessions.find(
+    (session: any) => !thisWeekCompletedSessionIds.has(session.id)
+  ) ||
+  sessions.find(
+    (session: any) =>
+      Number(session.week_number || 1) === Number(currentWeekNumber) &&
+      !thisWeekCompletedSessionIds.has(session.id)
+  ) ||
+  sessions[0]
 
   const unreadLogFeedbackIds =
     allWorkoutLogs
@@ -505,9 +625,6 @@ const checkInCount = allCheckIns?.length || 0
   checkIns: allCheckIns || [],
   sessions,
 })
-
-const currentWeekNumber =
-  currentProgramme?.week_number || sessions[0]?.week_number || 1
 
 const thisWeekSessions = sessions.filter(
   (session: any) =>
@@ -744,6 +861,7 @@ const closestAchievements = achievementProgress
           }}
         />
 
+
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#070707] via-[#070707]/70 to-[#070707]/15" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent" />
 
@@ -852,10 +970,12 @@ const closestAchievements = achievementProgress
         </div>
       </section>
 
-       <MomentumCard
-        score={momentumScore}
-        items={momentumItems}
-        />    
+<DashboardCalendarPreview />
+
+<MomentumCard
+  score={momentumScore}
+  items={momentumItems}
+/>  
 
       <section className="grid grid-cols-4 gap-2">
   {dashboardStats.map((stat) => (

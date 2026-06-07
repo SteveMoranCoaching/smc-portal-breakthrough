@@ -7,10 +7,11 @@ import { supabase } from "@/lib/supabase"
 
 const navItems = [
   { label: "Home", href: "/dashboard", icon: "⌂" },
+  { label: "Calendar", href: "/dashboard/calendar", icon: "◷" },
   { label: "Workout", href: "/dashboard/workouts", icon: "✚" },
-  { label: "Community", href: "/dashboard/smc-home", icon: "SMC" },
   { label: "History", href: "/dashboard/history", icon: "⟳" },
   { label: "Messages", href: "/dashboard/messages", icon: "✉" },
+  { label: "Community", href: "/dashboard/smc-home", icon: "SMC" },
 ]
 
 export default function BottomNav({
@@ -65,7 +66,7 @@ export default function BottomNav({
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-transparent px-3 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1">
       <div className="mx-auto max-w-md rounded-[1.6rem] border border-[rgba(255,255,255,0.075)] bg-[rgba(5,5,5,0.95)] px-2 pb-1.5 pt-1 shadow-[0_-10px_35px_rgba(0,0,0,0.72)] backdrop-blur-2xl">
-        <div className="grid grid-cols-5 items-center gap-1">
+        <div className="grid grid-cols-6 items-center gap-0.5">
           {navItems.map((item) => {
             const isActive =
               item.href === "/dashboard"
@@ -79,7 +80,7 @@ export default function BottomNav({
                 key={item.href}
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
-                className={`relative flex min-h-[44px] flex-col items-center justify-center rounded-[1.1rem] px-1.5 py-1.5 text-[10px] font-semibold transition-all duration-200 active:scale-[0.98] ${
+                className={`relative flex min-h-[44px] flex-col items-center justify-center rounded-[1rem] px-1 py-1.5 text-[9px] font-semibold transition-all duration-200 active:scale-[0.98] ${
                   isActive
                     ? "bg-[rgba(212,175,55,0.12)] text-smc-gold shadow-[inset_0_0_0_1px_rgba(212,175,55,0.18)]"
                     : "text-white/80 hover:bg-white/[0.03] hover:text-white"
@@ -95,10 +96,10 @@ export default function BottomNav({
   <span
     className={`leading-none transition ${
       item.icon === "SMC"
-  ? "text-[15px] font-black tracking-[-0.04em] text-smc-gold"
-        : item.label === "History"
-        ? "text-[18px]"
-        : "text-[16px]"
+  ? "text-[13px] font-black tracking-[-0.04em] text-smc-gold"
+  : item.label === "History" || item.label === "Calendar"
+  ? "text-[16px]"
+  : "text-[15px]"
     } ${isActive ? "scale-105 text-smc-gold" : ""}`}
   >
     {item.icon}
