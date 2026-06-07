@@ -360,7 +360,7 @@ export default async function ClientProfilePage({
       0
     ) ?? 0
 
-  const workoutLogCount = workoutLogs?.length ?? 0
+  const workoutLogCount = sessionCompletions?.length ?? 0
   const unreviewedLogCount =
     workoutLogs?.filter((log: any) => !log.reviewed).length ?? 0
 

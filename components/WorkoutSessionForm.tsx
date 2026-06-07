@@ -110,6 +110,33 @@ function getDemoForExercise(exerciseDemos: any[], exerciseName: string) {
   )
 }
 
+function isWarmupExercise(exercise: any) {
+  const section = String(
+    exercise?.section || exercise?.type || exercise?.category || ""
+  )
+    .toLowerCase()
+    .trim()
+
+  return (
+    section === "warmup" ||
+    section === "warm-up" ||
+    section === "warm up" ||
+    section === "mobility" ||
+    section === "activation"
+  )
+}
+
+function getExerciseDisplayLabel(exercise: any) {
+  const prescription = exercise?.prescription
+  const notes = exercise?.notes
+
+  if (prescription && notes) return `${prescription} · ${notes}`
+  if (prescription) return prescription
+  if (notes) return notes
+
+  return "Complete before starting the main workout"
+}
+
 function toNumber(value: string | number | null | undefined) {
   const num = Number(value)
   return Number.isFinite(num) ? num : 0
@@ -400,6 +427,8 @@ export default function WorkoutSessionForm({
     "unset"
   )
   const [confirmedSets, setConfirmedSets] = useState<Record<string, boolean>>({})
+  const [warmupComplete, setWarmupComplete] = useState<Record<string, boolean>>({})
+  const [warmupSectionComplete, setWarmupSectionComplete] = useState(false)
   const [formData, setFormData] = useState<ExerciseEntry[]>(initialFormData)
   const [keyboardActive, setKeyboardActive] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -425,32 +454,71 @@ export default function WorkoutSessionForm({
   })[0]
 }, [pbResults])
 
+  const warmupExercises = useMemo(
+    () =>
+      exercises
+        .map((exercise: any, index: number) => ({
+          exercise,
+          originalIndex: index,
+        }))
+        .filter((item: any) => isWarmupExercise(item.exercise)),
+    [exercises]
+  )
+
+  const mainExercises = useMemo(
+    () =>
+      exercises
+        .map((exercise: any, index: number) => ({
+          exercise,
+          originalIndex: index,
+        }))
+        .filter((item: any) => !isWarmupExercise(item.exercise)),
+    [exercises]
+  )
+
+  const warmupCompletedCount = warmupExercises.filter((item: any) => {
+    const exerciseName =
+      item.exercise?.name || `Warm-up ${item.originalIndex + 1}`
+
+    return warmupComplete[`${item.originalIndex}-${exerciseName}`]
+  }).length
+
+  const warmupAllComplete =
+    warmupExercises.length > 0 &&
+    warmupCompletedCount >= warmupExercises.length &&
+    warmupSectionComplete
+
   const sessionStats = useMemo(() => {
-    const completedExercises = formData.filter((entry) => {
-      const completedSetCount = entry.sets.filter(isCompletedSet).length
-      return completedSetCount >= Math.max(1, entry.sets.length)
+    const mainEntries = mainExercises.map((item: any) => formData[item.originalIndex])
+
+    const completedExercises = mainEntries.filter((entry) => {
+      const completedSetCount = entry?.sets.filter(isCompletedSet).length || 0
+      return completedSetCount >= Math.max(1, entry?.sets.length || 1)
     }).length
 
-    const totalCompletedSets = formData.reduce((total, entry) => {
-      return total + entry.sets.filter(isCompletedSet).length
+    const totalCompletedSets = mainEntries.reduce((total, entry) => {
+      return total + (entry?.sets.filter(isCompletedSet).length || 0)
     }, 0)
 
-    const totalLoggedSets = formData.reduce((total, entry) => {
-      return total + entry.sets.filter(hasSetData).length
+    const totalLoggedSets = mainEntries.reduce((total, entry) => {
+      return total + (entry?.sets.filter(hasSetData).length || 0)
     }, 0)
 
-    const hasAnyLoggedWork = formData.some((entry) => {
-      return (
-        entry.sets.some(hasSetData) ||
-        entry.notes.trim().length > 0 ||
-        Boolean(entry.videos.length > 0)
-      )
-    })
+    const hasAnyLoggedWork =
+      mainEntries.some((entry) => {
+        return (
+          entry?.sets.some(hasSetData) ||
+          entry?.notes.trim().length > 0 ||
+          Boolean(entry?.videos.length > 0)
+        )
+      }) || warmupCompletedCount > 0
 
     const progress =
-      exercises.length > 0
-        ? Math.round((completedExercises / exercises.length) * 100)
-        : 0
+      mainExercises.length > 0
+        ? Math.round((completedExercises / mainExercises.length) * 100)
+        : warmupAllComplete
+          ? 100
+          : 0
 
     return {
       completedExercises,
@@ -459,7 +527,12 @@ export default function WorkoutSessionForm({
       hasAnyLoggedWork,
       progress,
     }
-  }, [formData, exercises.length])
+  }, [
+    formData,
+    mainExercises,
+    warmupAllComplete,
+    warmupCompletedCount,
+  ])
 
   function handleInputFocus() {
     setKeyboardActive(true)
@@ -524,6 +597,19 @@ export default function WorkoutSessionForm({
     setPrefillMode("blank")
     setConfirmedSets({})
     setSaveError("")
+  }
+
+  function getWarmupKey(exerciseIndex: number, exerciseName: string) {
+    return `${exerciseIndex}-${exerciseName}`
+  }
+
+  function toggleWarmupItem(exerciseIndex: number, exerciseName: string) {
+    const key = getWarmupKey(exerciseIndex, exerciseName)
+
+    setWarmupComplete((current) => ({
+      ...current,
+      [key]: !current[key],
+    }))
   }
 
   function confirmSet(exerciseIndex: number, setIndex: number) {
@@ -689,6 +775,8 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
 
     formData.forEach((entry, exerciseIndex) => {
       const exercise = exercises[exerciseIndex]
+      if (isWarmupExercise(exercise)) return
+
       const exerciseName = exercise?.name
       if (!exerciseName) return
 
@@ -759,6 +847,8 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
 
       for (let i = 0; i < formData.length; i++) {
         const ex = exercises[i]
+        if (isWarmupExercise(ex)) continue
+
         const data = formData[i]
         const exerciseName = ex?.name || `Exercise ${i + 1}`
 
@@ -926,7 +1016,7 @@ setSaving(false)
               {session?.title || "Workout Session"}
             </p>
             <p className="mt-0.5 text-[10px] font-bold text-white/40">
-              {sessionStats.completedExercises}/{exercises.length} exercises ·{" "}
+              {sessionStats.completedExercises}/{mainExercises.length} exercises ·{" "}
               {sessionStats.totalCompletedSets} sets logged
             </p>
           </div>
@@ -969,7 +1059,161 @@ setSaving(false)
           </section>
         )}
 
+        {warmupExercises.length > 0 && (
+          <details
+            open={!warmupAllComplete}
+            className={`${card} p-3 transition-all duration-300 ${
+              warmupAllComplete
+                ? "border-emerald-400/25 shadow-[0_0_28px_rgba(52,211,153,0.10)]"
+                : "border-smc-gold/20"
+            }`}
+          >
+            <summary className="cursor-pointer list-none">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/35 to-transparent" />
+
+              {warmupAllComplete && (
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.10),transparent_34%)]" />
+              )}
+
+              <div className="relative z-10 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/70">
+                    Warm-up / Mobility
+                  </p>
+
+                  <h3 className="mt-1 text-lg font-black text-white">
+                    Prep Work
+                  </h3>
+
+                  <p className="mt-1 text-xs text-white/45">
+                    {warmupCompletedCount}/{warmupExercises.length} complete ·
+                    Tap to expand
+                  </p>
+                </div>
+
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
+                    warmupAllComplete
+                      ? "bg-emerald-400 text-black"
+                      : "border border-smc-gold/25 bg-smc-gold/[0.08] text-smc-gold"
+                  }`}
+                >
+                  {warmupAllComplete ? "Done" : "Start"}
+                </span>
+              </div>
+            </summary>
+
+            <div className="relative z-10 mt-3 flex flex-col gap-2">
+              {warmupExercises.map((item: any) => {
+                const warmup = item.exercise
+                const exerciseIndex = item.originalIndex
+                const exerciseName =
+                  warmup?.name || `Warm-up ${exerciseIndex + 1}`
+                const demo = getDemoForExercise(exerciseDemos, exerciseName)
+                const warmupKey = getWarmupKey(exerciseIndex, exerciseName)
+                const itemComplete = Boolean(warmupComplete[warmupKey])
+
+                return (
+                  <div
+                    key={warmupKey}
+                    className={`rounded-2xl border p-3 transition ${
+                      itemComplete
+                        ? "border-emerald-400/25 bg-emerald-400/[0.07]"
+                        : "border-white/[0.06] bg-black/25"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-black text-white">
+                          {exerciseName}
+                        </p>
+
+                        <p className="mt-1 break-words text-xs leading-5 text-white/45">
+                          {getExerciseDisplayLabel(warmup)}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleWarmupItem(exerciseIndex, exerciseName)
+                        }
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-black transition active:scale-95 ${
+                          itemComplete
+                            ? "border-emerald-400/50 bg-emerald-400/20 text-emerald-300"
+                            : "border-white/10 bg-white/[0.035] text-white/35"
+                        }`}
+                        aria-label={`Mark ${exerciseName} complete`}
+                      >
+                        ✓
+                      </button>
+                    </div>
+
+                    {demo && (
+                      <button
+                        type="button"
+                        onClick={() => demo?.video_url && setActiveDemo(demo)}
+                        disabled={!demo?.video_url}
+                        className="group relative mt-2.5 h-[76px] w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left disabled:cursor-default"
+                      >
+                        {demo?.thumbnail_url ? (
+                          <img
+                            src={demo.thumbnail_url}
+                            alt={`${exerciseName} demo`}
+                            className="h-full w-full object-cover opacity-80 transition group-hover:scale-[1.03] group-hover:opacity-100"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.10),transparent_55%),#070707] px-4 text-center">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-smc-gold/65">
+                              Demo coming soon
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+
+                        <div className="absolute bottom-2 left-2">
+                          <span className="rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/70 backdrop-blur">
+                            Video Demo
+                          </span>
+                        </div>
+
+                        {demo?.video_url && (
+                          <div className="absolute bottom-2 right-2">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-smc-gold/60 bg-black/55 text-smc-gold shadow-[0_0_14px_rgba(212,175,55,0.20)] backdrop-blur">
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3.5 w-3.5 fill-current"
+                                aria-hidden="true"
+                              >
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </span>
+                          </div>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+
+              <button
+                type="button"
+                onClick={() => setWarmupSectionComplete(true)}
+                disabled={warmupCompletedCount < warmupExercises.length}
+                className="mt-1 min-h-11 w-full rounded-2xl bg-smc-gold px-4 py-2 text-xs font-black text-black transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+              >
+                {warmupCompletedCount >= warmupExercises.length
+                  ? "Mark Warm-up Complete"
+                  : "Tick all warm-up items first"}
+              </button>
+            </div>
+          </details>
+        )}
+
         {exercises.map((ex: any, exerciseIndex: number) => {
+          if (isWarmupExercise(ex)) return null
+
           const exerciseName = ex?.name || `Exercise ${exerciseIndex + 1}`
           const previousLog = getPreviousLogForExercise(previousLogs, exerciseName)
           const previousPerformance = getPreviousPerformance(previousLog)
@@ -1339,7 +1583,7 @@ setSaving(false)
           <div className="mx-auto w-full max-w-5xl rounded-[1.35rem] border border-white/[0.07] bg-black/90 p-2 shadow-[0_-10px_32px_rgba(0,0,0,0.7)] backdrop-blur-xl">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-[10px] font-bold text-white/40">
-                {sessionStats.completedExercises}/{exercises.length} exercises
+                {sessionStats.completedExercises}/{mainExercises.length} exercises
                 complete
               </p>
               <p className="text-[10px] font-black text-smc-gold">
