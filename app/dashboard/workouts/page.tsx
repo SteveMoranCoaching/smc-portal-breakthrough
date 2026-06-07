@@ -25,6 +25,18 @@ function getStartOfWeek() {
   return monday.toISOString()
 }
 
+function getStartOfWeekDate(dateInput?: string | Date) {
+  const date = dateInput ? new Date(dateInput) : new Date()
+  const day = date.getDay()
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
+
+  const monday = new Date(date)
+  monday.setDate(diff)
+  monday.setHours(0, 0, 0, 0)
+
+  return monday
+}
+
 function formatDate(dateString: string) {
   const date = new Date(dateString)
   const day = date.getDate().toString().padStart(2, "0")
@@ -79,6 +91,7 @@ function sortProgrammeSessions(sessions: any[]) {
 
 function getEffectiveWeekNumber({
   programmeWeekNumber,
+  programmeCreatedAt,
   sessions,
   completedSessionIds,
 }: {
@@ -93,8 +106,31 @@ function getEffectiveWeekNumber({
 
   if (!weeks.length) return programmeWeekNumber || 1
 
+  const minWeek = weeks[0]
   const maxWeek = weeks[weeks.length - 1]
-  let effectiveWeek = programmeWeekNumber || weeks[0]
+
+  const programmeStartWeek = programmeCreatedAt
+    ? getStartOfWeekDate(programmeCreatedAt)
+    : getStartOfWeekDate()
+
+  const currentWeekStart = getStartOfWeekDate()
+
+  const weeksElapsed = Math.max(
+    0,
+    Math.floor(
+      (currentWeekStart.getTime() - programmeStartWeek.getTime()) /
+        (1000 * 60 * 60 * 24 * 7)
+    )
+  )
+
+  const calendarWeekNumber = minWeek + weeksElapsed
+
+  let effectiveWeek = Math.max(
+    programmeWeekNumber || minWeek,
+    calendarWeekNumber
+  )
+
+  effectiveWeek = Math.min(effectiveWeek, maxWeek)
 
   const currentWeekSessions = sessions.filter(
     (session: any) => Number(session.week_number || 1) === effectiveWeek
@@ -588,32 +624,74 @@ const thisWeekPlannerSessions = sessions.filter(
               </div>
 
               <div className="mt-3 flex flex-col gap-3">
-                {weekEntries.map(([weekNumber, weekSessions]: any) => (
-                  <div
-                    key={weekNumber}
-                    className={`rounded-[1.15rem] border ${softBorder} bg-black/30 p-3`}
-                  >
-                    <div className="mb-2.5 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
-                          Week {weekNumber}
-                        </p>
+                {weekEntries.map(([weekNumber, weekSessions]: any) => {
+  const numericWeekNumber = Number(weekNumber)
+  const isActiveWeek = numericWeekNumber === Number(plannerWeekNumber)
 
-                        <p className="mt-0.5 text-xs text-smc-muted-soft">
-                          {weekSessions.length} session
-                          {weekSessions.length === 1 ? "" : "s"}
-                        </p>
-                      </div>
+  const completedInWeek = weekSessions.filter((session: any) =>
+    completedSessionIds.has(session.id)
+  ).length
 
-                      <p className="text-[10px] font-bold text-smc-muted-soft">
-                        {
-                          weekSessions.filter((session: any) =>
-                            completedSessionIds.has(session.id)
-                          ).length
-                        }
-                        /{weekSessions.length}
-                      </p>
-                    </div>
+  const weekComplete =
+    weekSessions.length > 0 && completedInWeek >= weekSessions.length
+
+  const weekStatus = isActiveWeek
+    ? "Active"
+    : weekComplete
+      ? "Complete"
+      : numericWeekNumber > Number(plannerWeekNumber)
+        ? "Upcoming"
+        : "Previous"
+
+  return (
+    <details
+      key={weekNumber}
+      open={isActiveWeek}
+      className={`rounded-[1.15rem] border ${
+        isActiveWeek
+          ? "border-smc-gold/30 bg-smc-gold/[0.055]"
+          : softBorder
+      } bg-black/30 p-3`}
+    >
+      <summary className="cursor-pointer list-none">
+        <div className="mb-2.5 flex items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
+                Week {weekNumber}
+              </p>
+
+              <span
+                className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase ${
+                  isActiveWeek
+                    ? "bg-smc-gold text-black"
+                    : weekComplete
+                      ? "bg-green-500 text-black"
+                      : numericWeekNumber > Number(plannerWeekNumber)
+                        ? "bg-white/[0.08] text-white/45"
+                        : "bg-white/[0.05] text-white/35"
+                }`}
+              >
+                {weekStatus}
+              </span>
+            </div>
+
+            <p className="mt-0.5 text-xs text-smc-muted-soft">
+              {weekSessions.length} session
+              {weekSessions.length === 1 ? "" : "s"}
+            </p>
+          </div>
+
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-smc-muted-soft">
+              {completedInWeek}/{weekSessions.length}
+            </p>
+            <p className="mt-0.5 text-[9px] text-white/25">
+              Tap to expand
+            </p>
+          </div>
+        </div>
+      </summary>
 
                     <div className="flex flex-col gap-2.5">
                       {weekSessions.map((session: any, index: number) => {
@@ -731,8 +809,9 @@ const thisWeekPlannerSessions = sessions.filter(
                         )
                       })}
                     </div>
-                  </div>
-                ))}
+                  </details>
+                )
+              })}
               </div>
             </div>
           </section>
