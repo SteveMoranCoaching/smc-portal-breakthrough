@@ -491,27 +491,29 @@ export default function WorkoutSessionForm({
   const sessionStats = useMemo(() => {
     const mainEntries = mainExercises.map((item: any) => formData[item.originalIndex])
 
-    const completedExercises = mainEntries.filter((entry) => {
-      const completedSetCount = entry?.sets.filter(isCompletedSet).length || 0
+    const completedExercises = mainEntries.filter((entry: {
+  sets: any[]
+}) => {
+      const completedSetCount = entry?.sets.filter((set: any) => isCompletedSet(set)).length || 0
       return completedSetCount >= Math.max(1, entry?.sets.length || 1)
     }).length
 
-    const totalCompletedSets = mainEntries.reduce((total, entry) => {
-      return total + (entry?.sets.filter(isCompletedSet).length || 0)
-    }, 0)
+    const totalCompletedSets = mainEntries.reduce((total: number, entry: any) => {
+  return total + (entry?.sets.filter((set: any) => isCompletedSet(set)).length || 0)
+}, 0)
 
-    const totalLoggedSets = mainEntries.reduce((total, entry) => {
-      return total + (entry?.sets.filter(hasSetData).length || 0)
-    }, 0)
+const totalLoggedSets = mainEntries.reduce((total: number, entry: any) => {
+  return total + (entry?.sets.filter((set: any) => hasSetData(set)).length || 0)
+}, 0)
 
-    const hasAnyLoggedWork =
-      mainEntries.some((entry) => {
-        return (
-          entry?.sets.some(hasSetData) ||
-          entry?.notes.trim().length > 0 ||
-          Boolean(entry?.videos.length > 0)
-        )
-      }) || warmupCompletedCount > 0
+const hasAnyLoggedWork =
+  mainEntries.some((entry: any) => {
+    return (
+      entry?.sets.some((set: any) => hasSetData(set)) ||
+      entry?.notes.trim().length > 0 ||
+      Boolean(entry?.videos.length > 0)
+    )
+  }) || warmupCompletedCount > 0
 
     const progress =
       mainExercises.length > 0
@@ -1219,7 +1221,7 @@ setSaving(false)
           const previousPerformance = getPreviousPerformance(previousLog)
           const demo = getDemoForExercise(exerciseDemos, exerciseName)
           const entry = formData[exerciseIndex]
-          const completedSetCount = entry?.sets.filter(isCompletedSet).length || 0
+          const completedSetCount = entry?.sets.filter((set: any) => isCompletedSet(set)).length || 0
           const exerciseComplete =
             completedSetCount >= Math.max(1, entry?.sets.length || 1)
 
