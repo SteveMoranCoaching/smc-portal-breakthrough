@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import AchievementUnlockToast from "@/components/AchievementUnlockToast"
@@ -60,7 +60,11 @@ const card =
 const inputStyle =
   "h-11 min-h-11 rounded-xl border border-white/[0.07] bg-black/35 px-2 text-center text-base font-black text-white outline-none placeholder:text-white/20 transition focus:border-smc-gold/70 focus:bg-black/50 focus:shadow-[0_0_14px_rgba(212,175,55,0.12)]"
 
-function normaliseAchievementUnlock(result: any): AchievementUnlock | null {
+function getAutosaveKey(userId: string, sessionId: string) {
+  return `smc-workout-autosave-${userId}-${sessionId}`
+}
+
+  function normaliseAchievementUnlock(result: any): AchievementUnlock | null {
   const achievement = Array.isArray(result) ? result[0] : result
   if (!achievement) return null
 
@@ -429,10 +433,37 @@ export default function WorkoutSessionForm({
   const [confirmedSets, setConfirmedSets] = useState<Record<string, boolean>>({})
   const [warmupComplete, setWarmupComplete] = useState<Record<string, boolean>>({})
   const [warmupSectionComplete, setWarmupSectionComplete] = useState(false)
-  const [formData, setFormData] = useState<ExerciseEntry[]>(initialFormData)
+  const autosaveKey = getAutosaveKey(userId, session.id)
+
+const [formData, setFormData] = useState<ExerciseEntry[]>(initialFormData)
+useEffect(() => {
+  if (typeof window === "undefined") return
+
+  const saved = window.localStorage.getItem(autosaveKey)
+
+  if (!saved) return
+
+  try {
+    const parsed = JSON.parse(saved)
+
+    if (Array.isArray(parsed?.formData)) {
+      setFormData(parsed.formData)
+    }
+
+    if (parsed?.sessionRating) {
+      setSessionRating(parsed.sessionRating)
+    }
+
+    if (parsed?.sessionNotes) {
+      setSessionNotes(parsed.sessionNotes)
+    }
+  } catch {}
+}, [autosaveKey])
+
   const [keyboardActive, setKeyboardActive] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
+  const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [saveError, setSaveError] = useState("")
   const [uploadingExercise, setUploadingExercise] = useState("")
   const [complete, setComplete] = useState(false)
@@ -443,6 +474,29 @@ export default function WorkoutSessionForm({
   const [sessionNotes, setSessionNotes] = useState("")
   const [achievementUnlock, setAchievementUnlock] =
     useState<AchievementUnlock | null>(null)
+
+ useEffect(() => {
+  if (typeof window === "undefined") return
+  if (complete) return
+
+  setAutosaveStatus("saving")
+
+  const timeout = window.setTimeout(() => {
+    window.localStorage.setItem(
+      autosaveKey,
+      JSON.stringify({
+        formData,
+        sessionRating,
+        sessionNotes,
+        savedAt: new Date().toISOString(),
+      })
+    )
+
+    setAutosaveStatus("saved")
+  }, 750)
+
+  return () => window.clearTimeout(timeout)
+}, [autosaveKey, formData, sessionRating, sessionNotes, complete])  
 
     const biggestLift = useMemo(() => {
   if (pbResults.length === 0) return null
@@ -970,6 +1024,10 @@ if (completionError) {
   throw completionError
 }
 
+if (typeof window !== "undefined") {
+  window.localStorage.removeItem(autosaveKey)
+}
+
 setComplete(true)
 setMessage("")
 setUploadingExercise("")
@@ -1021,6 +1079,11 @@ setSaving(false)
               {sessionStats.completedExercises}/{mainExercises.length} exercises ·{" "}
               {sessionStats.totalCompletedSets} sets logged
             </p>
+            {autosaveStatus !== "idle" && !complete && (
+  <p className="mt-0.5 text-[9px] font-bold text-white/30">
+    {autosaveStatus === "saving" ? "Autosaving..." : "Autosaved"}
+  </p>
+)}
           </div>
 
           <div className="shrink-0 rounded-full border border-smc-gold/25 bg-smc-gold/[0.08] px-2.5 py-1 text-[10px] font-black text-smc-gold">
