@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase"
 type Exercise = {
   name: string
   prescription: string
+  section?: "main" | "warmup"
 }
 
 type Session = {
@@ -45,7 +46,7 @@ const defaultSessions: Session[] = [
   {
     day: "Day 1",
     title: "",
-    exercises: [{ name: "", prescription: "" }],
+    exercises: [{ name: "", prescription: "", section: "main" }],
   },
 ]
 
@@ -184,8 +185,11 @@ export default function ProgrammeEditor({
             title: session.title || "",
             exercises:
               session.exercises && session.exercises.length > 0
-                ? session.exercises
-                : [{ name: "", prescription: "" }],
+                ? session.exercises.map((exercise: any) => ({
+                    ...exercise,
+                    section: exercise.section || "main",
+                  }))
+                : [{ name: "", prescription: "", section: "main" }],
           })
 
           return acc
@@ -303,7 +307,7 @@ export default function ProgrammeEditor({
       {
         day: `Day ${sessions.length + 1}`,
         title: "",
-        exercises: [{ name: "", prescription: "" }],
+        exercises: [{ name: "", prescription: "", section: "main" }],
       },
     ])
 
@@ -342,7 +346,7 @@ export default function ProgrammeEditor({
       ...next[sessionIndex],
       exercises: [
         ...next[sessionIndex].exercises,
-        { name: "", prescription: "" },
+        { name: "", prescription: "", section: "main" },
       ],
     }
 
@@ -843,9 +847,23 @@ export default function ProgrammeEditor({
                           className="rounded-[1rem] border border-white/[0.06] bg-black/35 p-3"
                         >
                           <div className="mb-2 flex items-center justify-between gap-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/30">
-                              Exercise {exerciseIndex + 1}
-                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/30">
+                                Exercise {exerciseIndex + 1}
+                              </p>
+
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase ${
+                                  exercise.section === "warmup"
+                                    ? "border border-smc-gold/25 bg-smc-gold/10 text-smc-gold"
+                                    : "border border-white/[0.06] bg-white/[0.035] text-white/35"
+                                }`}
+                              >
+                                {exercise.section === "warmup"
+                                  ? "Warm-up"
+                                  : "Main"}
+                              </span>
+                            </div>
 
                             <button
                               type="button"
@@ -859,7 +877,23 @@ export default function ProgrammeEditor({
                             </button>
                           </div>
 
-                          <div className="grid gap-2.5 sm:grid-cols-2">
+                          <div className="grid gap-2.5 sm:grid-cols-[0.8fr_1.2fr_1.2fr]">
+                            <select
+                              value={exercise.section || "main"}
+                              onChange={(e) =>
+                                updateExercise(
+                                  sessionIndex,
+                                  exerciseIndex,
+                                  "section",
+                                  e.target.value
+                                )
+                              }
+                              className={inputStyle}
+                            >
+                              <option value="main">Main Exercise</option>
+                              <option value="warmup">Warm-up / Mobility</option>
+                            </select>
+
                             <input
                               value={exercise.name}
                               onChange={(e) =>
@@ -870,7 +904,11 @@ export default function ProgrammeEditor({
                                   e.target.value
                                 )
                               }
-                              placeholder="Exercise name"
+                              placeholder={
+                                exercise.section === "warmup"
+                                  ? "Warm-up name"
+                                  : "Exercise name"
+                              }
                               className={inputStyle}
                             />
 
@@ -884,7 +922,11 @@ export default function ProgrammeEditor({
                                   e.target.value
                                 )
                               }
-                              placeholder="e.g. 3x5 @ RPE 7"
+                              placeholder={
+                                exercise.section === "warmup"
+                                  ? "e.g. 2x10 each side"
+                                  : "e.g. 3x5 @ RPE 7"
+                              }
                               className={inputStyle}
                             />
                           </div>
