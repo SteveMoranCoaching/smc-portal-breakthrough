@@ -14,7 +14,7 @@ type Client = {
 type Exercise = {
   name: string
   prescription: string
-  section?: "main" | "warmup"
+  section?: "main" | "warmup" | "stretch"
 }
 
 type Session = {
@@ -765,8 +765,9 @@ const { data: programme, error: programmeError } = await supabase
                               }
                               className={inputStyle}
                             >
-                              <option value="main">Main Exercise</option>
                               <option value="warmup">Warm-up / Mobility</option>
+<option value="main">Main Exercise</option>
+<option value="stretch">Post Session Stretch</option>
                             </select>
 
                             <input

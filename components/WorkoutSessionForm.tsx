@@ -114,20 +114,49 @@ function getDemoForExercise(exerciseDemos: any[], exerciseName: string) {
   )
 }
 
-function isWarmupExercise(exercise: any) {
+function getExerciseSection(exercise: any) {
   const section = String(
-    exercise?.section || exercise?.type || exercise?.category || ""
+    exercise?.section || exercise?.type || exercise?.category || "main"
   )
     .toLowerCase()
     .trim()
 
-  return (
+  if (
     section === "warmup" ||
     section === "warm-up" ||
     section === "warm up" ||
     section === "mobility" ||
     section === "activation"
-  )
+  ) {
+    return "warmup"
+  }
+
+  if (
+    section === "stretch" ||
+    section === "stretches" ||
+    section === "post-session-stretch" ||
+    section === "post session stretch" ||
+    section === "post_session_stretch" ||
+    section === "cooldown" ||
+    section === "cool-down" ||
+    section === "cool down"
+  ) {
+    return "stretch"
+  }
+
+  return "main"
+}
+
+function isWarmupExercise(exercise: any) {
+  return getExerciseSection(exercise) === "warmup"
+}
+
+function isStretchExercise(exercise: any) {
+  return getExerciseSection(exercise) === "stretch"
+}
+
+function isMainExercise(exercise: any) {
+  return getExerciseSection(exercise) === "main"
 }
 
 function getExerciseDisplayLabel(exercise: any) {
@@ -433,6 +462,8 @@ export default function WorkoutSessionForm({
   const [confirmedSets, setConfirmedSets] = useState<Record<string, boolean>>({})
   const [warmupComplete, setWarmupComplete] = useState<Record<string, boolean>>({})
   const [warmupSectionComplete, setWarmupSectionComplete] = useState(false)
+  const [stretchComplete, setStretchComplete] = useState<Record<string, boolean>>({})
+  const [stretchSectionComplete, setStretchSectionComplete] = useState(false)
   const autosaveKey = getAutosaveKey(userId, session.id)
 
 const [formData, setFormData] = useState<ExerciseEntry[]>(initialFormData)
@@ -534,7 +565,18 @@ useEffect(() => {
           exercise,
           originalIndex: index,
         }))
-        .filter((item: any) => !isWarmupExercise(item.exercise)),
+        .filter((item: any) => isMainExercise(item.exercise)),
+    [exercises]
+  )
+
+  const stretchExercises = useMemo(
+    () =>
+      exercises
+        .map((exercise: any, index: number) => ({
+          exercise,
+          originalIndex: index,
+        }))
+        .filter((item: any) => isStretchExercise(item.exercise)),
     [exercises]
   )
 
@@ -549,6 +591,18 @@ useEffect(() => {
     warmupExercises.length > 0 &&
     warmupCompletedCount >= warmupExercises.length &&
     warmupSectionComplete
+
+  const stretchCompletedCount = stretchExercises.filter((item: any) => {
+    const exerciseName =
+      item.exercise?.name || `Stretch ${item.originalIndex + 1}`
+
+    return stretchComplete[`${item.originalIndex}-${exerciseName}`]
+  }).length
+
+  const stretchAllComplete =
+    stretchExercises.length > 0 &&
+    stretchCompletedCount >= stretchExercises.length &&
+    stretchSectionComplete
 
   const sessionStats = useMemo(() => {
     const mainEntries = mainExercises.map((item: any) => formData[item.originalIndex])
@@ -575,7 +629,7 @@ const hasAnyLoggedWork =
       entry?.notes.trim().length > 0 ||
       Boolean(entry?.videos.length > 0)
     )
-  }) || warmupCompletedCount > 0
+  }) || warmupCompletedCount > 0 || stretchCompletedCount > 0
 
     const progress =
       mainExercises.length > 0
@@ -596,6 +650,7 @@ const hasAnyLoggedWork =
     mainExercises,
     warmupAllComplete,
     warmupCompletedCount,
+    stretchCompletedCount,
   ])
 
   function handleInputFocus() {
@@ -671,6 +726,19 @@ const hasAnyLoggedWork =
     const key = getWarmupKey(exerciseIndex, exerciseName)
 
     setWarmupComplete((current) => ({
+      ...current,
+      [key]: !current[key],
+    }))
+  }
+
+  function getStretchKey(exerciseIndex: number, exerciseName: string) {
+    return `${exerciseIndex}-${exerciseName}`
+  }
+
+  function toggleStretchItem(exerciseIndex: number, exerciseName: string) {
+    const key = getStretchKey(exerciseIndex, exerciseName)
+
+    setStretchComplete((current) => ({
       ...current,
       [key]: !current[key],
     }))
@@ -812,6 +880,7 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
 
   async function fetchHistoricalLogsByExercise() {
     const exerciseNames = exercises
+      .filter((exercise: any) => isMainExercise(exercise))
       .map((exercise: any) => exercise?.name)
       .filter(Boolean)
 
@@ -839,7 +908,7 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
 
     formData.forEach((entry, exerciseIndex) => {
       const exercise = exercises[exerciseIndex]
-      if (isWarmupExercise(exercise)) return
+      if (!isMainExercise(exercise)) return
 
       const exerciseName = exercise?.name
       if (!exerciseName) return
@@ -911,7 +980,7 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
 
       for (let i = 0; i < formData.length; i++) {
         const ex = exercises[i]
-        if (isWarmupExercise(ex)) continue
+        if (!isMainExercise(ex)) continue
 
         const data = formData[i]
         const exerciseName = ex?.name || `Exercise ${i + 1}`
@@ -1284,8 +1353,161 @@ setSaving(false)
           </details>
         )}
 
+
+        {stretchExercises.length > 0 && (
+          <details
+            open={!stretchAllComplete}
+            className={`${card} p-3 transition-all duration-300 ${
+              stretchAllComplete
+                ? "border-blue-400/25 shadow-[0_0_28px_rgba(96,165,250,0.10)]"
+                : "border-blue-400/20"
+            }`}
+          >
+            <summary className="cursor-pointer list-none">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/35 to-transparent" />
+
+              {stretchAllComplete && (
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(96,165,250,0.10),transparent_34%)]" />
+              )}
+
+              <div className="relative z-10 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.28em] text-blue-300/80">
+                    Post Session Stretch
+                  </p>
+
+                  <h3 className="mt-1 text-lg font-black text-white">
+                    Cool Down
+                  </h3>
+
+                  <p className="mt-1 text-xs text-white/45">
+                    {stretchCompletedCount}/{stretchExercises.length} complete ·
+                    Tap to expand
+                  </p>
+                </div>
+
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
+                    stretchAllComplete
+                      ? "bg-blue-400 text-black"
+                      : "border border-blue-400/25 bg-blue-400/[0.08] text-blue-300"
+                  }`}
+                >
+                  {stretchAllComplete ? "Done" : "Finish"}
+                </span>
+              </div>
+            </summary>
+
+            <div className="relative z-10 mt-3 flex flex-col gap-2">
+              {stretchExercises.map((item: any) => {
+                const stretch = item.exercise
+                const exerciseIndex = item.originalIndex
+                const exerciseName =
+                  stretch?.name || `Stretch ${exerciseIndex + 1}`
+                const demo = getDemoForExercise(exerciseDemos, exerciseName)
+                const stretchKey = getStretchKey(exerciseIndex, exerciseName)
+                const itemComplete = Boolean(stretchComplete[stretchKey])
+
+                return (
+                  <div
+                    key={stretchKey}
+                    className={`rounded-2xl border p-3 transition ${
+                      itemComplete
+                        ? "border-blue-400/25 bg-blue-400/[0.07]"
+                        : "border-white/[0.06] bg-black/25"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-black text-white">
+                          {exerciseName}
+                        </p>
+
+                        <p className="mt-1 break-words text-xs leading-5 text-white/45">
+                          {getExerciseDisplayLabel(stretch)}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleStretchItem(exerciseIndex, exerciseName)
+                        }
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-black transition active:scale-95 ${
+                          itemComplete
+                            ? "border-blue-400/50 bg-blue-400/20 text-blue-300"
+                            : "border-white/10 bg-white/[0.035] text-white/35"
+                        }`}
+                        aria-label={`Mark ${exerciseName} complete`}
+                      >
+                        ✓
+                      </button>
+                    </div>
+
+                    {demo && (
+                      <button
+                        type="button"
+                        onClick={() => demo?.video_url && setActiveDemo(demo)}
+                        disabled={!demo?.video_url}
+                        className="group relative mt-2.5 h-[76px] w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left disabled:cursor-default"
+                      >
+                        {demo?.thumbnail_url ? (
+                          <img
+                            src={demo.thumbnail_url}
+                            alt={`${exerciseName} demo`}
+                            className="h-full w-full object-cover opacity-80 transition group-hover:scale-[1.03] group-hover:opacity-100"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(96,165,250,0.10),transparent_55%),#070707] px-4 text-center">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-300/65">
+                              Demo coming soon
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+
+                        <div className="absolute bottom-2 left-2">
+                          <span className="rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/70 backdrop-blur">
+                            Video Demo
+                          </span>
+                        </div>
+
+                        {demo?.video_url && (
+                          <div className="absolute bottom-2 right-2">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-blue-400/60 bg-black/55 text-blue-300 shadow-[0_0_14px_rgba(96,165,250,0.20)] backdrop-blur">
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3.5 w-3.5 fill-current"
+                                aria-hidden="true"
+                              >
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </span>
+                          </div>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+
+              <button
+                type="button"
+                onClick={() => setStretchSectionComplete(true)}
+                disabled={stretchCompletedCount < stretchExercises.length}
+                className="mt-1 min-h-11 w-full rounded-2xl bg-blue-400 px-4 py-2 text-xs font-black text-black transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+              >
+                {stretchCompletedCount >= stretchExercises.length
+                  ? "Mark Stretch Complete"
+                  : "Tick all stretch items first"}
+              </button>
+            </div>
+          </details>
+        )}
+
         {exercises.map((ex: any, exerciseIndex: number) => {
-          if (isWarmupExercise(ex)) return null
+          if (!isMainExercise(ex)) return null
 
           const exerciseName = ex?.name || `Exercise ${exerciseIndex + 1}`
           const previousLog = getPreviousLogForExercise(previousLogs, exerciseName)

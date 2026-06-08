@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase"
 type Exercise = {
   name: string
   prescription: string
-  section?: "main" | "warmup"
+  section?: "main" | "warmup" | "stretch"
 }
 
 type Session = {
@@ -890,8 +890,9 @@ export default function ProgrammeEditor({
                               }
                               className={inputStyle}
                             >
-                              <option value="main">Main Exercise</option>
                               <option value="warmup">Warm-up / Mobility</option>
+<option value="main">Main Exercise</option>
+<option value="stretch">Post Session Stretch</option>
                             </select>
 
                             <input
