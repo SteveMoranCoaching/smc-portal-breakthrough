@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import EmptyStateCard from "@/components/ui/EmptyStateCard"
+import WorkoutFeedbackDetails from "@/components/WorkoutFeedbackDetails"
 import StartWorkoutButton from "@/components/StartWorkoutButton"
 import PrefetchSession from "@/components/PrefetchSession"
 import WeeklyWorkoutPlanner from "@/components/WeeklyWorkoutPlanner"
-import WorkoutFeedbackDetails from "@/components/WorkoutFeedbackDetails"
 
 export const dynamic = "force-dynamic"
 
@@ -356,25 +356,21 @@ const thisWeekPlannerSessions = sessions.filter(
     ...(latestLogFeedback
       ? [
           {
-  id: latestLogFeedback.id,
-  source: "log",
-  type: "Workout log",
-  exerciseName: latestLogFeedback.exercise_name,
-  feedback: latestLogFeedback.coach_feedback,
-  createdAt: latestLogFeedback.created_at,
-},
+            type: "Workout log",
+            exerciseName: latestLogFeedback.exercise_name,
+            feedback: latestLogFeedback.coach_feedback,
+            createdAt: latestLogFeedback.created_at,
+          },
         ]
       : []),
     ...(latestVideoFeedback
       ? [
           {
-  id: latestVideoFeedback.id,
-  source: "video",
-  type: "Video review",
-  exerciseName: latestVideoFeedback.exercise_name,
-  feedback: latestVideoFeedback.feedback,
-  createdAt: latestVideoFeedback.created_at,
-},
+            type: "Video review",
+            exerciseName: latestVideoFeedback.exercise_name,
+            feedback: latestVideoFeedback.feedback,
+            createdAt: latestVideoFeedback.created_at,
+          },
         ]
       : []),
   ]
@@ -386,6 +382,10 @@ const thisWeekPlannerSessions = sessions.filter(
 
   return (
     <div className="flex flex-col gap-3 pb-4">
+      <FeedbackReadMarker
+        unreadLogIds={unreadLogFeedbackIds}
+        unreadVideoIds={unreadVideoFeedbackIds}
+      />
 
       <section className={premiumCard}>
         <div className="relative z-10">
@@ -561,23 +561,6 @@ const thisWeekPlannerSessions = sessions.filter(
                   <div className="mt-3 space-y-2">
                     {latestFeedbackItems.map((item, index) => (
   <details
-  onToggle={async (e) => {
-    const details = e.currentTarget
-
-    if (!details.open) return
-
-    if (item.source === "video") {
-      await supabase
-        .from("exercise_videos")
-        .update({ feedback_read: true })
-        .eq("id", item.id)
-    } else {
-      await supabase
-        .from("workout_logs")
-        .update({ feedback_read: true })
-        .eq("id", item.id)
-    }
-  }}
     key={`${item.type}-${index}`}
     className={`rounded-[1rem] border ${softBorder} bg-[#070707] p-3`}
   >
