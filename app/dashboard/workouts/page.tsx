@@ -382,10 +382,6 @@ const thisWeekPlannerSessions = sessions.filter(
 
   return (
     <div className="flex flex-col gap-3 pb-4">
-      <FeedbackReadMarker
-        unreadLogIds={unreadLogFeedbackIds}
-        unreadVideoIds={unreadVideoFeedbackIds}
-      />
 
       <section className={premiumCard}>
         <div className="relative z-10">
