@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import { supabase } from "@/lib/supabase"
+import { useRouter } from "next/navigation"
 
 export default function LatestFeedbackCard({
   item,
@@ -8,21 +10,43 @@ export default function LatestFeedbackCard({
   softBorder,
 }: {
   item: {
-    type: string
-    exerciseName: string
-    feedback: string
-    createdAt: string
-  }
+  id: string
+  type: string
+  exerciseName: string
+  feedback: string
+  createdAt: string
+}
   dateLabel: string
   softBorder: string
 }) {
   const [open, setOpen] = useState(false)
+  const router = useRouter()
+
+  async function openFeedback() {
+  setOpen(true)
+
+  if (!item.id) return
+
+  if (item.type.toLowerCase().includes("video")) {
+    await supabase
+      .from("exercise_videos")
+      .update({ feedback_read: true })
+      .eq("id", item.id)
+  } else {
+    await supabase
+      .from("workout_logs")
+      .update({ feedback_read: true })
+      .eq("id", item.id)
+  }
+
+  router.refresh()
+}
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openFeedback}
         className={`mt-3 w-full rounded-[1.2rem] border ${softBorder} bg-black/45 p-3 text-left transition active:scale-[0.99]`}
       >
         <div className="mb-2 flex items-center gap-3">

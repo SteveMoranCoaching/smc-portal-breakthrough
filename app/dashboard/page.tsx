@@ -2,7 +2,6 @@ import Image from "next/image"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
-import FeedbackReadMarker from "@/components/FeedbackReadMarker"
 import PrefetchSession from "@/components/PrefetchSession"
 import MomentumCard from "@/components/MomentumCard"
 import WeeklySummaryCard from "@/components/WeeklySummaryCard"
@@ -750,10 +749,6 @@ const closestAchievements = achievementProgress
 
   return (
     <div className="flex flex-col gap-2.5">
-      <FeedbackReadMarker
-        unreadLogIds={unreadLogFeedbackIds}
-        unreadVideoIds={unreadVideoFeedbackIds}
-      />
 
       <section className="relative px-1 pt-0">
         <div className="relative min-h-[118px]">
@@ -883,7 +878,7 @@ const closestAchievements = achievementProgress
               </p>
 
               <Link
-                href="/dashboard/workouts"
+                href="/dashboard/workouts?focus=feedback"
                 className="mt-2.5 flex min-h-[34px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
               >
                 View Feedback <span className="ml-3 text-lg">→</span>

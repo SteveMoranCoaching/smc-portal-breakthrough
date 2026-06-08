@@ -502,6 +502,7 @@ useEffect(() => {
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [saveError, setSaveError] = useState("")
   const [uploadingExercise, setUploadingExercise] = useState("")
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [complete, setComplete] = useState(false)
   const [pbResults, setPbResults] = useState<PBResult[]>([])
   const [showPBModal, setShowPBModal] = useState(false)
@@ -973,6 +974,7 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
     setSaveError("")
     setMessage("Saving workout...")
     setUploadingExercise("")
+    setUploadProgress(0)
 
     try {
       const historicalLogsByExercise = await fetchHistoricalLogsByExercise()
@@ -1013,8 +1015,18 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
 }
         
 
-for (const video of data.videos) {
-  setUploadingExercise(`Uploading ${exerciseName} video...`)
+for (let videoIndex = 0; videoIndex < data.videos.length; videoIndex++) {
+  const video = data.videos[videoIndex]
+
+  const percent = Math.round(
+    ((videoIndex + 1) / data.videos.length) * 100
+  )
+
+  setUploadProgress(percent)
+
+  setUploadingExercise(
+    `Uploading ${exerciseName} (${percent}%)`
+  )
 
   const filePath = `${userId}/${session.id}/${i}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}-${safeFileName(
     video.name
@@ -1108,6 +1120,7 @@ if (typeof window !== "undefined") {
 setComplete(true)
 setMessage("")
 setUploadingExercise("")
+setUploadProgress(0)
 setSaving(false)
     } catch (err: any) {
       setSaveError(
@@ -1117,6 +1130,7 @@ setSaving(false)
       )
       setMessage("")
       setUploadingExercise("")
+      setUploadProgress(0)
       setSaving(false)
     }
   }
@@ -1888,7 +1902,11 @@ setSaving(false)
             <button
               type="button"
               onClick={() => handleSave()}
-              disabled={saving || !sessionStats.hasAnyLoggedWork}
+              disabled={
+  saving ||
+  (uploadProgress > 0 && uploadProgress < 100) ||
+  !sessionStats.hasAnyLoggedWork
+}
               className="min-h-12 w-full rounded-2xl bg-smc-gold py-3 text-[15px] font-black text-black shadow-[0_0_20px_rgba(212,175,55,0.18)] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
             >
               {getSaveButtonText()}
@@ -1900,7 +1918,10 @@ setSaving(false)
                   saveError ? "text-red-300/85" : "text-white/45"
                 }`}
               >
-                {saveError || message}
+                {saveError ||
+  (uploadingExercise
+    ? `${uploadingExercise}`
+    : message)}
               </p>
             )}
           </div>
