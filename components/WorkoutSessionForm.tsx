@@ -447,7 +447,12 @@ useEffect(() => {
     const parsed = JSON.parse(saved)
 
     if (Array.isArray(parsed?.formData)) {
-      setFormData(parsed.formData)
+      setFormData(
+  parsed.formData.map((entry: any) => ({
+    ...entry,
+    videos: [],
+  }))
+)
     }
 
     if (parsed?.sessionRating) {
@@ -483,14 +488,17 @@ useEffect(() => {
 
   const timeout = window.setTimeout(() => {
     window.localStorage.setItem(
-      autosaveKey,
-      JSON.stringify({
-        formData,
-        sessionRating,
-        sessionNotes,
-        savedAt: new Date().toISOString(),
-      })
-    )
+  autosaveKey,
+  JSON.stringify({
+    formData: formData.map((entry) => ({
+      ...entry,
+      videos: [],
+    })),
+    sessionRating,
+    sessionNotes,
+    savedAt: new Date().toISOString(),
+  })
+)
 
     setAutosaveStatus("saved")
   }, 750)
