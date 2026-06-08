@@ -1,8 +1,7 @@
 "use client"
 
-import { useRef } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
 
 type FeedbackItem = {
   id: string
@@ -22,45 +21,42 @@ export default function WorkoutFeedbackDetails({
   dateLabel: string
 }) {
   const router = useRouter()
-  const markedRead = useRef(false)
+  const [markingRead, setMarkingRead] = useState(false)
+  const [read, setRead] = useState(false)
 
   async function markAsRead() {
-    if (markedRead.current) return
-    markedRead.current = true
+    if (read || markingRead) return
 
-    if (item.source === "video") {
-      await supabase
-        .from("exercise_videos")
-        .update({ feedback_read: true })
-        .eq("id", item.id)
-    } else {
-      await supabase
-        .from("workout_logs")
-        .update({ feedback_read: true })
-        .eq("id", item.id)
-    }
+    setMarkingRead(true)
 
+    const response = await fetch("/api/feedback/read", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: item.id,
+        source: item.source,
+      }),
+    })
+
+    setMarkingRead(false)
+
+    if (!response.ok) return
+
+    setRead(true)
     router.refresh()
   }
 
   return (
-    <details
-      onToggle={(event) => {
-        if (event.currentTarget.open) {
-          markAsRead()
-        }
-      }}
-      className={`rounded-[1rem] border ${softBorder} bg-[#070707] p-3`}
-    >
+    <details className={`rounded-[1rem] border ${softBorder} bg-[#070707] p-3`}>
       <summary className="cursor-pointer list-none">
         <div className="mb-1.5 flex items-center gap-2">
           <span className="rounded-full bg-smc-gold/90 px-2 py-0.5 text-[8px] font-black uppercase text-black">
             {item.type}
           </span>
 
-          <span className="text-[11px] text-smc-muted-soft">
-            {dateLabel}
-          </span>
+          <span className="text-[11px] text-smc-muted-soft">{dateLabel}</span>
         </div>
 
         <p className="break-words text-xs font-bold text-smc-text">
@@ -76,6 +72,15 @@ export default function WorkoutFeedbackDetails({
         <p className="whitespace-pre-wrap break-words text-xs leading-5 text-zinc-300">
           {item.feedback}
         </p>
+
+        <button
+          type="button"
+          onClick={markAsRead}
+          disabled={read || markingRead}
+          className="mt-3 w-full rounded-2xl bg-smc-gold px-4 py-2.5 text-xs font-black text-black disabled:opacity-50"
+        >
+          {read ? "Marked as read" : markingRead ? "Marking..." : "Mark as read"}
+        </button>
       </div>
     </details>
   )

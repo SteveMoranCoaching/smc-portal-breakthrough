@@ -347,15 +347,21 @@ const thisWeekPlannerSessions = sessions.filter(
     unreadLogFeedbackIds.length + unreadVideoFeedbackIds.length
 
   const latestLogFeedback =
-    workoutLogs?.filter((log: any) => log.coach_feedback)?.[0] || null
+  workoutLogs?.filter(
+    (log: any) => log.coach_feedback && !log.feedback_read
+  )?.[0] || null
 
-  const latestVideoFeedback =
-    videos?.filter((video: any) => video.feedback)?.[0] || null
+const latestVideoFeedback =
+  videos?.filter(
+    (video: any) => video.feedback && !video.feedback_read
+  )?.[0] || null
 
   const latestFeedbackItems = [
     ...(latestLogFeedback
       ? [
           {
+            id: latestLogFeedback.id,
+            source: "log",
             type: "Workout log",
             exerciseName: latestLogFeedback.exercise_name,
             feedback: latestLogFeedback.coach_feedback,
@@ -366,6 +372,8 @@ const thisWeekPlannerSessions = sessions.filter(
     ...(latestVideoFeedback
       ? [
           {
+            id: latestVideoFeedback.id,
+            source: "video",
             type: "Video review",
             exerciseName: latestVideoFeedback.exercise_name,
             feedback: latestVideoFeedback.feedback,
@@ -556,40 +564,13 @@ const thisWeekPlannerSessions = sessions.filter(
                 {latestFeedbackItems.length > 0 ? (
                   <div className="mt-3 space-y-2">
                     {latestFeedbackItems.map((item, index) => (
-  <details
-    key={`${item.type}-${index}`}
-    className={`rounded-[1rem] border ${softBorder} bg-[#070707] p-3`}
-  >
-    <summary className="cursor-pointer list-none">
-
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="rounded-full bg-smc-gold/90 px-2 py-0.5 text-[8px] font-black uppercase text-black">
-          {item.type}
-        </span>
-
-        <span className="text-[11px] text-smc-muted-soft">
-          {formatDate(item.createdAt)}
-        </span>
-      </div>
-
-      <p className="break-words text-xs font-bold text-smc-text">
-        {item.exerciseName}
-      </p>
-
-      <p className="mt-1 text-[11px] font-bold text-smc-gold">
-        Tap to read feedback ↓
-      </p>
-
-    </summary>
-
-    <div className="mt-2 border-t border-white/5 pt-2">
-      <p className="whitespace-pre-wrap break-words text-xs leading-5 text-zinc-300">
-        {item.feedback}
-      </p>
-    </div>
-
-  </details>
-))}
+                      <WorkoutFeedbackDetails
+                        key={`${item.type}-${index}`}
+                        item={item}
+                        softBorder={softBorder}
+                        dateLabel={formatDate(item.createdAt)}
+                      />
+                    ))}
                   </div>
                 ) : null}
               </div>
