@@ -1718,7 +1718,6 @@ setSaving(false)
             </div>
           )
         })}
-      </div>
 
       {stretchExercises.length > 0 && (
           <details
@@ -1871,6 +1870,7 @@ setSaving(false)
             </div>
           </details>
         )}
+              </div>
 
       {!keyboardActive && (
         <div className="fixed inset-x-0 bottom-[92px] z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
