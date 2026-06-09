@@ -238,6 +238,12 @@ function formatTimestamp(dateString: string) {
   })
 }
 
+function isCheckInWindowOpen() {
+  const day = new Date().getDay()
+
+  return day === 5 || day === 6 || day === 0
+}
+
 function formatPBType(type: string) {
   if (type === "estimated_1rm") return "Estimated 1RM"
   if (type === "heaviest") return "Heaviest"
@@ -609,7 +615,8 @@ const nextWorkout =
     unreadLogFeedbackIds.length + unreadVideoFeedbackIds.length
 
   const hasCheckedInThisWeek = Boolean(thisWeeksCheckIns?.[0])
-  const checkInDue = !hasCheckedInThisWeek
+const checkInWindowOpen = isCheckInWindowOpen()
+const checkInDue = checkInWindowOpen && !hasCheckedInThisWeek
   const latestPB: any = latestPBs?.[0] || null
 
   const unlockedCodes =

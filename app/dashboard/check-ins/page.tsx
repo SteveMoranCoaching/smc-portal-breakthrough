@@ -33,6 +33,12 @@ function getWeekWindow() {
   }
 }
 
+function isCheckInWindowOpen() {
+  const day = new Date().getDay()
+
+  return day === 5 || day === 6 || day === 0
+}
+
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -53,6 +59,10 @@ async function submitCheckIn(formData: FormData) {
   if (!user) {
     redirect("/dashboard/check-ins?error=not-logged-in")
   }
+
+  if (!isCheckInWindowOpen()) {
+  redirect("/dashboard/check-ins?error=checkin-window-closed")
+}
 
   const { weekStart, weekEnd } = getWeekWindow()
 
@@ -144,6 +154,7 @@ export default async function CheckInsPage({
     ) || null
 
   const hasSubmittedThisWeek = Boolean(thisWeeksCheckIn)
+  const checkInWindowOpen = isCheckInWindowOpen()
 
   const unseenFeedbackIds =
     checkIns
@@ -228,7 +239,7 @@ export default async function CheckInsPage({
           </div>
         )}
 
-        {!hasSubmittedThisWeek ? (
+        {!hasSubmittedThisWeek && checkInWindowOpen ? (
           <form action={submitCheckIn} className={`${premiumCard} p-5`}>
             <div className="space-y-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -239,8 +250,8 @@ export default async function CheckInsPage({
                   <input
                     name="bodyweight"
                     type="number"
-                    step="0.1"
-                    placeholder="e.g. 89.5"
+                    step="0.01"
+                    placeholder="e.g. 89.55"
                     className={inputClass}
                   />
                 </label>
@@ -323,20 +334,31 @@ export default async function CheckInsPage({
               <SubmitButton />
             </div>
           </form>
-        ) : (
-          <div className={`${premiumCard} p-5`}>
-            <div className="relative z-10">
-              <p className="text-sm font-black text-yellow-500">
-                Check-in locked for this week
-              </p>
-              <p className="mt-2 text-sm leading-6 text-zinc-300">
-                To keep weekly reviews clean, you can submit one check-in per
-                Monday–Sunday period. Your next check-in will unlock next
-                Monday.
-              </p>
-            </div>
-          </div>
-        )}
+        ) : !checkInWindowOpen ? (
+  <div className={`${premiumCard} p-5`}>
+    <div className="relative z-10">
+      <p className="text-sm font-black text-yellow-500">
+        Check-ins open Friday
+      </p>
+
+      <p className="mt-2 text-sm leading-6 text-zinc-300">
+        Weekly check-ins are available from Friday through Sunday.
+      </p>
+    </div>
+  </div>
+) : (
+  <div className={`${premiumCard} p-5`}>
+    <div className="relative z-10">
+      <p className="text-sm font-black text-yellow-500">
+        Check-in locked for this week
+      </p>
+
+      <p className="mt-2 text-sm leading-6 text-zinc-300">
+        To keep weekly reviews clean, you can submit one check-in per week.
+      </p>
+    </div>
+  </div>
+)}
 
         <section className="space-y-4">
           <h2 className="text-xl font-black">Previous Check-Ins</h2>
