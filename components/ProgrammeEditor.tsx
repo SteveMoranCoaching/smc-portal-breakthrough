@@ -24,6 +24,8 @@ type Programme = {
   title: string
   week_number: number
   notes: string | null
+  start_date: string | null
+  end_date: string | null
 }
 
 type ToastType = "success" | "error" | "info"
@@ -62,6 +64,23 @@ function buildWeeks(length: number) {
   return Array.from({ length }, (_, index) => index + 1)
 }
 
+function calculateEndDate(start: string, weeksValue: string | number) {
+  if (!start) return ""
+
+  const weeks = Math.max(1, Number(weeksValue) || 1)
+
+  const [year, month, day] = start.split("-").map(Number)
+  const date = new Date(year, month - 1, day)
+
+  date.setDate(date.getDate() + weeks * 7 - 1)
+
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, "0")
+  const dd = String(date.getDate()).padStart(2, "0")
+
+  return `${yyyy}-${mm}-${dd}`
+}
+
 export default function ProgrammeEditor({
   programmeId,
 }: {
@@ -74,6 +93,8 @@ export default function ProgrammeEditor({
   const [clientId, setClientId] = useState("")
   const [title, setTitle] = useState("")
   const [programmeLength, setProgrammeLength] = useState("1")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
   const [activeWeek, setActiveWeek] = useState(1)
   const [notes, setNotes] = useState("")
   const [sessionsByWeek, setSessionsByWeek] = useState<Record<number, Session[]>>({
@@ -97,6 +118,10 @@ export default function ProgrammeEditor({
   )
 
   const sessions = sessionsByWeek[activeWeek] ?? defaultSessions
+
+  useEffect(() => {
+  setEndDate(calculateEndDate(startDate, programmeLength))
+}, [startDate, programmeLength])
 
   const totalSessions = useMemo(
     () =>
@@ -149,7 +174,7 @@ export default function ProgrammeEditor({
 
       const { data: programmeData, error: programmeError } = await supabase
         .from("programmes")
-        .select("id, user_id, title, week_number, notes")
+        .select("id, user_id, title, week_number, notes, start_date, end_date")
         .eq("id", programmeId)
         .single()
 
@@ -211,6 +236,17 @@ export default function ProgrammeEditor({
       setProgrammeLength(String(maxWeek))
       setActiveWeek(1)
       setNotes(programmeData.notes ?? "")
+      
+      const loadedStartDate = programmeData.start_date ?? ""
+
+setStartDate(loadedStartDate)
+
+setEndDate(
+  loadedStartDate
+    ? calculateEndDate(loadedStartDate, maxWeek)
+    : ""
+)
+
       setClientName(clientData?.name ?? "Client")
       setClientId(clientData?.id ?? "")
       setSessionsByWeek(groupedSessions)
@@ -441,6 +477,8 @@ export default function ProgrammeEditor({
         title: `${title.trim()} Copy`,
         week_number: 1,
         notes: notes.trim(),
+        start_date: startDate || null,
+        end_date: endDate || null,
       })
       .select("id")
       .single()
@@ -513,6 +551,8 @@ export default function ProgrammeEditor({
         title: title.trim(),
         week_number: 1,
         notes: notes.trim(),
+        start_date: startDate || null,
+        end_date: endDate || null,
       })
       .eq("id", programme.id)
 
@@ -721,6 +761,26 @@ export default function ProgrammeEditor({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className={labelStyle}>Start date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label className={labelStyle}>End date</label>
+              <input
+                type="date"
+                value={endDate}
+                readOnly
+                className={`${inputStyle} text-white/45`}
+              />
             </div>
 
             <div className="sm:col-span-2">

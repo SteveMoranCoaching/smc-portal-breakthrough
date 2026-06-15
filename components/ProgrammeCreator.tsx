@@ -51,6 +51,23 @@ function buildWeeks(length: number) {
   return Array.from({ length }, (_, index) => index + 1)
 }
 
+function calculateEndDate(start: string, weeksValue: string | number) {
+  if (!start) return ""
+
+  const weeks = Math.max(1, Number(weeksValue) || 1)
+
+  const [year, month, day] = start.split("-").map(Number)
+  const date = new Date(year, month - 1, day)
+
+  date.setDate(date.getDate() + weeks * 7 - 1)
+
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, "0")
+  const dd = String(date.getDate()).padStart(2, "0")
+
+  return `${yyyy}-${mm}-${dd}`
+}
+
 function createSessionsByWeek(length: number) {
   return buildWeeks(length).reduce(
     (acc, week) => ({
@@ -72,6 +89,8 @@ export default function ProgrammeCreator() {
   const [clientUserId, setClientUserId] = useState("")
   const [title, setTitle] = useState("")
   const [programmeLength, setProgrammeLength] = useState("4")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
   const [activeWeek, setActiveWeek] = useState(1)
   const [notes, setNotes] = useState("")
   const [openSessions, setOpenSessions] = useState<number[]>([0])
@@ -94,6 +113,10 @@ export default function ProgrammeCreator() {
   )
 
   const sessions = sessionsByWeek[activeWeek] ?? defaultSessions
+
+  useEffect(() => {
+  setEndDate(calculateEndDate(startDate, programmeLength))
+}, [startDate, programmeLength])
 
   const selectedClient = useMemo(
     () => clients.find((client) => client.user_id === clientUserId),
@@ -428,6 +451,8 @@ const { data: programme, error: programmeError } = await supabase
     week_number: 1,
     notes: notes.trim(),
     is_active: true,
+    start_date: startDate || null,
+    end_date: endDate || null,
   })
   .select()
   .single()
@@ -596,6 +621,26 @@ const { data: programme, error: programmeError } = await supabase
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className={labelStyle}>Start date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label className={labelStyle}>End date</label>
+              <input
+                type="date"
+                value={endDate}
+                readOnly
+                className={`${inputStyle} text-white/45`}
+              />
             </div>
 
             <div className="sm:col-span-2">

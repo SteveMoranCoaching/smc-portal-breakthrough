@@ -626,12 +626,23 @@ function getTimelineDay(dateString: string) {
                 </h1>
                 <p className="mt-0.5 text-sm text-white/45">{client.email}</p>
 
-                <Link
-  href={`/coach/${client.id}/session-entry`}
-  className="mt-3 inline-flex min-h-[40px] items-center rounded-[1rem] bg-smc-gold px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black transition hover:brightness-110"
->
-  + Add Coach Session
-</Link>
+                <div className="mt-3 flex flex-wrap gap-2">
+
+  <Link
+    href={`/coach/${client.id}/session-entry`}
+    className="inline-flex min-h-[40px] items-center rounded-[1rem] bg-smc-gold px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black transition hover:brightness-110"
+  >
+    + Add Coach Session
+  </Link>
+
+  <Link
+    href={`/coach/messages/${client.id}`}
+    className="inline-flex min-h-[40px] items-center rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white transition hover:border-smc-gold/35 hover:text-smc-gold"
+  >
+    Message Client
+  </Link>
+
+</div>
 
                 <div className="mt-2 flex flex-wrap gap-2">
                   <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
