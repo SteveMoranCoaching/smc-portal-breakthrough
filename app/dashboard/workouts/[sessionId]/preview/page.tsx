@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { notFound, redirect } from "next/navigation"
+import { redirect } from "next/navigation"
 import EmptyStateCard from "@/components/ui/EmptyStateCard"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 
@@ -8,8 +8,111 @@ export const dynamic = "force-dynamic"
 const shellCard =
   "relative overflow-hidden rounded-[1.35rem] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.016))] p-3.5 shadow-[0_14px_34px_rgba(0,0,0,0.68)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[1.35rem] before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)]"
 
+function isCircuitExercise(exercise: any) {
+  return String(exercise?.section || "").toLowerCase() === "circuit"
+}
+
 function getExerciseCount(session: any) {
-  return Array.isArray(session?.exercises) ? session.exercises.length : 0
+  const exercises = Array.isArray(session?.exercises) ? session.exercises : []
+
+  return exercises.reduce((total: number, exercise: any) => {
+    if (isCircuitExercise(exercise) && exercise?.circuit?.exercises?.length) {
+      return total + exercise.circuit.exercises.length
+    }
+
+    return total + 1
+  }, 0)
+}
+
+function renderPreviewExercise(exercise: any, index: number) {
+  if (isCircuitExercise(exercise) && exercise?.circuit) {
+    return (
+      <div
+        key={`${exercise.name || "circuit"}-${index}`}
+        className="rounded-[1.1rem] border border-white/[0.06] bg-black/30 p-3"
+      >
+        <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
+          Circuit {index + 1}
+        </p>
+
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
+            Circuit
+          </span>
+
+          <span className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/45">
+            {exercise.circuit.rounds || 1} rounds
+          </span>
+
+          {exercise.circuit.workSeconds ? (
+            <span className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/45">
+              {exercise.circuit.workSeconds}s work
+            </span>
+          ) : null}
+
+          {exercise.circuit.restSeconds ? (
+            <span className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/45">
+              {exercise.circuit.restSeconds}s rest
+            </span>
+          ) : null}
+        </div>
+
+        <h3 className="mt-2 break-words text-base font-black text-white">
+          {exercise.name || "Circuit"}
+        </h3>
+
+        {exercise.prescription ? (
+          <p className="mt-1 break-words text-xs font-bold text-white/45">
+            {exercise.prescription}
+          </p>
+        ) : null}
+
+        <div className="mt-3 space-y-1.5">
+          {exercise.circuit.exercises?.map((item: any, itemIndex: number) => (
+            <div
+              key={`${item.name || "circuit-exercise"}-${itemIndex}`}
+              className="rounded-[0.85rem] border border-white/[0.045] bg-black/35 px-3 py-2"
+            >
+              <p className="text-xs font-black text-white">
+                {item.name || `Circuit exercise ${itemIndex + 1}`}
+              </p>
+
+              {item.prescription ? (
+                <p className="mt-0.5 text-[11px] leading-5 text-white/40">
+                  {item.prescription}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      key={`${exercise.name || "exercise"}-${index}`}
+      className="rounded-[1.1rem] border border-white/[0.06] bg-black/30 p-3"
+    >
+      <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
+        Exercise {index + 1}
+      </p>
+
+      <h3 className="mt-1 break-words text-base font-black text-white">
+        {exercise.name || "Unnamed exercise"}
+      </h3>
+
+      <p className="mt-1 break-words text-xs font-bold text-white/45">
+        {exercise.prescription || "No prescription added"}
+      </p>
+
+      {exercise.notes ? (
+        <p className="mt-2 break-words text-xs leading-5 text-white/38">
+          {exercise.notes}
+        </p>
+      ) : null}
+    </div>
+  )
 }
 
 export default async function PreviewSessionPage({
@@ -33,12 +136,12 @@ export default async function PreviewSessionPage({
     .maybeSingle()
 
   if (sessionError || !session) {
-  return (
-    <pre className="text-white p-4">
-      Session ID: {sessionId}
-    </pre>
-  )
-}
+    return (
+      <pre className="p-4 text-white">
+        Session ID: {sessionId}
+      </pre>
+    )
+  }
 
   const { data: programme } = await supabase
     .from("programmes")
@@ -47,6 +150,7 @@ export default async function PreviewSessionPage({
     .maybeSingle()
 
   const exercises = Array.isArray(session.exercises) ? session.exercises : []
+  const displayExerciseCount = getExerciseCount(session)
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.10),transparent_32%),#050505] px-3 py-4 pb-32 text-white">
@@ -83,7 +187,7 @@ export default async function PreviewSessionPage({
 
             <p className="mt-1 break-words text-xs leading-5 text-white/50">
               Week {session.week_number || programme?.week_number || "—"} ·{" "}
-              {session.day || "Session"} · {getExerciseCount(session)} exercises
+              {session.day || "Session"} · {displayExerciseCount} exercises
             </p>
 
             <p className="mt-3 rounded-[1rem] border border-white/[0.06] bg-black/35 px-3 py-2 text-xs leading-5 text-white/45">
@@ -98,7 +202,7 @@ export default async function PreviewSessionPage({
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-base font-black text-white">Session Plan</h2>
               <p className="shrink-0 text-[11px] font-bold text-white/35">
-                {exercises.length} total
+                {displayExerciseCount} total
               </p>
             </div>
 
@@ -113,30 +217,9 @@ export default async function PreviewSessionPage({
               />
             ) : (
               <div className="space-y-2">
-                {exercises.map((exercise: any, index: number) => (
-                  <div
-                    key={`${exercise.name || "exercise"}-${index}`}
-                    className="rounded-[1.1rem] border border-white/[0.06] bg-black/30 p-3"
-                  >
-                    <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
-                      Exercise {index + 1}
-                    </p>
-
-                    <h3 className="mt-1 break-words text-base font-black text-white">
-                      {exercise.name || "Unnamed exercise"}
-                    </h3>
-
-                    <p className="mt-1 break-words text-xs font-bold text-white/45">
-                      {exercise.prescription || "No prescription added"}
-                    </p>
-
-                    {exercise.notes ? (
-                      <p className="mt-2 break-words text-xs leading-5 text-white/38">
-                        {exercise.notes}
-                      </p>
-                    ) : null}
-                  </div>
-                ))}
+                {exercises.map((exercise: any, index: number) =>
+                  renderPreviewExercise(exercise, index)
+                )}
               </div>
             )}
           </div>

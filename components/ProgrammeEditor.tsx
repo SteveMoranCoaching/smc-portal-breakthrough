@@ -4,10 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 
+type CircuitExercise = {
+  name: string
+  prescription: string
+}
+
 type Exercise = {
   name: string
   prescription: string
-  section?: "main" | "warmup" | "stretch"
+  section?: "main" | "warmup" | "stretch" | "circuit"
+  circuit?: {
+    rounds: number
+    workSeconds: number
+    restSeconds: number
+    exercises: CircuitExercise[]
+  }
 }
 
 type Session = {
@@ -62,6 +73,21 @@ function cloneSessions(sessions: Session[]) {
 
 function buildWeeks(length: number) {
   return Array.from({ length }, (_, index) => index + 1)
+}
+
+function shouldSaveExercise(exercise: Exercise) {
+  const hasBasicDetails =
+    Boolean(exercise.name.trim()) || Boolean(exercise.prescription.trim())
+
+  const hasCircuitDetails =
+    exercise.section === "circuit" &&
+    Boolean(
+      exercise.circuit?.exercises?.some(
+        (item) => item.name.trim() || item.prescription.trim()
+      )
+    )
+
+  return hasBasicDetails || hasCircuitDetails
 }
 
 function calculateEndDate(start: string, weeksValue: string | number) {
@@ -236,7 +262,7 @@ export default function ProgrammeEditor({
       setProgrammeLength(String(maxWeek))
       setActiveWeek(1)
       setNotes(programmeData.notes ?? "")
-      
+
       const loadedStartDate = programmeData.start_date ?? ""
 
 setStartDate(loadedStartDate)
@@ -326,13 +352,148 @@ setEndDate(
       exercises: [...next[sessionIndex].exercises],
     }
 
+    const currentExercise = next[sessionIndex].exercises[exerciseIndex]
+
     next[sessionIndex].exercises[exerciseIndex] = {
-      ...next[sessionIndex].exercises[exerciseIndex],
+      ...currentExercise,
       [field]: value,
+      ...(field === "section" && value === "circuit" && !currentExercise.circuit
+        ? {
+            circuit: {
+              rounds: 1,
+              workSeconds: 0,
+              restSeconds: 0,
+              exercises: [{ name: "", prescription: "" }],
+            },
+          }
+        : {}),
     }
 
     updateActiveWeekSessions(next)
   }
+
+  function updateCircuitField(
+  sessionIndex: number,
+  exerciseIndex: number,
+  field: "rounds" | "workSeconds" | "restSeconds",
+  value: string
+) {
+  const next = [...sessions]
+
+  const currentExercise = next[sessionIndex].exercises[exerciseIndex]
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises: [...next[sessionIndex].exercises],
+  }
+
+  next[sessionIndex].exercises[exerciseIndex] = {
+    ...currentExercise,
+    circuit: {
+      rounds: currentExercise.circuit?.rounds || 1,
+      workSeconds: currentExercise.circuit?.workSeconds || 0,
+      restSeconds: currentExercise.circuit?.restSeconds || 0,
+      exercises: currentExercise.circuit?.exercises || [
+        { name: "", prescription: "" },
+      ],
+      [field]: Number(value) || 0,
+    },
+  }
+
+  updateActiveWeekSessions(next)
+}
+
+function updateCircuitExercise(
+  sessionIndex: number,
+  exerciseIndex: number,
+  circuitExerciseIndex: number,
+  field: "name" | "prescription",
+  value: string
+) {
+  const next = [...sessions]
+  const currentExercise = next[sessionIndex].exercises[exerciseIndex]
+
+  const circuitExercises = currentExercise.circuit?.exercises || [
+    { name: "", prescription: "" },
+  ]
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises: [...next[sessionIndex].exercises],
+  }
+
+  next[sessionIndex].exercises[exerciseIndex] = {
+    ...currentExercise,
+    circuit: {
+      rounds: currentExercise.circuit?.rounds || 1,
+      workSeconds: currentExercise.circuit?.workSeconds || 0,
+      restSeconds: currentExercise.circuit?.restSeconds || 0,
+      exercises: circuitExercises.map((item, index) =>
+        index === circuitExerciseIndex ? { ...item, [field]: value } : item
+      ),
+    },
+  }
+
+  updateActiveWeekSessions(next)
+}
+
+function addCircuitExercise(sessionIndex: number, exerciseIndex: number) {
+  const next = [...sessions]
+  const currentExercise = next[sessionIndex].exercises[exerciseIndex]
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises: [...next[sessionIndex].exercises],
+  }
+
+  next[sessionIndex].exercises[exerciseIndex] = {
+    ...currentExercise,
+    circuit: {
+      rounds: currentExercise.circuit?.rounds || 1,
+      workSeconds: currentExercise.circuit?.workSeconds || 0,
+      restSeconds: currentExercise.circuit?.restSeconds || 0,
+      exercises: [
+        ...(currentExercise.circuit?.exercises || [
+          { name: "", prescription: "" },
+        ]),
+        { name: "", prescription: "" },
+      ],
+    },
+  }
+
+  updateActiveWeekSessions(next)
+}
+
+function removeCircuitExercise(
+  sessionIndex: number,
+  exerciseIndex: number,
+  circuitExerciseIndex: number
+) {
+  const next = [...sessions]
+  const currentExercise = next[sessionIndex].exercises[exerciseIndex]
+  const circuitExercises = currentExercise.circuit?.exercises || []
+
+  if (circuitExercises.length <= 1) return
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises: [...next[sessionIndex].exercises],
+  }
+
+  next[sessionIndex].exercises[exerciseIndex] = {
+    ...currentExercise,
+    circuit: {
+      rounds: currentExercise.circuit?.rounds || 1,
+      workSeconds: currentExercise.circuit?.workSeconds || 0,
+      restSeconds: currentExercise.circuit?.restSeconds || 0,
+      exercises: circuitExercises.filter(
+        (_, index) => index !== circuitExerciseIndex
+      ),
+    },
+  }
+
+  updateActiveWeekSessions(next)
+}
 
   function addSession() {
     const nextIndex = sessions.length
@@ -585,9 +746,7 @@ setEndDate(
         week_number: week,
         day: session.day.trim(),
         title: session.title.trim(),
-        exercises: session.exercises.filter(
-          (exercise) => exercise.name.trim() || exercise.prescription.trim()
-        ),
+        exercises: session.exercises.filter(shouldSaveExercise),
       }))
     )
 
@@ -920,8 +1079,12 @@ setEndDate(
                                 }`}
                               >
                                 {exercise.section === "warmup"
-                                  ? "Warm-up"
-                                  : "Main"}
+  ? "Warm-up"
+  : exercise.section === "stretch"
+    ? "Stretch"
+    : exercise.section === "circuit"
+      ? "Circuit"
+      : "Main"}
                               </span>
                             </div>
 
@@ -936,6 +1099,162 @@ setEndDate(
                               Remove
                             </button>
                           </div>
+
+                          {exercise.section === "circuit" ? (
+  <div className="space-y-3">
+    <select
+      value={exercise.section || "main"}
+      onChange={(e) =>
+        updateExercise(sessionIndex, exerciseIndex, "section", e.target.value)
+      }
+      className={inputStyle}
+    >
+      <option value="warmup">Warm-up / Mobility</option>
+      <option value="main">Main Exercise</option>
+      <option value="circuit">Circuit Block</option>
+      <option value="stretch">Post Session Stretch</option>
+    </select>
+
+    <div className="grid gap-2.5 sm:grid-cols-2">
+      <input
+        value={exercise.name}
+        onChange={(e) =>
+          updateExercise(sessionIndex, exerciseIndex, "name", e.target.value)
+        }
+        placeholder="Circuit name"
+        className={inputStyle}
+      />
+
+      <input
+        value={exercise.prescription}
+        onChange={(e) =>
+          updateExercise(
+            sessionIndex,
+            exerciseIndex,
+            "prescription",
+            e.target.value
+          )
+        }
+        placeholder="Circuit notes e.g. Rest 90s between rounds"
+        className={inputStyle}
+      />
+    </div>
+
+    <div className="grid gap-2.5 sm:grid-cols-3">
+      <input
+        type="number"
+        value={exercise.circuit?.rounds || 1}
+        onChange={(e) =>
+          updateCircuitField(
+            sessionIndex,
+            exerciseIndex,
+            "rounds",
+            e.target.value
+          )
+        }
+        placeholder="Rounds"
+        className={inputStyle}
+      />
+
+      <input
+        type="number"
+        value={exercise.circuit?.workSeconds || ""}
+        onChange={(e) =>
+          updateCircuitField(
+            sessionIndex,
+            exerciseIndex,
+            "workSeconds",
+            e.target.value
+          )
+        }
+        placeholder="Work seconds"
+        className={inputStyle}
+      />
+
+      <input
+        type="number"
+        value={exercise.circuit?.restSeconds || ""}
+        onChange={(e) =>
+          updateCircuitField(
+            sessionIndex,
+            exerciseIndex,
+            "restSeconds",
+            e.target.value
+          )
+        }
+        placeholder="Rest seconds"
+        className={inputStyle}
+      />
+    </div>
+
+    <div className="space-y-2">
+      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold/70">
+        Circuit exercises
+      </p>
+
+      {(exercise.circuit?.exercises || [{ name: "", prescription: "" }]).map(
+        (circuitExercise, circuitExerciseIndex) => (
+          <div
+            key={circuitExerciseIndex}
+            className="grid gap-2 rounded-[0.9rem] border border-white/[0.06] bg-black/30 p-2 sm:grid-cols-[1fr_1fr_auto]"
+          >
+            <input
+              value={circuitExercise.name}
+              onChange={(e) =>
+                updateCircuitExercise(
+                  sessionIndex,
+                  exerciseIndex,
+                  circuitExerciseIndex,
+                  "name",
+                  e.target.value
+                )
+              }
+              placeholder="Exercise name"
+              className={inputStyle}
+            />
+
+            <input
+              value={circuitExercise.prescription}
+              onChange={(e) =>
+                updateCircuitExercise(
+                  sessionIndex,
+                  exerciseIndex,
+                  circuitExerciseIndex,
+                  "prescription",
+                  e.target.value
+                )
+              }
+              placeholder="e.g. 40s / 15 reps / AMRAP"
+              className={inputStyle}
+            />
+
+            <button
+              type="button"
+              onClick={() =>
+                removeCircuitExercise(
+                  sessionIndex,
+                  exerciseIndex,
+                  circuitExerciseIndex
+                )
+              }
+              className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-black text-red-300"
+            >
+              Remove
+            </button>
+          </div>
+        )
+      )}
+    </div>
+
+    <button
+      type="button"
+      onClick={() => addCircuitExercise(sessionIndex, exerciseIndex)}
+      className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-smc-gold transition hover:bg-smc-gold hover:text-black"
+    >
+      + Add circuit exercise
+    </button>
+  </div>
+) : (
 
                           <div className="grid gap-2.5 sm:grid-cols-[0.8fr_1.2fr_1.2fr]">
                             <select
@@ -952,6 +1271,7 @@ setEndDate(
                             >
                               <option value="warmup">Warm-up / Mobility</option>
 <option value="main">Main Exercise</option>
+<option value="circuit">Circuit Block</option>
 <option value="stretch">Post Session Stretch</option>
                             </select>
 
@@ -966,10 +1286,12 @@ setEndDate(
                                 )
                               }
                               placeholder={
-                                exercise.section === "warmup"
-                                  ? "Warm-up name"
-                                  : "Exercise name"
-                              }
+  exercise.section === "warmup"
+    ? "Warm-up name"
+    : exercise.section === "stretch"
+      ? "Stretch name"
+      : "Exercise name"
+}
                               className={inputStyle}
                             />
 
@@ -984,13 +1306,16 @@ setEndDate(
                                 )
                               }
                               placeholder={
-                                exercise.section === "warmup"
-                                  ? "e.g. 2x10 each side"
-                                  : "e.g. 3x5 @ RPE 7"
-                              }
+  exercise.section === "warmup"
+    ? "e.g. 2x10 each side"
+    : exercise.section === "stretch"
+      ? "e.g. 30s holds"
+      : "e.g. 3x5 @ RPE 7"
+}
                               className={inputStyle}
                             />
-                          </div>
+                                                    </div>
+                        )}
                         </div>
                       ))}
                     </div>

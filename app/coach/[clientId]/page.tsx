@@ -188,6 +188,99 @@ function groupSessionsByWeek(sessions: any[]) {
   }, {})
 }
 
+function isCircuitExercise(exercise: any) {
+  return String(exercise?.section || "").toLowerCase() === "circuit"
+}
+
+function getDisplayExerciseCount(session: any) {
+  const exercises = Array.isArray(session?.exercises) ? session.exercises : []
+
+  return exercises.reduce((total: number, exercise: any) => {
+    if (isCircuitExercise(exercise) && exercise?.circuit?.exercises?.length) {
+      return total + exercise.circuit.exercises.length
+    }
+
+    return total + 1
+  }, 0)
+}
+
+function renderProgrammeExercise(exercise: any, index: number) {
+  if (isCircuitExercise(exercise) && exercise?.circuit) {
+    return (
+      <div
+        key={index}
+        className="rounded-[0.8rem] border border-white/[0.045] bg-white/[0.025] px-3 py-2"
+      >
+        <div className="mb-2 flex flex-wrap gap-2">
+          <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
+            Circuit
+          </span>
+
+          <span className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/45">
+            {exercise.circuit.rounds || 1} rounds
+          </span>
+
+          {exercise.circuit.workSeconds ? (
+            <span className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/45">
+              {exercise.circuit.workSeconds}s work
+            </span>
+          ) : null}
+
+          {exercise.circuit.restSeconds ? (
+            <span className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/45">
+              {exercise.circuit.restSeconds}s rest
+            </span>
+          ) : null}
+        </div>
+
+        <p className="text-sm font-bold text-white">
+          {exercise.name || "Circuit"}
+        </p>
+
+        {exercise.prescription ? (
+          <p className="mt-0.5 text-xs leading-5 text-white/40">
+            {exercise.prescription}
+          </p>
+        ) : null}
+
+        <div className="mt-2 space-y-1.5">
+          {exercise.circuit.exercises?.map((item: any, itemIndex: number) => (
+            <div
+              key={itemIndex}
+              className="rounded-[0.7rem] border border-white/[0.045] bg-black/25 px-2.5 py-2"
+            >
+              <p className="text-xs font-black text-white">
+                {item.name || `Circuit exercise ${itemIndex + 1}`}
+              </p>
+
+              {item.prescription ? (
+                <p className="mt-0.5 text-[11px] text-white/40">
+                  {item.prescription}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      key={index}
+      className="rounded-[0.8rem] border border-white/[0.045] bg-white/[0.025] px-3 py-2"
+    >
+      <p className="text-sm font-bold text-white">
+        {exercise.name || "Unnamed exercise"}
+      </p>
+
+      <p className="mt-0.5 text-xs leading-5 text-white/40">
+        {exercise.prescription || "No prescription"}
+      </p>
+    </div>
+  )
+}
+
 export default async function ClientProfilePage({
   params,
   searchParams,
@@ -1401,7 +1494,7 @@ function getTimelineDay(dateString: string) {
 
                     const exerciseCount = sessions.reduce(
                       (total: number, session: any) =>
-                        total + (session.exercises?.length ?? 0),
+                        total + getDisplayExerciseCount(session),
                       0
                     )
 
@@ -1505,7 +1598,7 @@ function getTimelineDay(dateString: string) {
                                             </div>
 
                                             <span className="rounded-full border border-white/[0.06] bg-white/[0.025] px-2.5 py-1 text-[10px] font-bold text-white/40">
-                                              {session.exercises?.length ?? 0}{" "}
+                                              {getDisplayExerciseCount(session)}{" "}
                                               exercises
                                             </span>
                                           </div>
@@ -1513,21 +1606,8 @@ function getTimelineDay(dateString: string) {
 
                                         <div className="space-y-1.5 border-t border-white/[0.05] p-3">
                                           {session.exercises?.map(
-                                            (exercise: any, index: number) => (
-                                              <div
-                                                key={index}
-                                                className="rounded-[0.8rem] border border-white/[0.045] bg-white/[0.025] px-3 py-2"
-                                              >
-                                                <p className="text-sm font-bold text-white">
-                                                  {exercise.name ||
-                                                    "Unnamed exercise"}
-                                                </p>
-                                                <p className="mt-0.5 text-xs leading-5 text-white/40">
-                                                  {exercise.prescription ||
-                                                    "No prescription"}
-                                                </p>
-                                              </div>
-                                            )
+                                            (exercise: any, index: number) =>
+                                              renderProgrammeExercise(exercise, index)
                                           )}
                                         </div>
                                       </details>
