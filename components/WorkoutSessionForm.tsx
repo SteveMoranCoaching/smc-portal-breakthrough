@@ -507,6 +507,29 @@ useEffect(() => {
     if (parsed?.sessionNotes) {
       setSessionNotes(parsed.sessionNotes)
     }
+    if (parsed?.warmupComplete) {
+  setWarmupComplete(parsed.warmupComplete)
+}
+
+if (typeof parsed?.warmupSectionComplete === "boolean") {
+  setWarmupSectionComplete(parsed.warmupSectionComplete)
+}
+
+if (parsed?.stretchComplete) {
+  setStretchComplete(parsed.stretchComplete)
+}
+
+if (typeof parsed?.stretchSectionComplete === "boolean") {
+  setStretchSectionComplete(parsed.stretchSectionComplete)
+}
+
+if (parsed?.circuitComplete) {
+  setCircuitComplete(parsed.circuitComplete)
+}
+
+if (parsed?.circuitExerciseComplete) {
+  setCircuitExerciseComplete(parsed.circuitExerciseComplete)
+}
   } catch {}
 }, [autosaveKey])
 
@@ -536,21 +559,39 @@ useEffect(() => {
     window.localStorage.setItem(
   autosaveKey,
   JSON.stringify({
-    formData: formData.map((entry) => ({
-      ...entry,
-      videos: [],
-    })),
-    sessionRating,
-    sessionNotes,
-    savedAt: new Date().toISOString(),
-  })
+  formData: formData.map((entry) => ({
+    ...entry,
+    videos: [],
+  })),
+  sessionRating,
+  sessionNotes,
+  warmupComplete,
+  warmupSectionComplete,
+  stretchComplete,
+  stretchSectionComplete,
+  circuitComplete,
+  circuitExerciseComplete,
+  savedAt: new Date().toISOString(),
+})
 )
 
     setAutosaveStatus("saved")
   }, 750)
 
   return () => window.clearTimeout(timeout)
-}, [autosaveKey, formData, sessionRating, sessionNotes, complete])  
+}, [
+  autosaveKey,
+  formData,
+  sessionRating,
+  sessionNotes,
+  warmupComplete,
+  warmupSectionComplete,
+  stretchComplete,
+  stretchSectionComplete,
+  circuitComplete,
+  circuitExerciseComplete,
+  complete,
+])  
 
     const biggestLift = useMemo(() => {
   if (pbResults.length === 0) return null
