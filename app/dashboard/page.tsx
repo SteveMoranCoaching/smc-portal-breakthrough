@@ -355,12 +355,14 @@ function getProgressMessage({
 
 function getEffectiveWeekNumber({
   programmeWeekNumber,
-  programmeCreatedAt,
+  programmeStartDate,
+  coachCurrentWeek,
   sessions,
   completedSessionIds,
 }: {
   programmeWeekNumber: number
-  programmeCreatedAt?: string | null
+  programmeStartDate?: string | null
+  coachCurrentWeek?: number | null
   sessions: any[]
   completedSessionIds: Set<string>
 }) {
@@ -373,44 +375,55 @@ function getEffectiveWeekNumber({
   const minWeek = weeks[0]
   const maxWeek = weeks[weeks.length - 1]
 
-  const programmeStartWeek = programmeCreatedAt
-    ? getStartOfWeekDate(programmeCreatedAt)
-    : getStartOfWeekDate()
-
-  const currentWeekStart = getStartOfWeekDate()
-
-  const weeksElapsed = Math.max(
-    0,
-    Math.floor(
-      (currentWeekStart.getTime() - programmeStartWeek.getTime()) /
-        (1000 * 60 * 60 * 24 * 7)
-    )
-  )
-
-  const calendarWeekNumber = minWeek + weeksElapsed
-
-  let effectiveWeek = Math.max(
-    programmeWeekNumber || minWeek,
-    calendarWeekNumber
-  )
-
-  effectiveWeek = Math.min(effectiveWeek, maxWeek)
-
-  const currentWeekSessions = sessions.filter(
-    (session: any) => Number(session.week_number || 1) === effectiveWeek
-  )
-
-  const currentWeekComplete =
-    currentWeekSessions.length > 0 &&
-    currentWeekSessions.every((session: any) =>
-      completedSessionIds.has(session.id)
-    )
-
-  if (currentWeekComplete && effectiveWeek < maxWeek) {
-    effectiveWeek += 1
+  if (coachCurrentWeek && Number.isFinite(Number(coachCurrentWeek))) {
+    return Math.min(Math.max(Number(coachCurrentWeek), minWeek), maxWeek)
   }
 
-  return Math.min(effectiveWeek, maxWeek)
+  const startDate = programmeStartDate
+    ? new Date(`${programmeStartDate}T00:00:00`)
+    : new Date()
+
+  startDate.setHours(0, 0, 0, 0)
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const daysElapsed = Math.max(
+    0,
+    Math.floor(
+      (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+    )
+  )
+
+  const dateBasedWeek = Math.min(
+    minWeek + Math.floor(daysElapsed / 7),
+    maxWeek
+  )
+
+  let completionBasedWeek = minWeek
+
+  for (const week of weeks) {
+    const weekSessions = sessions.filter(
+      (session: any) => Number(session.week_number || 1) === week
+    )
+
+    const weekComplete =
+      weekSessions.length > 0 &&
+      weekSessions.every((session: any) => completedSessionIds.has(session.id))
+
+    if (weekComplete && week < maxWeek) {
+      completionBasedWeek = week + 1
+      continue
+    }
+
+    if (weekComplete && week === maxWeek) {
+      completionBasedWeek = maxWeek
+    }
+
+    break
+  }
+
+  return Math.min(Math.max(dateBasedWeek, completionBasedWeek), maxWeek)
 }
 
 export default async function Dashboard() {
@@ -440,6 +453,8 @@ export default async function Dashboard() {
       title,
       week_number,
       notes,
+      start_date,
+      coach_current_week,
       created_at,
       is_active,
       programme_sessions (
@@ -464,8 +479,9 @@ export default async function Dashboard() {
 
   const { data: sessionCompletions } = await supabase
   .from("session_completions")
-  .select("id, session_id, created_at")
-  .eq("user_id", user.id)  
+  .select("id, session_id, completed, created_at")
+  .eq("user_id", user.id)
+  .eq("completed", true)  
 
   const { data: videos } = await supabase
     .from("exercise_videos")
@@ -575,7 +591,8 @@ export default async function Dashboard() {
   programmeWeekNumber: Number(
     currentProgramme?.week_number || sessions[0]?.week_number || 1
   ),
-  programmeCreatedAt: currentProgramme?.created_at,
+  programmeStartDate: currentProgramme?.start_date || currentProgramme?.created_at,
+  coachCurrentWeek: currentProgramme?.coach_current_week,
   sessions,
   completedSessionIds,
 })
@@ -592,12 +609,12 @@ const scheduledSessions = scheduledSessionIds
 
 const nextWorkout =
   scheduledSessions.find(
-    (session: any) => !thisWeekCompletedSessionIds.has(session.id)
+    (session: any) => !completedSessionIds.has(session.id)
   ) ||
   sessions.find(
     (session: any) =>
       Number(session.week_number || 1) === Number(currentWeekNumber) &&
-      !thisWeekCompletedSessionIds.has(session.id)
+      !completedSessionIds.has(session.id)
   ) ||
   sessions[0]
 
@@ -640,7 +657,7 @@ const thisWeekSessions = sessions.filter(
 const thisWeekAssigned = thisWeekSessions.length
 
 const thisWeekCompleted = thisWeekSessions.filter((session: any) =>
-  thisWeekCompletedSessionIds.has(session.id)
+  completedSessionIds.has(session.id)
 ).length
 
 const thisWeekPBs =

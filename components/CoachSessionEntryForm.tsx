@@ -37,6 +37,13 @@ type ExerciseEntry = {
   sets: SetEntry[]
 }
 
+type PreviousPerformanceSet = {
+  weight: number
+  reps: number
+  rpe: string
+  estimated1RM: number
+}
+
 function getDayOrder(day?: string | null) {
   const match = String(day || "").match(/\d+/)
   return match ? Number(match[0]) : 999
@@ -69,6 +76,65 @@ function inferReps(exercise: Exercise) {
   return match?.[1] || ""
 }
 
+function toNumber(value: string | number | null | undefined) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+function estimateOneRM(weight: number, reps: number) {
+  if (!weight || !reps) return 0
+  return Math.round(weight * (1 + reps / 30))
+}
+
+function formatLogDate(dateString?: string | null) {
+  if (!dateString) return "No date"
+
+  return new Date(dateString).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+  })
+}
+
+function getPreviousLogForExercise(previousLogs: any[], exerciseName: string) {
+  return previousLogs.find(
+    (log) =>
+      String(log.exercise_name || "").toLowerCase().trim() ===
+      String(exerciseName || "").toLowerCase().trim()
+  )
+}
+
+function getPreviousPerformance(previousLog: any) {
+  const sets = Array.isArray(previousLog?.sets_completed)
+    ? previousLog.sets_completed
+    : []
+
+  const parsedSets: PreviousPerformanceSet[] = sets
+    .map((set: SetEntry) => {
+      const weight = toNumber(set.weight)
+      const reps = toNumber(set.reps)
+
+      return {
+        weight,
+        reps,
+        rpe: set.rpe || "",
+        estimated1RM: estimateOneRM(weight, reps),
+      }
+    })
+    .filter((set: PreviousPerformanceSet) => set.weight > 0 && set.reps > 0)
+
+  if (parsedSets.length === 0) return null
+
+  const bestSet = parsedSets.reduce((best, set) =>
+    set.estimated1RM > best.estimated1RM ? set : best
+  )
+
+  return {
+    date: formatLogDate(previousLog?.created_at),
+    setCount: parsedSets.length,
+    bestSet,
+  }
+}
+
 function buildEntries(session?: ProgrammeSession | null): ExerciseEntry[] {
   return (session?.exercises || []).map((exercise) => {
     const setCount = inferSetCount(exercise)
@@ -90,10 +156,12 @@ function buildEntries(session?: ProgrammeSession | null): ExerciseEntry[] {
 export default function CoachSessionEntryForm({
   clientId,
   programmes,
+  previousLogs = [],
   action,
 }: {
   clientId: string
   programmes: Programme[]
+  previousLogs?: any[]
   action: (formData: FormData) => void
 }) {
   const sortedProgrammes = useMemo(
@@ -303,7 +371,14 @@ export default function CoachSessionEntryForm({
         </section>
       ) : (
         <div className="space-y-4">
-          {entries.map((entry, exerciseIndex) => (
+          {entries.map((entry, exerciseIndex) => {
+            const previousLog = getPreviousLogForExercise(
+              previousLogs,
+              entry.exerciseName
+            )
+            const previousPerformance = getPreviousPerformance(previousLog)
+
+            return (
             <section
               key={`${entry.exerciseName}-${exerciseIndex}`}
               className="relative overflow-hidden rounded-[1.45rem] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] p-4 shadow-[0_16px_38px_rgba(0,0,0,0.62)] before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)] sm:p-5"
@@ -321,6 +396,47 @@ export default function CoachSessionEntryForm({
                     <p className="mt-1 text-sm leading-5 text-white/45">
                       {entry.prescription}
                     </p>
+                  )}
+
+                  {previousPerformance && (
+                    <div className="mt-3 rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.06] p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-smc-gold/75">
+                          Previous Performance
+                        </p>
+
+                        <p className="text-[10px] font-bold text-white/35">
+                          {previousPerformance.date}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-[0.85rem] border border-white/[0.06] bg-black/30 p-2.5">
+                          <p className="text-sm font-black text-white">
+                            {previousPerformance.bestSet.weight}kg ×{" "}
+                            {previousPerformance.bestSet.reps}
+                          </p>
+                          <p className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-white/35">
+                            Best Previous Set
+                          </p>
+                        </div>
+
+                        <div className="rounded-[0.85rem] border border-white/[0.06] bg-black/30 p-2.5">
+                          <p className="text-sm font-black text-white">
+                            {previousPerformance.setCount}
+                          </p>
+                          <p className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-white/35">
+                            Sets Logged
+                          </p>
+                        </div>
+                      </div>
+
+                      {previousPerformance.bestSet.rpe && (
+                        <p className="mt-2 text-[10px] font-bold text-white/40">
+                          Best set RPE {previousPerformance.bestSet.rpe}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -441,7 +557,8 @@ export default function CoachSessionEntryForm({
                 </div>
               </div>
             </section>
-          ))}
+            )
+          })}
         </div>
       )}
 

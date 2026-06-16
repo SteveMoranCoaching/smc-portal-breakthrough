@@ -137,6 +137,122 @@ async function addManualCheckIn(formData: FormData) {
   redirect(`/coach/${clientId}?manualCheckInAdded=true`)
 }
 
+
+async function updateProgrammeWeekOverride(formData: FormData) {
+  "use server"
+
+  const clientId = String(formData.get("clientId") || "")
+  const programmeId = String(formData.get("programmeId") || "")
+  const week = Number(formData.get("week") || 1)
+
+  if (!clientId || !programmeId || !Number.isFinite(week)) {
+    redirect(
+      `/coach/${clientId || ""}?tab=programme&programmeWeekError=${encodeURIComponent(
+        "Missing client, programme or week value"
+      )}`
+    )
+  }
+
+  await requireCoach()
+
+  const admin = createSupabaseAdminClient()
+
+  console.log("Programme week override payload:", {
+    clientId,
+    programmeId,
+    week,
+  })
+
+  const { data: updatedProgramme, error: updateError } = await admin
+    .from("programmes")
+    .update({
+      coach_current_week: week,
+    })
+    .eq("id", programmeId)
+    .select("id, title, coach_current_week")
+    .single()
+
+  if (updateError || !updatedProgramme) {
+    console.error("Programme week override failed:", {
+      updateError,
+      clientId,
+      programmeId,
+      week,
+      updatedProgramme,
+    })
+
+    redirect(
+      `/coach/${clientId}?tab=programme&programmeWeekError=${encodeURIComponent(
+        updateError?.message || "No programme row was updated"
+      )}`
+    )
+  }
+
+  console.log("Programme week override updated:", updatedProgramme)
+
+  revalidatePath(`/coach/${clientId}`)
+  revalidatePath("/coach")
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/workouts")
+
+  redirect(`/coach/${clientId}?tab=programme&programmeWeekUpdated=true`)
+}
+
+async function toggleSessionCompletionOverride(formData: FormData) {
+  "use server"
+
+  const clientId = String(formData.get("clientId") || "")
+  const clientUserId = String(formData.get("clientUserId") || "")
+  const programmeId = String(formData.get("programmeId") || "")
+  const sessionId = String(formData.get("sessionId") || "")
+
+  if (!clientId || !clientUserId || !programmeId || !sessionId) {
+    redirect(`/coach/${clientId || ""}?tab=programme`)
+  }
+
+  const { user } = await requireCoach()
+  const admin = createSupabaseAdminClient()
+
+  const { data: existing } = await admin
+    .from("session_completions")
+    .select("id, completed")
+    .eq("user_id", clientUserId)
+    .eq("programme_id", programmeId)
+    .eq("session_id", sessionId)
+    .maybeSingle()
+
+  if (existing?.id) {
+    await admin
+      .from("session_completions")
+      .update({
+        completed: !existing.completed,
+        manual_entry: true,
+        submitted_by: "coach",
+        coach_id: user.id,
+        source: existing.completed ? "coach_override_removed" : "coach_override",
+      })
+      .eq("id", existing.id)
+  } else {
+    await admin.from("session_completions").insert({
+      user_id: clientUserId,
+      programme_id: programmeId,
+      session_id: sessionId,
+      completed: true,
+      manual_entry: true,
+      submitted_by: "coach",
+      coach_id: user.id,
+      source: "coach_override",
+    })
+  }
+
+  revalidatePath(`/coach/${clientId}`)
+  revalidatePath("/coach")
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/workouts")
+
+  redirect(`/coach/${clientId}?tab=programme&sessionCompletionUpdated=true`)
+}
+
 function formatDateTime(dateString?: string | null) {
   if (!dateString) return "No date"
 
@@ -293,6 +409,9 @@ export default async function ClientProfilePage({
     manualCheckInError?: string
     coachSessionAdded?: string
     coachSessionError?: string
+    programmeWeekUpdated?: string
+    programmeWeekError?: string
+    sessionCompletionUpdated?: string
     tab?: string
   }>
 }) {
@@ -304,6 +423,9 @@ export default async function ClientProfilePage({
     manualCheckInError,
     coachSessionAdded,
     coachSessionError,
+    programmeWeekUpdated,
+    programmeWeekError,
+    sessionCompletionUpdated,
     tab,
   } = await searchParams
 
@@ -313,7 +435,11 @@ export default async function ClientProfilePage({
 
   const resolvedCoachSessionError = coachSessionError
   ? decodeURIComponent(coachSessionError)
-  : ""  
+  : ""
+
+  const resolvedProgrammeWeekError = programmeWeekError
+    ? decodeURIComponent(programmeWeekError)
+    : ""
 
   const activeTab = tab || "overview"
 
@@ -340,6 +466,9 @@ export default async function ClientProfilePage({
       title,
       week_number,
       notes,
+      start_date,
+      end_date,
+      coach_current_week,
       created_at,
       is_active,
       programme_sessions (
@@ -700,6 +829,24 @@ function getTimelineDay(dateString: string) {
 {resolvedCoachSessionError && (
   <div className="rounded-[1rem] border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
     Coach session failed: {resolvedCoachSessionError}
+  </div>
+)}
+
+{programmeWeekUpdated === "true" && (
+  <div className="rounded-[1rem] border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
+    Programme current week updated.
+  </div>
+)}
+
+{resolvedProgrammeWeekError && (
+  <div className="rounded-[1rem] border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+    Programme week update failed: {resolvedProgrammeWeekError}
+  </div>
+)}
+
+{sessionCompletionUpdated === "true" && (
+  <div className="rounded-[1rem] border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
+    Session completion updated.
   </div>
 )}
 
@@ -1559,6 +1706,47 @@ function getTimelineDay(dateString: string) {
                             </p>
                           )}
 
+                          <div className="rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.055] p-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                              <div>
+                                <p className={labelStyle}>Coach Override</p>
+                                <h4 className="mt-1 text-sm font-black text-white">
+                                  Current Programme Week
+                                </h4>
+                                <p className="mt-1 text-xs leading-5 text-white/45">
+                                  Use this to repeat a week, move a client forward, or override date-based progression.
+                                </p>
+                              </div>
+
+                              <form
+                                action={updateProgrammeWeekOverride}
+                                className="flex shrink-0 items-center gap-2"
+                              >
+                                <input type="hidden" name="clientId" value={client.id} />
+                                <input type="hidden" name="programmeId" value={programme.id} />
+
+                                <select
+                                  name="week"
+                                  defaultValue={programme.coach_current_week || programme.week_number || 1}
+                                  className="min-h-[40px] rounded-[0.9rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none focus:border-smc-gold/45"
+                                >
+                                  {Array.from({ length: weekCount }, (_, index) => index + 1).map((week) => (
+                                    <option key={week} value={week}>
+                                      Week {week}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <button
+                                  type="submit"
+                                  className="min-h-[40px] rounded-[0.9rem] bg-smc-gold px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-black transition hover:brightness-110"
+                                >
+                                  Save
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+
                           <div className="space-y-3">
                             {weekEntries.map(
                               ([weekNumber, weekSessions]: any) => (
@@ -1568,9 +1756,17 @@ function getTimelineDay(dateString: string) {
                                 >
                                   <div className="mb-3 flex items-center justify-between gap-3">
                                     <div>
-                                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-smc-gold/75">
-                                        Week {weekNumber}
-                                      </p>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-smc-gold/75">
+                                          Week {weekNumber}
+                                        </p>
+
+                                        {Number(weekNumber) === Number(programme.coach_current_week || programme.week_number || 1) && (
+                                          <span className="rounded-full bg-smc-gold px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-black">
+                                            Current
+                                          </span>
+                                        )}
+                                      </div>
                                       <p className="mt-0.5 text-xs text-white/35">
                                         {weekSessions.length} session
                                         {weekSessions.length === 1 ? "" : "s"}
@@ -1579,7 +1775,13 @@ function getTimelineDay(dateString: string) {
                                   </div>
 
                                   <div className="grid gap-2.5 md:grid-cols-2">
-                                    {weekSessions.map((session: any) => (
+                                    {weekSessions.map((session: any) => {
+                                      const completion = sessionCompletions?.find(
+                                        (item: any) => item.session_id === session.id
+                                      )
+                                      const completed = Boolean(completion?.completed)
+
+                                      return (
                                       <details
                                         key={session.id}
                                         className="overflow-hidden rounded-[1rem] border border-white/[0.055] bg-black/35"
@@ -1597,10 +1799,30 @@ function getTimelineDay(dateString: string) {
                                               </h4>
                                             </div>
 
-                                            <span className="rounded-full border border-white/[0.06] bg-white/[0.025] px-2.5 py-1 text-[10px] font-bold text-white/40">
-                                              {getDisplayExerciseCount(session)}{" "}
-                                              exercises
-                                            </span>
+                                            <div className="flex shrink-0 flex-col items-end gap-2">
+                                              <span className="rounded-full border border-white/[0.06] bg-white/[0.025] px-2.5 py-1 text-[10px] font-bold text-white/40">
+                                                {getDisplayExerciseCount(session)}{" "}
+                                                exercises
+                                              </span>
+
+                                              <form action={toggleSessionCompletionOverride}>
+                                                <input type="hidden" name="clientId" value={client.id} />
+                                                <input type="hidden" name="clientUserId" value={client.user_id} />
+                                                <input type="hidden" name="programmeId" value={programme.id} />
+                                                <input type="hidden" name="sessionId" value={session.id} />
+
+                                                <button
+                                                  type="submit"
+                                                  className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] transition ${
+                                                    completed
+                                                      ? "border-green-500/25 bg-green-500/10 text-green-300"
+                                                      : "border-white/[0.07] bg-white/[0.035] text-white/45 hover:border-smc-gold/25 hover:text-smc-gold"
+                                                  }`}
+                                                >
+                                                  {completed ? "✓ Complete" : "Mark Complete"}
+                                                </button>
+                                              </form>
+                                            </div>
                                           </div>
                                         </summary>
 
@@ -1611,7 +1833,8 @@ function getTimelineDay(dateString: string) {
                                           )}
                                         </div>
                                       </details>
-                                    ))}
+                                      )
+                                    })}
                                   </div>
                                 </div>
                               )

@@ -54,6 +54,12 @@ export default async function CoachSessionEntryPage({
     .order("is_active", { ascending: false })
     .order("created_at", { ascending: false })
 
+  const { data: previousLogs } = await supabase
+    .from("workout_logs")
+    .select("id, exercise_name, sets_completed, created_at, session_id, programme_id")
+    .eq("user_id", client.user_id)
+    .order("created_at", { ascending: false })
+
   return (
     <main className="min-h-screen bg-black px-4 py-5 text-white sm:px-6 sm:py-8">
       <div className="mx-auto max-w-4xl space-y-5">
@@ -107,6 +113,7 @@ export default async function CoachSessionEntryPage({
           <CoachSessionEntryForm
             clientId={client.id}
             programmes={programmes}
+            previousLogs={previousLogs || []}
             action={addCoachSession}
           />
         )}

@@ -726,22 +726,9 @@ function removeCircuitExercise(
       return
     }
 
-    const { error: deleteError } = await supabase
-      .from("programme_sessions")
-      .delete()
-      .eq("programme_id", programme.id)
-
-    if (deleteError) {
-      setSaving(false)
-      showToast({
-        type: "error",
-        text: "Programme updated, but old sessions could not be cleared.",
-      })
-      return
-    }
-
     const cleanedSessions = weeks.flatMap((week) =>
       (sessionsByWeek[week] ?? []).map((session) => ({
+        id: session.id,
         programme_id: programme.id,
         week_number: week,
         day: session.day.trim(),
@@ -750,17 +737,93 @@ function removeCircuitExercise(
       }))
     )
 
-    const { error: insertError } = await supabase
-      .from("programme_sessions")
-      .insert(cleanedSessions)
+    const existingIds = cleanedSessions
+      .filter((session) => Boolean(session.id))
+      .map((session) => session.id as string)
 
-    if (insertError) {
+    const { data: currentDbSessions, error: currentSessionsError } =
+      await supabase
+        .from("programme_sessions")
+        .select("id")
+        .eq("programme_id", programme.id)
+
+    if (currentSessionsError) {
       setSaving(false)
+
       showToast({
         type: "error",
-        text: "Programme updated, but sessions failed to save.",
+        text: "Programme updated, but existing sessions could not be checked.",
       })
+
       return
+    }
+
+    const idsToDelete = (currentDbSessions || [])
+      .filter((dbSession: any) => !existingIds.includes(dbSession.id))
+      .map((session: any) => session.id)
+
+    const existingSessions = cleanedSessions.filter((session) => session.id)
+
+    for (const session of existingSessions) {
+      const { error } = await supabase
+        .from("programme_sessions")
+        .update({
+          week_number: session.week_number,
+          day: session.day,
+          title: session.title,
+          exercises: session.exercises,
+        })
+        .eq("id", session.id)
+
+      if (error) {
+        setSaving(false)
+
+        showToast({
+          type: "error",
+          text: "Programme updated, but existing sessions failed to save.",
+        })
+
+        return
+      }
+    }
+
+    const newSessions = cleanedSessions.filter((session) => !session.id)
+
+    if (newSessions.length > 0) {
+      const { error } = await supabase
+        .from("programme_sessions")
+        .insert(
+          newSessions.map(({ id, ...session }) => session)
+        )
+
+      if (error) {
+        setSaving(false)
+
+        showToast({
+          type: "error",
+          text: "Programme updated, but new sessions failed to save.",
+        })
+
+        return
+      }
+    }
+
+    if (idsToDelete.length > 0) {
+      const { error } = await supabase
+        .from("programme_sessions")
+        .delete()
+        .in("id", idsToDelete)
+
+      if (error) {
+        setSaving(false)
+
+        showToast({
+          type: "error",
+          text: "Programme updated, but removed sessions failed to delete.",
+        })
+
+        return
+      }
     }
 
     setRedirecting(true)
