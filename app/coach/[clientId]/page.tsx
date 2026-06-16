@@ -253,6 +253,48 @@ async function toggleSessionCompletionOverride(formData: FormData) {
   redirect(`/coach/${clientId}?tab=programme&sessionCompletionUpdated=true`)
 }
 
+async function updateSessionCompletionFeedback(formData: FormData) {
+  "use server"
+
+  const clientId = String(formData.get("clientId") || "")
+  const completionId = String(formData.get("completionId") || "")
+  const coachFeedback = String(formData.get("coachFeedback") || "").trim()
+
+  if (!clientId || !completionId) {
+    redirect(`/coach/${clientId || ""}?tab=logs&sessionFeedbackError=${encodeURIComponent("Missing client or session completion")}`)
+  }
+
+  await requireCoach()
+
+  const admin = createSupabaseAdminClient()
+
+  const { error } = await admin
+    .from("session_completions")
+    .update({
+      coach_feedback: coachFeedback || null,
+      feedback_read: false,
+    })
+    .eq("id", completionId)
+
+  if (error) {
+    console.error("Session feedback update failed:", error)
+
+    redirect(
+      `/coach/${clientId}?tab=logs&sessionFeedbackError=${encodeURIComponent(
+        error.message
+      )}`
+    )
+  }
+
+  revalidatePath(`/coach/${clientId}`)
+  revalidatePath("/coach")
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/workouts")
+
+  redirect(`/coach/${clientId}?tab=logs&sessionFeedbackUpdated=true`)
+}
+
+
 function formatDateTime(dateString?: string | null) {
   if (!dateString) return "No date"
 
@@ -412,6 +454,8 @@ export default async function ClientProfilePage({
     programmeWeekUpdated?: string
     programmeWeekError?: string
     sessionCompletionUpdated?: string
+    sessionFeedbackUpdated?: string
+    sessionFeedbackError?: string
     tab?: string
   }>
 }) {
@@ -426,6 +470,8 @@ export default async function ClientProfilePage({
     programmeWeekUpdated,
     programmeWeekError,
     sessionCompletionUpdated,
+    sessionFeedbackUpdated,
+    sessionFeedbackError,
     tab,
   } = await searchParams
 
@@ -439,6 +485,10 @@ export default async function ClientProfilePage({
 
   const resolvedProgrammeWeekError = programmeWeekError
     ? decodeURIComponent(programmeWeekError)
+    : ""
+
+  const resolvedSessionFeedbackError = sessionFeedbackError
+    ? decodeURIComponent(sessionFeedbackError)
     : ""
 
   const activeTab = tab || "overview"
@@ -520,6 +570,8 @@ export default async function ClientProfilePage({
     session_rating,
     duration_minutes,
     notes,
+    coach_feedback,
+    feedback_read,
     completed,
     manual_entry,
     submitted_by,
@@ -847,6 +899,18 @@ function getTimelineDay(dateString: string) {
 {sessionCompletionUpdated === "true" && (
   <div className="rounded-[1rem] border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
     Session completion updated.
+  </div>
+)}
+
+{sessionFeedbackUpdated === "true" && (
+  <div className="rounded-[1rem] border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
+    Session feedback saved.
+  </div>
+)}
+
+{resolvedSessionFeedbackError && (
+  <div className="rounded-[1rem] border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+    Session feedback failed: {resolvedSessionFeedbackError}
   </div>
 )}
 
@@ -1971,6 +2035,35 @@ function getTimelineDay(dateString: string) {
                       </p>
                     </div>
                   )}
+
+                  <form
+                    action={updateSessionCompletionFeedback}
+                    className="rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.055] p-3"
+                  >
+                    <input type="hidden" name="clientId" value={client.id} />
+                    <input type="hidden" name="completionId" value={completion.id} />
+
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold">
+                      Overall Session Feedback
+                    </p>
+
+                    <textarea
+                      name="coachFeedback"
+                      defaultValue={completion.coach_feedback || ""}
+                      rows={4}
+                      placeholder="Overall feedback for the full session..."
+                      className="w-full resize-none rounded-[0.95rem] border border-white/[0.07] bg-[#05070c] px-3 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
+                    />
+
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="submit"
+                        className="rounded-full bg-smc-gold px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-black transition hover:brightness-110"
+                      >
+                        Save Session Feedback
+                      </button>
+                    </div>
+                  </form>
 
                   {logs.map((log: any) => (
                     <div

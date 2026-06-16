@@ -135,6 +135,66 @@ return prescribedExercise?.prescription || ""
     }))
   }
 
+  function getSessionFeedbackValue() {
+    if (!current || current.type !== "session") return ""
+
+    const key = `session-${current.id}`
+
+    if (feedbackById[key] !== undefined) {
+      return feedbackById[key]
+    }
+
+    return current.completion?.coach_feedback || ""
+  }
+
+  function setSessionFeedbackValue(value: string) {
+    if (!current || current.type !== "session") return
+
+    setFeedbackById((currentFeedback) => ({
+      ...currentFeedback,
+      [`session-${current.id}`]: value,
+    }))
+  }
+
+  async function saveSessionFeedback() {
+    if (!current || current.type !== "session") return
+
+    setSavingId("session-feedback")
+    setMessage("")
+
+    const { error } = await supabase
+      .from("session_completions")
+      .update({
+        coach_feedback: getSessionFeedbackValue(),
+        feedback_read: false,
+      })
+      .eq("id", current.id)
+
+    setSavingId("")
+
+    if (error) {
+      setMessage(`Save failed: ${error.message}`)
+      return
+    }
+
+    setReviewItems((currentItems) =>
+      currentItems.map((item) => {
+        if (item.id !== current.id || item.type !== "session") return item
+
+        return {
+          ...item,
+          completion: {
+            ...(item.completion || {}),
+            coach_feedback: getSessionFeedbackValue(),
+            feedback_read: false,
+          },
+        }
+      })
+    )
+
+    setMessage("Session feedback saved.")
+  }
+
   async function saveItemFeedback({
     type,
     item,
@@ -234,7 +294,19 @@ return prescribedExercise?.prescription || ""
         .eq("id", video.id)
     )
 
-    const results = await Promise.all([...logUpdates, ...videoUpdates])
+    const sessionFeedbackUpdate = supabase
+      .from("session_completions")
+      .update({
+        coach_feedback: getSessionFeedbackValue(),
+        feedback_read: false,
+      })
+      .eq("id", current.id)
+
+    const results = await Promise.all([
+      sessionFeedbackUpdate,
+      ...logUpdates,
+      ...videoUpdates,
+    ])
     const firstError = results.find((result) => result.error)?.error
 
     setSavingId("")
@@ -523,6 +595,30 @@ return prescribedExercise?.prescription || ""
                   </p>
                 </div>
               )}
+
+              <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-yellow-400">
+                  Overall Session Feedback
+                </p>
+
+                <textarea
+                  value={getSessionFeedbackValue()}
+                  onChange={(event) => setSessionFeedbackValue(event.target.value)}
+                  rows={4}
+                  className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-yellow-500"
+                  placeholder="Overall feedback for the full session..."
+                />
+
+                <div className="mt-3 flex justify-end">
+                  <button
+                    onClick={saveSessionFeedback}
+                    disabled={savingId !== ""}
+                    className="rounded-xl border border-yellow-500/40 px-4 py-2 text-sm font-semibold text-yellow-400 disabled:opacity-50"
+                  >
+                    {savingId === "session-feedback" ? "Saving..." : "Save Session Feedback"}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {session.attention?.flags?.length > 0 && (
@@ -614,12 +710,9 @@ return prescribedExercise?.prescription || ""
       Prescribed
     </p>
 
-```
-<p className="mt-1 text-sm font-semibold text-white">
-  {getPrescriptionForExercise(log.exercise_name)}
-</p>
-```
-
+    <p className="mt-1 text-sm font-semibold text-white">
+      {getPrescriptionForExercise(log.exercise_name)}
+    </p>
   </div>
 )}
 
