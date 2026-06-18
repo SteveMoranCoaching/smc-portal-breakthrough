@@ -168,7 +168,7 @@ return prescribedExercise?.prescription || ""
         coach_feedback: getSessionFeedbackValue(),
         feedback_read: false,
       })
-      .eq("id", current.id)
+      .eq("id", current.completion?.id)
 
     setSavingId("")
 
@@ -300,7 +300,7 @@ return prescribedExercise?.prescription || ""
         coach_feedback: getSessionFeedbackValue(),
         feedback_read: false,
       })
-      .eq("id", current.id)
+      .eq("id", current.completion?.id)
 
     const results = await Promise.all([
       sessionFeedbackUpdate,
