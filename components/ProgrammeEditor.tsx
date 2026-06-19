@@ -9,10 +9,49 @@ type CircuitExercise = {
   prescription: string
 }
 
+type LogPrimaryField = "kg" | "bodyweight" | "height" | "speed" | "distance" | "none"
+type LogSecondaryField = "reps" | "time" | "distance" | "calories" | "rounds" | "none"
+
+type ExerciseLogType = {
+  primary: LogPrimaryField
+  secondary: LogSecondaryField
+}
+
+const defaultLogType: ExerciseLogType = {
+  primary: "kg",
+  secondary: "reps",
+}
+
+const primaryLogOptions: { value: LogPrimaryField; label: string }[] = [
+  { value: "kg", label: "Kg" },
+  { value: "bodyweight", label: "Bodyweight" },
+  { value: "height", label: "Height" },
+  { value: "speed", label: "Speed" },
+  { value: "distance", label: "Distance" },
+  { value: "none", label: "None" },
+]
+
+const secondaryLogOptions: { value: LogSecondaryField; label: string }[] = [
+  { value: "reps", label: "Reps" },
+  { value: "time", label: "Time" },
+  { value: "distance", label: "Distance" },
+  { value: "calories", label: "Calories" },
+  { value: "rounds", label: "Rounds" },
+  { value: "none", label: "None" },
+]
+
+function normaliseLogType(logType?: Partial<ExerciseLogType> | null): ExerciseLogType {
+  return {
+    primary: logType?.primary || defaultLogType.primary,
+    secondary: logType?.secondary || defaultLogType.secondary,
+  }
+}
+
 type Exercise = {
   name: string
   prescription: string
   section?: "main" | "warmup" | "stretch" | "circuit"
+  logType?: ExerciseLogType
   circuit?: {
     rounds: number
     workSeconds: number
@@ -59,7 +98,7 @@ const defaultSessions: Session[] = [
   {
     day: "Day 1",
     title: "",
-    exercises: [{ name: "", prescription: "", section: "main" }],
+    exercises: [{ name: "", prescription: "", section: "main", logType: defaultLogType }],
   },
 ]
 
@@ -239,8 +278,9 @@ export default function ProgrammeEditor({
                 ? session.exercises.map((exercise: any) => ({
                     ...exercise,
                     section: exercise.section || "main",
+                    logType: normaliseLogType(exercise.logType),
                   }))
-                : [{ name: "", prescription: "", section: "main" }],
+                : [{ name: "", prescription: "", section: "main", logType: defaultLogType }],
           })
 
           return acc
@@ -357,6 +397,7 @@ setEndDate(
     next[sessionIndex].exercises[exerciseIndex] = {
       ...currentExercise,
       [field]: value,
+      logType: currentExercise.logType || defaultLogType,
       ...(field === "section" && value === "circuit" && !currentExercise.circuit
         ? {
             circuit: {
@@ -367,6 +408,33 @@ setEndDate(
             },
           }
         : {}),
+    }
+
+    updateActiveWeekSessions(next)
+  }
+
+  function updateExerciseLogType(
+    sessionIndex: number,
+    exerciseIndex: number,
+    field: keyof ExerciseLogType,
+    value: string
+  ) {
+    const next = [...sessions]
+
+    next[sessionIndex] = {
+      ...next[sessionIndex],
+      exercises: [...next[sessionIndex].exercises],
+    }
+
+    const currentExercise = next[sessionIndex].exercises[exerciseIndex]
+    const currentLogType = normaliseLogType(currentExercise.logType)
+
+    next[sessionIndex].exercises[exerciseIndex] = {
+      ...currentExercise,
+      logType: {
+        ...currentLogType,
+        [field]: value as any,
+      },
     }
 
     updateActiveWeekSessions(next)
@@ -504,7 +572,7 @@ function removeCircuitExercise(
       {
         day: `Day ${sessions.length + 1}`,
         title: "",
-        exercises: [{ name: "", prescription: "", section: "main" }],
+        exercises: [{ name: "", prescription: "", section: "main", logType: defaultLogType }],
       },
     ])
 
@@ -543,7 +611,7 @@ function removeCircuitExercise(
       ...next[sessionIndex],
       exercises: [
         ...next[sessionIndex].exercises,
-        { name: "", prescription: "", section: "main" },
+        { name: "", prescription: "", section: "main", logType: defaultLogType },
       ],
     }
 
@@ -1319,7 +1387,7 @@ function removeCircuitExercise(
   </div>
 ) : (
 
-                          <div className="grid gap-2.5 sm:grid-cols-[0.8fr_1.2fr_1.2fr]">
+                          <div className="grid gap-2.5 sm:grid-cols-[0.8fr_1.2fr_1.2fr_0.9fr_0.9fr]">
                             <select
                               value={exercise.section || "main"}
                               onChange={(e) =>
@@ -1377,6 +1445,46 @@ function removeCircuitExercise(
 }
                               className={inputStyle}
                             />
+
+                            <select
+                              value={normaliseLogType(exercise.logType).primary}
+                              onChange={(e) =>
+                                updateExerciseLogType(
+                                  sessionIndex,
+                                  exerciseIndex,
+                                  "primary",
+                                  e.target.value
+                                )
+                              }
+                              className={inputStyle}
+                              title="Primary logging field"
+                            >
+                              {primaryLogOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+
+                            <select
+                              value={normaliseLogType(exercise.logType).secondary}
+                              onChange={(e) =>
+                                updateExerciseLogType(
+                                  sessionIndex,
+                                  exerciseIndex,
+                                  "secondary",
+                                  e.target.value
+                                )
+                              }
+                              className={inputStyle}
+                              title="Secondary logging field"
+                            >
+                              {secondaryLogOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
                                                     </div>
                         )}
                         </div>

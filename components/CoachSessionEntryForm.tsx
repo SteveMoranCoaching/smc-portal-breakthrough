@@ -2,11 +2,47 @@
 
 import { useMemo, useState } from "react"
 
+type LogPrimaryField =
+  | "kg"
+  | "bodyweight"
+  | "height"
+  | "speed"
+  | "distance"
+  | "none"
+
+type LogSecondaryField =
+  | "reps"
+  | "time"
+  | "distance"
+  | "calories"
+  | "rounds"
+  | "none"
+
+type ExerciseLogType = {
+  primary: LogPrimaryField
+  secondary: LogSecondaryField
+}
+
+type ExerciseSection = "main" | "warmup" | "circuit" | "stretch"
+
+type CircuitExercise = {
+  name?: string
+  prescription?: string
+}
+
 type Exercise = {
   name?: string
   prescription?: string
   sets?: string | number
   reps?: string | number
+  section?: ExerciseSection | string
+  logType?: ExerciseLogType
+  circuit?: {
+    rounds?: number
+    workSeconds?: number
+    restSeconds?: number
+    exercises?: CircuitExercise[]
+  }
 }
 
 type ProgrammeSession = {
@@ -26,26 +62,269 @@ type Programme = {
 
 type SetEntry = {
   weight: string
+  bodyweight?: string
+  height?: string
+  speed?: string
+  distance?: string
   reps: string
+  time?: string
+  calories?: string
+  rounds?: string
   rpe: string
 }
 
 type ExerciseEntry = {
   exerciseName: string
+  section: ExerciseSection
   prescription: string
   notes: string
   sets: SetEntry[]
 }
 
-type PreviousPerformanceSet = {
-  weight: number
-  reps: number
-  rpe: string
-  estimated1RM: number
+const defaultLogType: ExerciseLogType = {
+  primary: "kg",
+  secondary: "reps",
+}
+
+const primaryFieldConfig: Record<
+  LogPrimaryField,
+  {
+    key: keyof SetEntry | ""
+    label: string
+    placeholder: string
+    inputMode: "decimal" | "numeric" | "text"
+    type: string
+  }
+> = {
+  kg: {
+    key: "weight",
+    label: "Kg",
+    placeholder: "Kg",
+    inputMode: "decimal",
+    type: "number",
+  },
+  bodyweight: {
+    key: "bodyweight",
+    label: "BW",
+    placeholder: "BW",
+    inputMode: "text",
+    type: "text",
+  },
+  height: {
+    key: "height",
+    label: "Height",
+    placeholder: "Height",
+    inputMode: "decimal",
+    type: "number",
+  },
+  speed: {
+    key: "speed",
+    label: "Speed",
+    placeholder: "Speed",
+    inputMode: "decimal",
+    type: "number",
+  },
+  distance: {
+    key: "distance",
+    label: "Distance",
+    placeholder: "Distance",
+    inputMode: "decimal",
+    type: "number",
+  },
+  none: {
+    key: "",
+    label: "",
+    placeholder: "",
+    inputMode: "text",
+    type: "text",
+  },
+}
+
+const secondaryFieldConfig: Record<
+  LogSecondaryField,
+  {
+    key: keyof SetEntry | ""
+    label: string
+    placeholder: string
+    inputMode: "decimal" | "numeric" | "text"
+    type: string
+  }
+> = {
+  reps: {
+    key: "reps",
+    label: "Reps",
+    placeholder: "Reps",
+    inputMode: "numeric",
+    type: "number",
+  },
+  time: {
+    key: "time",
+    label: "Time",
+    placeholder: "Time",
+    inputMode: "text",
+    type: "text",
+  },
+  distance: {
+    key: "distance",
+    label: "Distance",
+    placeholder: "Distance",
+    inputMode: "decimal",
+    type: "number",
+  },
+  calories: {
+    key: "calories",
+    label: "Calories",
+    placeholder: "Cals",
+    inputMode: "numeric",
+    type: "number",
+  },
+  rounds: {
+    key: "rounds",
+    label: "Rounds",
+    placeholder: "Rounds",
+    inputMode: "numeric",
+    type: "number",
+  },
+  none: {
+    key: "",
+    label: "",
+    placeholder: "",
+    inputMode: "text",
+    type: "text",
+  },
+}
+
+function normaliseSection(section?: string | null): ExerciseSection {
+  const value = String(section || "main").toLowerCase().trim()
+
+  if (
+    value === "warmup" ||
+    value === "warm-up" ||
+    value === "warm up" ||
+    value === "mobility" ||
+    value === "activation"
+  ) {
+    return "warmup"
+  }
+
+  if (
+    value === "stretch" ||
+    value === "stretches" ||
+    value === "post-session-stretch" ||
+    value === "post session stretch" ||
+    value === "post_session_stretch" ||
+    value === "cooldown" ||
+    value === "cool-down" ||
+    value === "cool down"
+  ) {
+    return "stretch"
+  }
+
+  if (
+    value === "circuit" ||
+    value === "circuit block" ||
+    value === "conditioning circuit"
+  ) {
+    return "circuit"
+  }
+
+  return "main"
+}
+
+function getSectionLabel(section: ExerciseSection) {
+  if (section === "warmup") return "Warm-Up"
+  if (section === "circuit") return "Circuit"
+  if (section === "stretch") return "Stretch"
+
+  return "Main Exercise"
+}
+
+function getSectionBody(section: ExerciseSection) {
+  if (section === "warmup") {
+    return "Warm-up exercise completed as part of the session."
+  }
+
+  if (section === "circuit") {
+    return "Circuit block completed as part of the session."
+  }
+
+  if (section === "stretch") {
+    return "Stretch completed as part of the session."
+  }
+
+  return "This exercise is completed as part of the session."
+}
+
+function getExerciseLogType(exercise?: Exercise | null): ExerciseLogType {
+  return {
+    primary: exercise?.logType?.primary || defaultLogType.primary,
+    secondary: exercise?.logType?.secondary || defaultLogType.secondary,
+  }
+}
+
+function createBlankSet(exercise?: Exercise | null, inferredReps = ""): SetEntry {
+  const logType = getExerciseLogType(exercise)
+  const primaryKey = primaryFieldConfig[logType.primary].key
+  const secondaryKey = secondaryFieldConfig[logType.secondary].key
+
+  return {
+    weight: "",
+    bodyweight: primaryKey === "bodyweight" ? "BW" : "",
+    height: "",
+    speed: "",
+    distance: "",
+    reps: secondaryKey === "reps" ? inferredReps : "",
+    time: "",
+    calories: "",
+    rounds: "",
+    rpe: "",
+  }
+}
+
+function getSetFieldValue(set: SetEntry, field: keyof SetEntry | "") {
+  if (!field) return ""
+
+  return String(set[field] || "")
+}
+
+function formatFlexibleSet(set: any, exercise?: Exercise | null) {
+  const logType = getExerciseLogType(exercise)
+  const primary = primaryFieldConfig[logType.primary]
+  const secondary = secondaryFieldConfig[logType.secondary]
+  const parts: string[] = []
+
+  if (primary.key) {
+    const value = getSetFieldValue(set, primary.key)
+
+    if (value) {
+      parts.push(
+        logType.primary === "bodyweight"
+          ? "BW"
+          : `${value}${primary.label === "Kg" ? "kg" : ` ${primary.label}`}`
+      )
+    }
+  }
+
+  if (secondary.key) {
+    const value = getSetFieldValue(set, secondary.key)
+
+    if (value) {
+      parts.push(
+        logType.secondary === "reps"
+          ? `× ${value}`
+          : `${value} ${secondary.label}`
+      )
+    }
+  }
+
+  if (set.rpe) parts.push(`@ RPE ${set.rpe}`)
+
+  return parts.length > 0 ? parts.join(" ") : "No data"
 }
 
 function getDayOrder(day?: string | null) {
   const match = String(day || "").match(/\d+/)
+
   return match ? Number(match[0]) : 999
 }
 
@@ -57,7 +336,6 @@ function inferSetCount(exercise: Exercise) {
   }
 
   const prescription = String(exercise.prescription || "")
-
   const match = prescription.match(/(\d+)\s*x\s*\d+/i)
 
   if (match?.[1]) {
@@ -74,16 +352,6 @@ function inferReps(exercise: Exercise) {
   const match = prescription.match(/\d+\s*x\s*(\d+)/i)
 
   return match?.[1] || ""
-}
-
-function toNumber(value: string | number | null | undefined) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : 0
-}
-
-function estimateOneRM(weight: number, reps: number) {
-  if (!weight || !reps) return 0
-  return Math.round(weight * (1 + reps / 30))
 }
 
 function formatLogDate(dateString?: string | null) {
@@ -103,52 +371,41 @@ function getPreviousLogForExercise(previousLogs: any[], exerciseName: string) {
   )
 }
 
-function getPreviousPerformance(previousLog: any) {
+function getPreviousPerformance(previousLog: any, exercise?: Exercise | null) {
   const sets = Array.isArray(previousLog?.sets_completed)
     ? previousLog.sets_completed
     : []
 
-  const parsedSets: PreviousPerformanceSet[] = sets
-    .map((set: SetEntry) => {
-      const weight = toNumber(set.weight)
-      const reps = toNumber(set.reps)
+  const displaySets = sets
+    .map((set: any) => formatFlexibleSet(set, exercise))
+    .filter((line: string) => line && line !== "No data")
 
-      return {
-        weight,
-        reps,
-        rpe: set.rpe || "",
-        estimated1RM: estimateOneRM(weight, reps),
-      }
-    })
-    .filter((set: PreviousPerformanceSet) => set.weight > 0 && set.reps > 0)
-
-  if (parsedSets.length === 0) return null
-
-  const bestSet = parsedSets.reduce((best, set) =>
-    set.estimated1RM > best.estimated1RM ? set : best
-  )
+  if (displaySets.length === 0) return null
 
   return {
     date: formatLogDate(previousLog?.created_at),
-    setCount: parsedSets.length,
-    bestSet,
+    setCount: displaySets.length,
+    displaySets,
   }
 }
 
 function buildEntries(session?: ProgrammeSession | null): ExerciseEntry[] {
   return (session?.exercises || []).map((exercise) => {
-    const setCount = inferSetCount(exercise)
-    const inferredReps = inferReps(exercise)
+    const section = normaliseSection(exercise.section)
+    const setCount = section === "main" ? inferSetCount(exercise) : 0
+    const inferredReps = section === "main" ? inferReps(exercise) : ""
 
     return {
       exerciseName: exercise.name || "Unnamed exercise",
+      section,
       prescription: exercise.prescription || "",
       notes: "",
-      sets: Array.from({ length: setCount }, () => ({
-        weight: "",
-        reps: inferredReps,
-        rpe: "",
-      })),
+      sets:
+        section === "main"
+          ? Array.from({ length: setCount }, () =>
+              createBlankSet(exercise, inferredReps)
+            )
+          : [],
     }
   })
 }
@@ -262,12 +519,14 @@ export default function CoachSessionEntryForm({
   }
 
   function addSet(exerciseIndex: number) {
+    const exercise = selectedSession?.exercises?.[exerciseIndex]
+
     setEntries((current) =>
       current.map((entry, entryIndex) =>
         entryIndex === exerciseIndex
           ? {
               ...entry,
-              sets: [...entry.sets, { weight: "", reps: "", rpe: "" }],
+              sets: [...entry.sets, createBlankSet(exercise)],
             }
           : entry
       )
@@ -283,7 +542,9 @@ export default function CoachSessionEntryForm({
           ...entry,
           sets:
             entry.sets.length > 1
-              ? entry.sets.filter((_, currentSetIndex) => currentSetIndex !== setIndex)
+              ? entry.sets.filter(
+                  (_, currentSetIndex) => currentSetIndex !== setIndex
+                )
               : entry.sets,
         }
       })
@@ -342,7 +603,8 @@ export default function CoachSessionEntryForm({
               >
                 {sortedSessions.map((session) => (
                   <option key={session.id} value={session.id}>
-                    Week {session.week_number || 1} · {session.day || "Session"} ·{" "}
+                    Week {session.week_number || 1} ·{" "}
+                    {session.day || "Session"} ·{" "}
                     {session.title || "Untitled"}
                   </option>
                 ))}
@@ -372,191 +634,237 @@ export default function CoachSessionEntryForm({
       ) : (
         <div className="space-y-4">
           {entries.map((entry, exerciseIndex) => {
+            const exercise = selectedSession?.exercises?.[exerciseIndex]
             const previousLog = getPreviousLogForExercise(
               previousLogs,
               entry.exerciseName
             )
-            const previousPerformance = getPreviousPerformance(previousLog)
+            const previousPerformance = getPreviousPerformance(
+              previousLog,
+              exercise
+            )
 
             return (
-            <section
-              key={`${entry.exerciseName}-${exerciseIndex}`}
-              className="relative overflow-hidden rounded-[1.45rem] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] p-4 shadow-[0_16px_38px_rgba(0,0,0,0.62)] before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)] sm:p-5"
-            >
-              <div className="relative z-10">
-                <div className="mb-3">
-                  <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
-                    Exercise {exerciseIndex + 1}
-                  </p>
-                  <h3 className="mt-1 text-lg font-black text-white">
-                    {entry.exerciseName}
-                  </h3>
-
-                  {entry.prescription && (
-                    <p className="mt-1 text-sm leading-5 text-white/45">
-                      {entry.prescription}
+              <section
+                key={`${entry.exerciseName}-${exerciseIndex}`}
+                className="relative overflow-hidden rounded-[1.45rem] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] p-4 shadow-[0_16px_38px_rgba(0,0,0,0.62)] before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)] sm:p-5"
+              >
+                <div className="relative z-10">
+                  <div className="mb-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold/80">
+                      {getSectionLabel(entry.section)}
                     </p>
-                  )}
 
-                  {previousPerformance && (
-                    <div className="mt-3 rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.06] p-3">
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-smc-gold/75">
-                          Previous Performance
-                        </p>
+                    <h3 className="mt-1 text-lg font-black text-white">
+                      {entry.exerciseName}
+                    </h3>
 
-                        <p className="text-[10px] font-bold text-white/35">
-                          {previousPerformance.date}
-                        </p>
-                      </div>
+                    {entry.prescription && (
+                      <p className="mt-1 text-sm leading-5 text-white/45">
+                        {entry.prescription}
+                      </p>
+                    )}
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-[0.85rem] border border-white/[0.06] bg-black/30 p-2.5">
-                          <p className="text-sm font-black text-white">
-                            {previousPerformance.bestSet.weight}kg ×{" "}
-                            {previousPerformance.bestSet.reps}
+                    {entry.section === "main" && previousPerformance && (
+                      <div className="mt-3 rounded-[1rem] border border-smc-gold/15 bg-smc-gold/[0.06] p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-smc-gold/75">
+                            Previous Performance
                           </p>
-                          <p className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-white/35">
-                            Best Previous Set
+
+                          <p className="text-[10px] font-bold text-white/35">
+                            {previousPerformance.date}
                           </p>
                         </div>
 
-                        <div className="rounded-[0.85rem] border border-white/[0.06] bg-black/30 p-2.5">
-                          <p className="text-sm font-black text-white">
-                            {previousPerformance.setCount}
-                          </p>
-                          <p className="mt-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-white/35">
-                            Sets Logged
-                          </p>
+                        <div className="space-y-1.5">
+                          {previousPerformance.displaySets
+                            .slice(0, 4)
+                            .map((line: string, index: number) => (
+                              <div
+                                key={`${line}-${index}`}
+                                className="rounded-[0.85rem] border border-white/[0.06] bg-black/30 px-2.5 py-2"
+                              >
+                                <p className="text-sm font-black text-white">
+                                  {line}
+                                </p>
+                              </div>
+                            ))}
                         </div>
-                      </div>
 
-                      {previousPerformance.bestSet.rpe && (
                         <p className="mt-2 text-[10px] font-bold text-white/40">
-                          Best set RPE {previousPerformance.bestSet.rpe}
+                          {previousPerformance.setCount} set
+                          {previousPerformance.setCount === 1 ? "" : "s"} logged
                         </p>
-                      )}
+                      </div>
+                    )}
+                  </div>
+
+                  {entry.section === "main" ? (
+                    <>
+                      <div className="space-y-2">
+                        {entry.sets.map((set, setIndex) => {
+                          const logType = getExerciseLogType(exercise)
+                          const primaryField =
+                            primaryFieldConfig[logType.primary]
+                          const secondaryField =
+                            secondaryFieldConfig[logType.secondary]
+                          const primaryKey = primaryField.key
+                          const secondaryKey = secondaryField.key
+
+                          return (
+                            <div
+                              key={setIndex}
+                              className="rounded-[1rem] border border-white/[0.06] bg-black/35 p-3"
+                            >
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
+                                  Set {setIndex + 1}
+                                </p>
+
+                                {entry.sets.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      removeSet(exerciseIndex, setIndex)
+                                    }
+                                    className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-red-300"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2">
+                                {primaryKey && (
+                                  <div>
+                                    <label className="mb-1 block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
+                                      {primaryField.label}
+                                    </label>
+                                    <input
+                                      type={primaryField.type}
+                                      inputMode={primaryField.inputMode}
+                                      value={getSetFieldValue(set, primaryKey)}
+                                      onChange={(event) =>
+                                        updateSet(
+                                          exerciseIndex,
+                                          setIndex,
+                                          primaryKey,
+                                          event.target.value
+                                        )
+                                      }
+                                      placeholder={primaryField.placeholder}
+                                      className="min-h-[44px] w-full rounded-[0.85rem] border border-white/[0.07] bg-[#05070c] px-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/45"
+                                    />
+                                  </div>
+                                )}
+
+                                {secondaryKey && (
+                                  <div>
+                                    <label className="mb-1 block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
+                                      {secondaryField.label}
+                                    </label>
+                                    <input
+                                      type={secondaryField.type}
+                                      inputMode={secondaryField.inputMode}
+                                      value={getSetFieldValue(set, secondaryKey)}
+                                      onChange={(event) =>
+                                        updateSet(
+                                          exerciseIndex,
+                                          setIndex,
+                                          secondaryKey,
+                                          event.target.value
+                                        )
+                                      }
+                                      placeholder={secondaryField.placeholder}
+                                      className="min-h-[44px] w-full rounded-[0.85rem] border border-white/[0.07] bg-[#05070c] px-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/45"
+                                    />
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label className="mb-1 block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
+                                    RPE
+                                  </label>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    step="0.5"
+                                    min="1"
+                                    max="10"
+                                    value={set.rpe}
+                                    onChange={(event) =>
+                                      updateSet(
+                                        exerciseIndex,
+                                        setIndex,
+                                        "rpe",
+                                        event.target.value
+                                      )
+                                    }
+                                    placeholder="/10"
+                                    className="min-h-[44px] w-full rounded-[0.85rem] border border-white/[0.07] bg-[#05070c] px-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/45"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => addSet(exerciseIndex)}
+                        className="mt-3 min-h-[38px] rounded-[0.95rem] border border-smc-gold/25 bg-smc-gold/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-smc-gold transition hover:bg-smc-gold hover:text-black"
+                      >
+                        + Add Set
+                      </button>
+
+                      <div className="mt-3">
+                        <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
+                          Exercise notes
+                        </label>
+                        <textarea
+                          value={entry.notes}
+                          onChange={(event) =>
+                            updateNotes(exerciseIndex, event.target.value)
+                          }
+                          rows={3}
+                          placeholder="Technique notes, changes, reasons for adjustments..."
+                          className="w-full resize-none rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-[1rem] border border-white/[0.06] bg-black/30 p-4 text-sm text-white/50">
+                      {getSectionBody(entry.section)}
+
+                      {entry.section === "circuit" &&
+                        exercise?.circuit?.exercises?.length ? (
+                        <div className="mt-3 space-y-2">
+                          {exercise.circuit.exercises.map(
+                            (item: CircuitExercise, index: number) => (
+                              <div
+                                key={`${item.name}-${index}`}
+                                className="rounded-[0.85rem] border border-white/[0.05] bg-black/35 px-3 py-2"
+                              >
+                                <p className="text-xs font-black text-white">
+                                  {item.name || `Circuit exercise ${index + 1}`}
+                                </p>
+
+                                {item.prescription && (
+                                  <p className="mt-0.5 text-[11px] text-white/40">
+                                    {item.prescription}
+                                  </p>
+                                )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                   )}
                 </div>
-
-                <div className="space-y-2">
-                  {entry.sets.map((set, setIndex) => (
-                    <div
-                      key={setIndex}
-                      className="rounded-[1rem] border border-white/[0.06] bg-black/35 p-3"
-                    >
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
-                          Set {setIndex + 1}
-                        </p>
-
-                        {entry.sets.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeSet(exerciseIndex, setIndex)}
-                            className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-red-300"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="mb-1 block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
-                            Weight
-                          </label>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            value={set.weight}
-                            onChange={(event) =>
-                              updateSet(
-                                exerciseIndex,
-                                setIndex,
-                                "weight",
-                                event.target.value
-                              )
-                            }
-                            placeholder="kg"
-                            className="min-h-[44px] w-full rounded-[0.85rem] border border-white/[0.07] bg-[#05070c] px-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/45"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
-                            Reps
-                          </label>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            value={set.reps}
-                            onChange={(event) =>
-                              updateSet(
-                                exerciseIndex,
-                                setIndex,
-                                "reps",
-                                event.target.value
-                              )
-                            }
-                            placeholder="reps"
-                            className="min-h-[44px] w-full rounded-[0.85rem] border border-white/[0.07] bg-[#05070c] px-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/45"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-[9px] font-black uppercase tracking-[0.12em] text-white/30">
-                            RPE
-                          </label>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            step="0.5"
-                            min="1"
-                            max="10"
-                            value={set.rpe}
-                            onChange={(event) =>
-                              updateSet(
-                                exerciseIndex,
-                                setIndex,
-                                "rpe",
-                                event.target.value
-                              )
-                            }
-                            placeholder="/10"
-                            className="min-h-[44px] w-full rounded-[0.85rem] border border-white/[0.07] bg-[#05070c] px-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/45"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => addSet(exerciseIndex)}
-                  className="mt-3 min-h-[38px] rounded-[0.95rem] border border-smc-gold/25 bg-smc-gold/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-smc-gold transition hover:bg-smc-gold hover:text-black"
-                >
-                  + Add Set
-                </button>
-
-                <div className="mt-3">
-                  <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
-                    Exercise notes
-                  </label>
-                  <textarea
-                    value={entry.notes}
-                    onChange={(event) =>
-                      updateNotes(exerciseIndex, event.target.value)
-                    }
-                    rows={3}
-                    placeholder="Technique notes, changes, reasons for adjustments..."
-                    className="w-full resize-none rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45"
-                  />
-                </div>
-              </div>
-            </section>
+              </section>
             )
           })}
         </div>

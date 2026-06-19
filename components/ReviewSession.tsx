@@ -5,9 +5,16 @@ import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 
 type SetEntry = {
-  weight: string
-  reps: string
-  rpe: string
+  weight?: string
+  bodyweight?: string
+  height?: string
+  speed?: string
+  distance?: string
+  reps?: string
+  time?: string
+  calories?: string
+  rounds?: string
+  rpe?: string
 }
 
 type LogItem = {
@@ -17,6 +24,54 @@ type LogItem = {
   coach_feedback: string
   sets_completed: SetEntry[] | null
   notes: string | null
+}
+
+
+
+type LogPrimaryField = "kg" | "bodyweight" | "height" | "speed" | "distance" | "none"
+type LogSecondaryField = "reps" | "time" | "distance" | "calories" | "rounds" | "none"
+
+const primaryLabels: Record<LogPrimaryField, string> = {
+  kg: "kg",
+  bodyweight: "BW",
+  height: "height",
+  speed: "speed",
+  distance: "distance",
+  none: "",
+}
+
+const secondaryLabels: Record<LogSecondaryField, string> = {
+  reps: "reps",
+  time: "time",
+  distance: "distance",
+  calories: "calories",
+  rounds: "rounds",
+  none: "",
+}
+
+function getExerciseLogTypeFromExercise(exercise: any) {
+  return {
+    primary: exercise?.logType?.primary || "kg",
+    secondary: exercise?.logType?.secondary || "reps",
+  } as { primary: LogPrimaryField; secondary: LogSecondaryField }
+}
+
+function getPrimaryValue(set: SetEntry, primary: LogPrimaryField) {
+  if (primary === "kg") return set.weight ? `${set.weight}kg` : ""
+  if (primary === "bodyweight") return set.bodyweight || "BW"
+  if (primary === "height") return set.height ? `${set.height} height` : ""
+  if (primary === "speed") return set.speed ? `${set.speed} speed` : ""
+  if (primary === "distance") return set.distance ? `${set.distance} distance` : ""
+  return ""
+}
+
+function getSecondaryValue(set: SetEntry, secondary: LogSecondaryField) {
+  if (secondary === "reps") return set.reps ? `× ${set.reps}` : ""
+  if (secondary === "time") return set.time ? `${set.time} time` : ""
+  if (secondary === "distance") return set.distance ? `${set.distance} distance` : ""
+  if (secondary === "calories") return set.calories ? `${set.calories} calories` : ""
+  if (secondary === "rounds") return set.rounds ? `${set.rounds} rounds` : ""
+  return ""
 }
 
 type VideoItem = {
@@ -98,8 +153,24 @@ window.scrollTo(0, 0)
     })
   }
 
-  function formatSet(set: SetEntry) {
-    return `${set.weight || "?"}kg × ${set.reps || "?"} @ ${set.rpe || "?"}`
+  function formatSet(set: SetEntry, exerciseName?: string) {
+    const prescribedExercise =
+      current?.type === "session"
+        ? current.prescribed_exercises?.find(
+            (exercise: any) =>
+              exercise.name?.toLowerCase().trim() ===
+              String(exerciseName || "").toLowerCase().trim()
+          )
+        : null
+
+    const logType = getExerciseLogTypeFromExercise(prescribedExercise)
+    const parts = [
+      getPrimaryValue(set, logType.primary),
+      getSecondaryValue(set, logType.secondary),
+      set.rpe ? `@ RPE ${set.rpe}` : "",
+    ].filter(Boolean)
+
+    return parts.length > 0 ? parts.join(" ") : "No data"
   }
 
   function formatFlag(flag: string) {
@@ -724,7 +795,7 @@ return prescribedExercise?.prescription || ""
                     className="flex items-center justify-between rounded-lg bg-zinc-950 px-3 py-2 text-sm"
                   >
                     <span className="text-zinc-500">Set {index + 1}</span>
-                    <span className="font-semibold text-white">{formatSet(set)}</span>
+                    <span className="font-semibold text-white">{formatSet(set, log.exercise_name)}</span>
                   </div>
                 ))}
               </div>

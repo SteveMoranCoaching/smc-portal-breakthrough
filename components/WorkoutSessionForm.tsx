@@ -12,7 +12,14 @@ import {
 
 type SetEntry = {
   weight: string
+  bodyweight?: string
+  height?: string
+  speed?: string
+  distance?: string
   reps: string
+  time?: string
+  calories?: string
+  rounds?: string
   rpe: string
 }
 
@@ -59,6 +66,110 @@ const card =
 
 const inputStyle =
   "h-11 min-h-11 rounded-xl border border-white/[0.07] bg-black/35 px-2 text-center text-base font-black text-white outline-none placeholder:text-white/20 transition focus:border-smc-gold/70 focus:bg-black/50 focus:shadow-[0_0_14px_rgba(212,175,55,0.12)]"
+
+
+type LogPrimaryField = "kg" | "bodyweight" | "height" | "speed" | "distance" | "none"
+type LogSecondaryField = "reps" | "time" | "distance" | "calories" | "rounds" | "none"
+
+type ExerciseLogType = {
+  primary: LogPrimaryField
+  secondary: LogSecondaryField
+}
+
+const defaultLogType: ExerciseLogType = {
+  primary: "kg",
+  secondary: "reps",
+}
+
+const primaryFieldConfig: Record<LogPrimaryField, { key: keyof SetEntry | ""; label: string; placeholder: string; inputMode: "decimal" | "numeric" | "text"; type: string }> = {
+  kg: { key: "weight", label: "Kg", placeholder: "Kg", inputMode: "decimal", type: "number" },
+  bodyweight: { key: "bodyweight", label: "BW", placeholder: "BW", inputMode: "text", type: "text" },
+  height: { key: "height", label: "Height", placeholder: "Height", inputMode: "decimal", type: "number" },
+  speed: { key: "speed", label: "Speed", placeholder: "Speed", inputMode: "decimal", type: "number" },
+  distance: { key: "distance", label: "Distance", placeholder: "Distance", inputMode: "decimal", type: "number" },
+  none: { key: "", label: "", placeholder: "", inputMode: "text", type: "text" },
+}
+
+const secondaryFieldConfig: Record<LogSecondaryField, { key: keyof SetEntry | ""; label: string; placeholder: string; inputMode: "decimal" | "numeric" | "text"; type: string }> = {
+  reps: { key: "reps", label: "Reps", placeholder: "Reps", inputMode: "numeric", type: "number" },
+  time: { key: "time", label: "Time", placeholder: "Time", inputMode: "text", type: "text" },
+  distance: { key: "distance", label: "Distance", placeholder: "Distance", inputMode: "decimal", type: "number" },
+  calories: { key: "calories", label: "Calories", placeholder: "Cals", inputMode: "numeric", type: "number" },
+  rounds: { key: "rounds", label: "Rounds", placeholder: "Rounds", inputMode: "numeric", type: "number" },
+  none: { key: "", label: "", placeholder: "", inputMode: "text", type: "text" },
+}
+
+function getExerciseLogType(exercise: any): ExerciseLogType {
+  return {
+    primary: exercise?.logType?.primary || defaultLogType.primary,
+    secondary: exercise?.logType?.secondary || defaultLogType.secondary,
+  }
+}
+
+function createBlankSet(exercise?: any, inferredReps = ""): SetEntry {
+  const logType = getExerciseLogType(exercise)
+  const primaryKey = primaryFieldConfig[logType.primary].key
+  const secondaryKey = secondaryFieldConfig[logType.secondary].key
+
+  return {
+    weight: "",
+    bodyweight: primaryKey === "bodyweight" ? "BW" : "",
+    height: "",
+    speed: "",
+    distance: "",
+    reps: secondaryKey === "reps" ? inferredReps : "",
+    time: "",
+    calories: "",
+    rounds: "",
+    rpe: "",
+  }
+}
+
+function getSetFieldValue(set: SetEntry, field: keyof SetEntry | "") {
+  if (!field) return ""
+  return String(set[field] || "")
+}
+
+function getLoggedFieldKeys(set: SetEntry) {
+  return [
+    "weight",
+    "bodyweight",
+    "height",
+    "speed",
+    "distance",
+    "reps",
+    "time",
+    "calories",
+    "rounds",
+    "rpe",
+  ] as (keyof SetEntry)[]
+}
+
+function formatFlexibleSet(set: SetEntry, exercise?: any) {
+  const logType = getExerciseLogType(exercise)
+  const primary = primaryFieldConfig[logType.primary]
+  const secondary = secondaryFieldConfig[logType.secondary]
+
+  const parts: string[] = []
+
+  if (primary.key) {
+    const value = getSetFieldValue(set, primary.key)
+    if (value) {
+      parts.push(logType.primary === "bodyweight" ? "BW" : `${value}${primary.label === "Kg" ? "kg" : ` ${primary.label}`}`)
+    }
+  }
+
+  if (secondary.key) {
+    const value = getSetFieldValue(set, secondary.key)
+    if (value) {
+      parts.push(logType.secondary === "reps" ? `× ${value}` : `${value} ${secondary.label}`)
+    }
+  }
+
+  if (set.rpe) parts.push(`@ RPE ${set.rpe}`)
+
+  return parts.length > 0 ? parts.join(" ") : "No data"
+}
 
 function getAutosaveKey(userId: string, sessionId: string) {
   return `smc-workout-autosave-${userId}-${sessionId}`
@@ -251,11 +362,14 @@ function getPreviousPerformance(previousLog: any) {
 }
 
 function hasSetData(set: SetEntry) {
-  return Boolean(set.weight || set.reps || set.rpe)
+  return getLoggedFieldKeys(set).some((key) => Boolean(String(set[key] || "").trim()))
 }
 
 function isCompletedSet(set: SetEntry) {
-  return Boolean(set.weight && set.reps)
+  const hasPrimary = Boolean(set.weight || set.bodyweight || set.height || set.speed || set.distance)
+  const hasSecondary = Boolean(set.reps || set.time || set.calories || set.rounds || set.distance)
+
+  return hasPrimary && hasSecondary
 }
 
 function groupPBResults(results: PBResult[]) {
@@ -437,15 +551,18 @@ export default function WorkoutSessionForm({
             existingLog.sets_completed.length > 0
               ? existingLog.sets_completed.map((set: any) => ({
                   weight: set.weight?.toString() || "",
+                  bodyweight: set.bodyweight?.toString() || "",
+                  height: set.height?.toString() || "",
+                  speed: set.speed?.toString() || "",
+                  distance: set.distance?.toString() || "",
                   reps: set.reps?.toString() || "",
+                  time: set.time?.toString() || "",
+                  calories: set.calories?.toString() || "",
+                  rounds: set.rounds?.toString() || "",
                   rpe: set.rpe?.toString() || "",
                 }))
               : [
-                  {
-                    weight: "",
-                    reps: "",
-                    rpe: "",
-                  },
+                  createBlankSet(exercise),
                 ],
           notes: existingLog.notes || "",
           videos: [],
@@ -455,11 +572,9 @@ export default function WorkoutSessionForm({
       const setCount = getPrescribedSetCount(exercise)
 
       return {
-        sets: Array.from({ length: Math.max(1, setCount) }, () => ({
-          weight: "",
-          reps: "",
-          rpe: "",
-        })),
+        sets: Array.from({ length: Math.max(1, setCount) }, () =>
+          createBlankSet(exercise)
+        ),
         notes: "",
         videos: [],
       }
@@ -841,8 +956,16 @@ const hasAnyLoggedWork =
             if (!previousSet) return set
 
             return {
+              ...createBlankSet(exercise),
               weight: previousSet.weight?.toString() || "",
+              bodyweight: previousSet.bodyweight?.toString() || "",
+              height: previousSet.height?.toString() || "",
+              speed: previousSet.speed?.toString() || "",
+              distance: previousSet.distance?.toString() || "",
               reps: previousSet.reps?.toString() || "",
+              time: previousSet.time?.toString() || "",
+              calories: previousSet.calories?.toString() || "",
+              rounds: previousSet.rounds?.toString() || "",
               rpe: previousSet.rpe?.toString() || "",
             }
           }),
@@ -994,12 +1117,16 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
         if (i !== exerciseIndex) return exercise
         return {
           ...exercise,
-          sets: [...exercise.sets, { weight: "", reps: "", rpe: "" }],
+          sets: [...exercise.sets, createBlankSet(exercises[exerciseIndex])],
         }
       })
     )
 
-    focusInput(exerciseIndex, nextSetIndex, "weight")
+    const nextFocusField =
+      primaryFieldConfig[getExerciseLogType(exercises[exerciseIndex]).primary].key ||
+      "rpe"
+
+    focusInput(exerciseIndex, nextSetIndex, nextFocusField as keyof SetEntry)
   }
 
   function removeSet(exerciseIndex: number, setIndex: number) {
@@ -1168,9 +1295,7 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
 
         setMessage(`Saving ${exerciseName}...`)
 
-        const completedSets = data.sets.filter(
-          (set) => set.weight || set.reps || set.rpe
-        )
+        const completedSets = data.sets.filter(hasSetData)
 
         if (completedSets.length > 0 || data.notes.trim()) {
   const existingLog = existingLogs.find(
@@ -1890,7 +2015,12 @@ setSaving(false)
 
                 <div className="mt-3 space-y-2">
                   {formData[exerciseIndex]?.sets.map((set, setIndex) => {
-                    const setHasData = set.weight || set.reps || set.rpe
+                    const logType = getExerciseLogType(exercise)
+                    const primaryField = primaryFieldConfig[logType.primary]
+                    const secondaryField = secondaryFieldConfig[logType.secondary]
+                    const primaryKey = primaryField.key
+                    const secondaryKey = secondaryField.key
+                    const setHasData = hasSetData(set)
                     const previousSet = previousLog?.sets_completed?.[setIndex]
                     const setKey = getSetKey(exerciseIndex, setIndex)
                     const isConfirmed = confirmedSets[setKey]
@@ -1922,9 +2052,7 @@ setSaving(false)
 
                               {previousSet && (
                                 <p className="text-[10px] font-semibold text-white/45">
-                                  Last: {previousSet.weight || "-"}kg ×{" "}
-                                  {previousSet.reps || "-"} @ RPE{" "}
-                                  {previousSet.rpe || "-"}
+                                  Last: {formatFlexibleSet(previousSet, exercise)}
                                 </p>
                               )}
 
@@ -1965,55 +2093,59 @@ setSaving(false)
                         </div>
 
                         <div className="grid grid-cols-3 gap-1.5">
-                          <input
-                            ref={(el) =>
-                              setInputRef(exerciseIndex, setIndex, "weight", el)
-                            }
-                            type="number"
-                            inputMode="decimal"
-                            placeholder="Kg"
-                            value={set.weight}
-                            onFocus={handleInputFocus}
-                            onBlur={handleInputBlur}
-                            onChange={(e) =>
-                              updateSetField(
-                                exerciseIndex,
-                                setIndex,
-                                "weight",
-                                e.target.value
-                              )
-                            }
-                            className={`${inputStyle} ${
-                              isPrefilledUnconfirmed
-                                ? "text-white/45"
-                                : "text-white"
-                            }`}
-                          />
+                          {primaryKey && (
+                            <input
+                              ref={(el) =>
+                                setInputRef(exerciseIndex, setIndex, primaryKey, el)
+                              }
+                              type={primaryField.type}
+                              inputMode={primaryField.inputMode}
+                              placeholder={primaryField.placeholder}
+                              value={getSetFieldValue(set, primaryKey)}
+                              onFocus={handleInputFocus}
+                              onBlur={handleInputBlur}
+                              onChange={(e) =>
+                                updateSetField(
+                                  exerciseIndex,
+                                  setIndex,
+                                  primaryKey,
+                                  e.target.value
+                                )
+                              }
+                              className={`${inputStyle} ${
+                                isPrefilledUnconfirmed
+                                  ? "text-white/45"
+                                  : "text-white"
+                              }`}
+                            />
+                          )}
 
-                          <input
-                            ref={(el) =>
-                              setInputRef(exerciseIndex, setIndex, "reps", el)
-                            }
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="Reps"
-                            value={set.reps}
-                            onFocus={handleInputFocus}
-                            onBlur={handleInputBlur}
-                            onChange={(e) =>
-                              updateSetField(
-                                exerciseIndex,
-                                setIndex,
-                                "reps",
-                                e.target.value
-                              )
-                            }
-                            className={`${inputStyle} ${
-                              isPrefilledUnconfirmed
-                                ? "text-white/45"
-                                : "text-white"
-                            }`}
-                          />
+                          {secondaryKey && (
+                            <input
+                              ref={(el) =>
+                                setInputRef(exerciseIndex, setIndex, secondaryKey, el)
+                              }
+                              type={secondaryField.type}
+                              inputMode={secondaryField.inputMode}
+                              placeholder={secondaryField.placeholder}
+                              value={getSetFieldValue(set, secondaryKey)}
+                              onFocus={handleInputFocus}
+                              onBlur={handleInputBlur}
+                              onChange={(e) =>
+                                updateSetField(
+                                  exerciseIndex,
+                                  setIndex,
+                                  secondaryKey,
+                                  e.target.value
+                                )
+                              }
+                              className={`${inputStyle} ${
+                                isPrefilledUnconfirmed
+                                  ? "text-white/45"
+                                  : "text-white"
+                              }`}
+                            />
+                          )}
 
                           <input
                             ref={(el) =>

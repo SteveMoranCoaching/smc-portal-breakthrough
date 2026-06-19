@@ -7,7 +7,14 @@ import { requireCoach } from "@/lib/authGuards"
 
 type SetEntry = {
   weight?: string
+  bodyweight?: string
+  height?: string
+  speed?: string
+  distance?: string
   reps?: string
+  time?: string
+  calories?: string
+  rounds?: string
   rpe?: string
 }
 
@@ -17,11 +24,22 @@ type ExerciseEntry = {
   sets?: SetEntry[]
 }
 
+function cleanField(value: unknown) {
+  return String(value || "").trim()
+}
+
 function hasUsefulSet(set: SetEntry) {
   return Boolean(
-    String(set.weight || "").trim() ||
-      String(set.reps || "").trim() ||
-      String(set.rpe || "").trim()
+    cleanField(set.weight) ||
+      cleanField(set.bodyweight) ||
+      cleanField(set.height) ||
+      cleanField(set.speed) ||
+      cleanField(set.distance) ||
+      cleanField(set.reps) ||
+      cleanField(set.time) ||
+      cleanField(set.calories) ||
+      cleanField(set.rounds) ||
+      cleanField(set.rpe)
   )
 }
 
@@ -76,14 +94,21 @@ export async function addCoachSession(formData: FormData) {
       exerciseName: String(entry.exerciseName || "").trim(),
       notes: String(entry.notes || "").trim(),
       sets: Array.isArray(entry.sets)
-        ? entry.sets
-            .map((set) => ({
-              weight: String(set.weight || "").trim(),
-              reps: String(set.reps || "").trim(),
-              rpe: String(set.rpe || "").trim(),
-            }))
-            .filter(hasUsefulSet)
-        : [],
+  ? entry.sets
+      .map((set) => ({
+        weight: cleanField(set.weight),
+        bodyweight: cleanField(set.bodyweight),
+        height: cleanField(set.height),
+        speed: cleanField(set.speed),
+        distance: cleanField(set.distance),
+        reps: cleanField(set.reps),
+        time: cleanField(set.time),
+        calories: cleanField(set.calories),
+        rounds: cleanField(set.rounds),
+        rpe: cleanField(set.rpe),
+      }))
+      .filter(hasUsefulSet)
+  : [],
     }))
     .filter((entry) => entry.exerciseName && entry.sets.length > 0)
 
