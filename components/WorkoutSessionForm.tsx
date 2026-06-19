@@ -2052,7 +2052,7 @@ setSaving(false)
 
                               {previousSet && (
                                 <p className="text-[10px] font-semibold text-white/45">
-                                  Last: {formatFlexibleSet(previousSet, exercise)}
+                                  Last: {formatFlexibleSet(previousSet, ex)}
                                 </p>
                               )}
 
