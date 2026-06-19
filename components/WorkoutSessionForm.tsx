@@ -2015,7 +2015,7 @@ setSaving(false)
 
                 <div className="mt-3 space-y-2">
                   {formData[exerciseIndex]?.sets.map((set, setIndex) => {
-                    const logType = getExerciseLogType(exercise)
+                    const logType = getExerciseLogType(ex)
                     const primaryField = primaryFieldConfig[logType.primary]
                     const secondaryField = secondaryFieldConfig[logType.secondary]
                     const primaryKey = primaryField.key
