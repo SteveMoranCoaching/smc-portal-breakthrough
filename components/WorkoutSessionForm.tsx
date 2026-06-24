@@ -329,6 +329,10 @@ function formatLogDate(dateString?: string | null) {
   })
 }
 
+function getPreviousCoachFeedback(previousLog: any) {
+  return String(previousLog?.coach_feedback || "").trim()
+}
+
 function getPreviousPerformance(previousLog: any) {
   const sets = Array.isArray(previousLog?.sets_completed)
     ? previousLog.sets_completed
@@ -1195,7 +1199,7 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
 
     const { data, error } = await supabase
       .from("workout_logs")
-      .select("exercise_name, sets_completed, created_at")
+      .select("exercise_name, sets_completed, created_at, coach_feedback")
       .eq("user_id", userId)
       .in("exercise_name", exerciseNames)
       .order("created_at", { ascending: false })
@@ -1869,6 +1873,7 @@ setSaving(false)
           const exerciseName = ex?.name || `Exercise ${exerciseIndex + 1}`
           const previousLog = getPreviousLogForExercise(previousLogs, exerciseName)
           const previousPerformance = getPreviousPerformance(previousLog)
+          const previousCoachFeedback = getPreviousCoachFeedback(previousLog)
           const demo = getDemoForExercise(exerciseDemos, exerciseName)
           const entry = formData[exerciseIndex]
           const completedSetCount = entry?.sets.filter((set: any) => isCompletedSet(set)).length || 0
@@ -2012,6 +2017,18 @@ setSaving(false)
                     </div>
                   </div>
                 )}
+
+                {previousCoachFeedback && (
+  <div className="mt-3 rounded-2xl border border-smc-gold/20 bg-smc-gold/[0.05] p-3">
+    <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold/75">
+      Last Coach Note
+    </p>
+
+    <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-white/75">
+      {previousCoachFeedback}
+    </p>
+  </div>
+)}
 
                 <div className="mt-3 space-y-2">
                   {formData[exerciseIndex]?.sets.map((set, setIndex) => {
