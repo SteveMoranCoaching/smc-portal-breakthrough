@@ -209,12 +209,23 @@ function getPrescribedSetCount(exercise: any) {
   return 1
 }
 
-function getPreviousLogForExercise(previousLogs: any[], exerciseName: string) {
-  return previousLogs.find(
+function getPreviousLogForExercise(
+  previousLogs: any[],
+  exerciseName: string
+) {
+  const matchingLogs = previousLogs.filter(
     (log) =>
-      String(log.exercise_name || "").toLowerCase().trim() ===
-      String(exerciseName || "").toLowerCase().trim()
+      String(log.exercise_name || "").trim().toLowerCase() ===
+      String(exerciseName || "").trim().toLowerCase()
   )
+
+  const withFeedback = matchingLogs.find(
+    (log) =>
+      log.coach_feedback &&
+      String(log.coach_feedback).trim() !== ""
+  )
+
+  return withFeedback || matchingLogs[0] || null
 }
 
 function getDemoForExercise(exerciseDemos: any[], exerciseName: string) {
