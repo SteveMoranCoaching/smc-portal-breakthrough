@@ -76,7 +76,7 @@ export default async function SessionPage({
     exerciseNames.length > 0
       ? await supabase
           .from("workout_logs")
-          .select("id, exercise_name, sets_completed, created_at")
+          .select("id, exercise_name, sets_completed, created_at, coach_feedback")
           .eq("user_id", user.id)
           .in("exercise_name", exerciseNames)
           .order("created_at", { ascending: false })
