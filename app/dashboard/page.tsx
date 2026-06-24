@@ -270,11 +270,11 @@ function getWeekRange(weeksAgo = 0) {
 }
 
 function calculateAdherenceStreak({
-  workoutLogs,
+  sessionCompletions,
   checkIns,
   sessions,
 }: {
-  workoutLogs: any[]
+  sessionCompletions: any[]
   checkIns: any[]
   sessions: any[]
 }) {
@@ -282,31 +282,65 @@ function calculateAdherenceStreak({
 
   let streak = 0
 
-  for (let weeksAgo = 0; weeksAgo < 52; weeksAgo++) {
+  for (let weeksAgo = 1; weeksAgo < 52; weeksAgo++) {
     const { start, end } = getWeekRange(weeksAgo)
 
-    const weekLogs = workoutLogs.filter((log) => {
-      const createdAt = new Date(log.created_at)
-      return createdAt >= start && createdAt < end
+    const weekSessions = sessions.filter((session: any) => {
+      const programmeStart = getStartOfWeekDate(
+        session.programme_start_date
+      )
+
+      const weeksFromStart = Math.floor(
+        (start.getTime() - programmeStart.getTime()) /
+          (1000 * 60 * 60 * 24 * 7)
+      )
+
+      return (
+        weeksFromStart >= 0 &&
+        Number(session.week_number || 1) ===
+          weeksFromStart + 1
+      )
     })
 
-    const weekCheckIns = checkIns.filter((checkIn) => {
-      const createdAt = new Date(checkIn.created_at)
-      return createdAt >= start && createdAt < end
-    })
+    if (!weekSessions.length) {
+      continue
+    }
 
     const completedSessionIds = new Set(
-      weekLogs.map((log: any) => log.session_id)
+      sessionCompletions
+        .filter((completion: any) => {
+          const completedDate = new Date(
+            completion.created_at
+          )
+
+          return (
+            completedDate >= start &&
+            completedDate < end
+          )
+        })
+        .map((completion: any) => completion.session_id)
     )
 
-    const completedAllSessions = sessions.every((session: any) =>
-      completedSessionIds.has(session.id)
+    const completedAllSessions =
+      weekSessions.every((session: any) =>
+        completedSessionIds.has(session.id)
+      )
+
+    const submittedCheckIn = checkIns.some(
+      (checkIn: any) => {
+        const checkInDate = new Date(
+          checkIn.created_at
+        )
+
+        return (
+          checkInDate >= start &&
+          checkInDate < end
+        )
+      }
     )
 
-    const completedCheckIn = weekCheckIns.length > 0
-
-    if (completedAllSessions && completedCheckIn) {
-      streak += 1
+    if (completedAllSessions && submittedCheckIn) {
+      streak++
       continue
     }
 
@@ -546,9 +580,19 @@ export default async function Dashboard() {
   .order("planned_date", { ascending: true })
   .order("planned_order", { ascending: true })
   
-    const sessions = sortProgrammeSessions(
-    currentProgramme?.programme_sessions || []
+    const allProgrammeSessions = (programmes || [])
+  .flatMap((programme: any) =>
+    (programme.programme_sessions || []).map((session: any) => ({
+      ...session,
+      programme_id: programme.id,
+      programme_start_date:
+        programme.start_date || programme.created_at,
+    }))
   )
+
+const sessions = sortProgrammeSessions(
+  currentProgramme?.programme_sessions || []
+)
 
   const allWorkoutLogs = workoutLogs || []
 
@@ -644,9 +688,9 @@ const pbCount = latestPBs?.length || 0
 const checkInCount = allCheckIns?.length || 0
 
   const adherenceStreak = calculateAdherenceStreak({
-  workoutLogs: allWorkoutLogs,
+  sessionCompletions: sessionCompletions || [],
   checkIns: allCheckIns || [],
-  sessions,
+  sessions: allProgrammeSessions,
 })
 
 const thisWeekSessions = sessions.filter(
