@@ -120,6 +120,11 @@ type CheckInReviewItem = {
   notes?: string | null
   coach_feedback?: string | null
   feedback_seen?: boolean | null
+  previousCheckInFeedback?: {
+  id: string
+  created_at: string
+  coach_feedback: string
+} | null
   attention?: any
 }
 
@@ -512,6 +517,22 @@ return prescribedExercise?.prescription || ""
             </p>
           </div>
         )}
+
+        {current.previousCheckInFeedback?.coach_feedback && (
+  <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4">
+    <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
+      Previous Check-In Feedback
+    </p>
+
+    <p className="mt-1 text-xs text-zinc-500">
+      Given after {formatDateTime(current.previousCheckInFeedback.created_at)}
+    </p>
+
+    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+      {current.previousCheckInFeedback.coach_feedback}
+    </p>
+  </div>
+)}
 
         {current.notes && (
           <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-4">

@@ -154,6 +154,15 @@ export default async function CheckInsPage({
     ) || null
 
   const hasSubmittedThisWeek = Boolean(thisWeeksCheckIn)
+
+const previousCoachFeedbackCheckIn =
+  checkIns?.find(
+    (checkIn) =>
+      checkIn.id !== thisWeeksCheckIn?.id &&
+      checkIn.coach_feedback &&
+      String(checkIn.coach_feedback).trim() !== ""
+  ) || null
+
   const checkInWindowOpen = isCheckInWindowOpen()
 
   const unseenFeedbackIds =
@@ -318,6 +327,22 @@ export default async function CheckInsPage({
                   </label>
                 </div>
               </div>
+
+              {previousCoachFeedbackCheckIn?.coach_feedback && (
+  <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4">
+    <p className="text-xs font-black uppercase tracking-wide text-yellow-500">
+      Last Week’s Coach Feedback
+    </p>
+
+    <p className="mt-1 text-xs text-zinc-500">
+      From {formatDate(previousCoachFeedbackCheckIn.created_at)}
+    </p>
+
+    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+      {previousCoachFeedbackCheckIn.coach_feedback}
+    </p>
+  </div>
+)}
 
               <label className="block space-y-2">
                 <span className="text-sm font-bold text-yellow-500">

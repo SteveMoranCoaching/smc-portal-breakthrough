@@ -60,10 +60,25 @@ async function createTeamFeedPost(formData: FormData) {
   redirect("/coach?posted=true")
 }
 
+const monthNames = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+]
+
 function formatDate(dateString: string) {
   const date = new Date(dateString)
   const day = date.getDate().toString().padStart(2, "0")
-  const month = date.toLocaleString("en-GB", { month: "short" })
+  const month = monthNames[date.getMonth()]
 
   return `${day} ${month}`
 }
@@ -76,6 +91,112 @@ function daysSince(dateString?: string) {
 
   return Math.floor(diff)
 }
+
+function getWeekStartDate(dateInput?: string | Date) {
+  const date = dateInput ? new Date(dateInput) : new Date()
+  const day = date.getDay()
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
+
+  const monday = new Date(date)
+  monday.setDate(diff)
+  monday.setHours(0, 0, 0, 0)
+
+  return monday
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function formatWeekHeader(date: Date) {
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  })
+}
+
+function getProgrammeStartDate(programme: any) {
+  return programme?.start_date || programme?.created_at || null
+}
+
+function getUploadedWeekCount(programme: any) {
+  const weeks = (programme?.programme_sessions || [])
+    .map((session: any) => Number(session.week_number || 1))
+    .filter((week: number) => Number.isFinite(week) && week > 0)
+
+  return weeks.length ? Math.max(...weeks) : 0
+}
+
+function getProgrammeCurrentWeek(programme: any) {
+  if (!programme) return 0
+
+  const uploadedWeeks = getUploadedWeekCount(programme)
+  const plannedWeeks = Number(programme.planned_weeks || uploadedWeeks || 4)
+
+  if (
+    programme.coach_current_week &&
+    Number.isFinite(Number(programme.coach_current_week))
+  ) {
+    return Math.min(Math.max(Number(programme.coach_current_week), 1), plannedWeeks)
+  }
+
+  const startDateRaw = getProgrammeStartDate(programme)
+
+  if (!startDateRaw) return Number(programme.week_number || 1)
+
+  const programmeStart = getWeekStartDate(startDateRaw)
+  const currentWeekStart = getWeekStartDate()
+
+  const weeksElapsed = Math.max(
+    0,
+    Math.floor(
+      (currentWeekStart.getTime() - programmeStart.getTime()) /
+        (1000 * 60 * 60 * 24 * 7)
+    )
+  )
+
+  return Math.min(weeksElapsed + 1, plannedWeeks)
+}
+
+function getProgrammeProgressCell(programme: any, weekOffset: number) {
+  if (!programme) {
+    return {
+      label: "Needs Programme",
+      tone: "red" as const,
+      icon: "🚨",
+    }
+  }
+
+  const uploadedWeeks = getUploadedWeekCount(programme)
+  const plannedWeeks = Number(programme.planned_weeks || uploadedWeeks || 4)
+  const currentWeek = getProgrammeCurrentWeek(programme)
+  const forecastWeek = currentWeek + weekOffset
+
+  if (forecastWeek > plannedWeeks) {
+    return {
+      label: "Needs Programme",
+      tone: "red" as const,
+      icon: "🚨",
+    }
+  }
+
+  if (forecastWeek > uploadedWeeks) {
+    return {
+      label: `Week ${forecastWeek}`,
+      tone: "yellow" as const,
+      icon: "⚠️",
+    }
+  }
+
+  return {
+    label: `Week ${forecastWeek}`,
+    tone: "green" as const,
+    icon: "",
+  }
+}
+
 
 export default async function CoachDashboard({
   searchParams,
@@ -100,6 +221,34 @@ export default async function CoachDashboard({
   if (error) {
     return <div className="p-6 text-white">Error loading clients.</div>
   }
+
+  const clientUserIds = clients?.map((client) => client.user_id).filter(Boolean) || []
+
+  const { data: programmeProgressProgrammes } =
+    clientUserIds.length > 0
+      ? await supabase
+          .from("programmes")
+          .select(`
+            id,
+            user_id,
+            title,
+            week_number,
+            start_date,
+            created_at,
+            is_active,
+            planned_weeks,
+            coach_current_week,
+            programme_sessions (
+              id,
+              week_number,
+              day,
+              title
+            )
+          `)
+          .in("user_id", clientUserIds)
+          .order("is_active", { ascending: false })
+          .order("created_at", { ascending: false })
+      : { data: [] }
 
   const { data: pendingPBs } = await supabase
     .from("exercise_pbs")
@@ -253,6 +402,90 @@ const totalNewItems =
 })
 
 const clientsNeedingAttention = coachAttentionItems.length
+
+  const weekStart = getWeekStartDate()
+
+const programmeForecastWeeks = [
+  {
+    offset: -1,
+    date: addDays(weekStart, -7),
+    label: formatWeekHeader(addDays(weekStart, -7)),
+    title: "Last Week",
+    tone: "past",
+  },
+  {
+    offset: 0,
+    date: weekStart,
+    label: formatWeekHeader(weekStart),
+    title: "This Week",
+    tone: "current",
+  },
+  {
+    offset: 1,
+    date: addDays(weekStart, 7),
+    label: formatWeekHeader(addDays(weekStart, 7)),
+    title: "Next Week",
+    tone: "future",
+  },
+  {
+    offset: 2,
+    date: addDays(weekStart, 14),
+    label: formatWeekHeader(addDays(weekStart, 14)),
+    title: "Following Week",
+    tone: "future",
+  },
+]
+
+  const programmesByUserId: Record<string, any[]> = {}
+
+  ;(programmeProgressProgrammes || []).forEach((programme: any) => {
+    programmesByUserId[programme.user_id] = [
+      ...(programmesByUserId[programme.user_id] || []),
+      programme,
+    ]
+  })
+
+  const programmeProgressRows =
+    clients?.map((client) => {
+      const clientProgrammes = programmesByUserId[client.user_id] || []
+      const activeProgramme =
+        clientProgrammes.find((programme: any) => programme.is_active) ||
+        clientProgrammes[0] ||
+        null
+
+      const uploadedWeeks = getUploadedWeekCount(activeProgramme)
+      const plannedWeeks = activeProgramme
+        ? Number(activeProgramme.planned_weeks || uploadedWeeks || 4)
+        : 0
+
+      const cells = programmeForecastWeeks.map((week) =>
+  getProgrammeProgressCell(activeProgramme, week.offset)
+)
+
+      const nextWeekCell = cells[2]
+
+      const needsNumbers = nextWeekCell?.tone === "yellow"
+      const needsProgramme = nextWeekCell?.tone === "red"
+
+      return {
+        client,
+        activeProgramme,
+        uploadedWeeks,
+        plannedWeeks,
+        currentWeek: getProgrammeCurrentWeek(activeProgramme),
+        cells,
+        needsNumbers,
+        needsProgramme,
+      }
+    }) || []
+
+  const clientsNeedingNumbers = programmeProgressRows.filter(
+    (row) => row.needsNumbers
+  ).length
+
+  const clientsNeedingProgrammes = programmeProgressRows.filter(
+    (row) => row.needsProgramme
+  ).length
 
   const topClients =
     clients
@@ -416,6 +649,140 @@ const clientsNeedingAttention = coachAttentionItems.length
           Post published successfully.
         </div>
       )}
+
+
+      <section className="relative overflow-hidden rounded-[1.25rem] border border-white/[0.06] bg-black p-3 shadow-[0_16px_38px_rgba(0,0,0,0.72)]">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/50 to-transparent" />
+
+        <div className="relative z-10">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[8px] font-black uppercase tracking-[0.24em] text-smc-gold/85">
+                Programme Planner
+              </p>
+
+              <h2 className="mt-1 text-base font-black text-white">
+                Client Programme Progress
+              </h2>
+
+              <p className="mt-1 text-[11px] leading-4 text-white/42">
+                Forecasts who needs numbers adding and who needs a new block.
+              </p>
+            </div>
+
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <span className="rounded-full border border-amber-400/25 bg-amber-400/12 px-2 py-0.5 text-[8px] font-black uppercase text-amber-200">
+                {clientsNeedingNumbers} need numbers
+              </span>
+
+              <span className="rounded-full border border-red-500/25 bg-red-500/12 px-2 py-0.5 text-[8px] font-black uppercase text-red-300">
+                {clientsNeedingProgrammes} need programmes
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-[1rem] border border-white/[0.06] bg-black/40">
+            <div className="min-w-[720px]">
+              <div className="grid grid-cols-[1.25fr_repeat(4,0.8fr)_0.9fr] border-b border-white/[0.06] bg-white/[0.025]">
+                <div className="px-3 py-2 text-[8px] font-black uppercase tracking-[0.2em] text-white/42">
+                  Client
+                </div>
+
+                {programmeForecastWeeks.map((week) => (
+  <div
+    key={week.label}
+    className={`px-2 py-2 text-center text-[8px] font-black uppercase tracking-[0.16em] ${
+      week.tone === "current"
+        ? "border-x border-smc-gold/25 bg-smc-gold/[0.08] text-smc-gold"
+        : week.tone === "past"
+          ? "bg-white/[0.015] text-white/24"
+          : "bg-white/[0.025] text-white/38"
+    }`}
+  >
+    <span className="block">{week.title}</span>
+    <span className="mt-0.5 block text-[8px] opacity-75">{week.label}</span>
+  </div>
+))}
+
+                <div className="px-3 py-2 text-right text-[8px] font-black uppercase tracking-[0.2em] text-white/42">
+                  Block
+                </div>
+              </div>
+
+              <div className="divide-y divide-white/[0.05]">
+                {programmeProgressRows.map((row) => (
+                  <Link
+                    key={row.client.id}
+                    href={`/coach/${row.client.id}?tab=programme`}
+                    className="grid grid-cols-[1.25fr_repeat(4,0.8fr)_0.9fr] items-center transition hover:bg-white/[0.025]"
+                  >
+                    <div className="min-w-0 px-3 py-2">
+                      <p className="truncate text-[12px] font-black text-white">
+                        {row.client.name}
+                      </p>
+
+                      <p className="mt-0.5 truncate text-[10px] text-white/32">
+                        {row.activeProgramme?.title || "No active programme"}
+                      </p>
+                    </div>
+
+                    {row.cells.map((cell, index) => {
+  const week = programmeForecastWeeks[index]
+
+  return (
+    <div
+      key={`${row.client.id}-${index}`}
+      className={`px-1.5 py-2 ${
+        week?.tone === "current"
+          ? "border-x border-smc-gold/18 bg-smc-gold/[0.045]"
+          : week?.tone === "past"
+            ? "opacity-45"
+            : "opacity-80"
+      }`}
+    >
+      <div
+        className={`flex min-h-[30px] items-center justify-center rounded-[0.75rem] border px-2 text-center text-[10px] font-black ${
+          cell.tone === "red"
+            ? "border-red-500/25 bg-red-500/12 text-red-300"
+            : cell.tone === "yellow"
+              ? "border-amber-400/25 bg-amber-400/12 text-amber-200"
+              : week?.tone === "current"
+                ? "border-green-500/30 bg-green-500/12 text-green-300 shadow-[0_0_18px_rgba(34,197,94,0.08)]"
+                : "border-green-500/20 bg-green-500/10 text-green-300"
+        }`}
+      >
+        <span className="truncate">
+          {cell.label} {cell.icon}
+        </span>
+      </div>
+    </div>
+  )
+})}
+
+                    <div className="px-3 py-2 text-right">
+                      {row.activeProgramme ? (
+                        <>
+                          <p className="text-[11px] font-black text-white">
+                            {row.uploadedWeeks}/{row.plannedWeeks}
+                          </p>
+
+                          <p className="mt-0.5 text-[9px] text-white/32">
+                            uploaded/planned
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-[10px] font-black text-red-300">
+                          Missing
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="relative overflow-hidden rounded-[1.25rem] border border-white/[0.06] bg-black p-3 shadow-[0_16px_38px_rgba(0,0,0,0.72)]">
   <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/50 to-transparent" />

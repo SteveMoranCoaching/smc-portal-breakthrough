@@ -572,7 +572,7 @@ export default async function Dashboard() {
 
   const { data: weeklySchedule } = await supabase
   .from("client_weekly_session_schedule")
-  .select("id, session_id, planned_date, planned_order")
+  .select("id, session_id, planned_date, planned_order, week_number")
   .eq("user_id", user.id)
   .eq("programme_id", currentProgramme?.id || "")
   .gte("planned_date", startOfWeek)
@@ -606,42 +606,45 @@ const sessions = sortProgrammeSessions(
   (sessionCompletions || []).map((completion: any) => completion.session_id)
 )
 
-  const thisWeekCompletedSessionIds = new Set(
-  (sessionCompletions || [])
-    .filter(
-      (completion: any) =>
-        new Date(completion.created_at).getTime() >=
-        new Date(startOfWeek).getTime()
-    )
-    .map((completion: any) => completion.session_id)
-)
-
   const completedCount = sessions.filter((session: any) =>
-    completedSessionIds.has(session.id)
-  ).length
+  completedSessionIds.has(session.id)
+).length
 
-  const totalCount = sessions.length
-  const progressPercent =
-    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+const totalCount = sessions.length
+const progressPercent =
+  totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
-  const sessionsLeft = Math.max(totalCount - completedCount, 0)
-  const progressMessage = getProgressMessage({
-    totalCount,
-    completedCount,
-    progressPercent,
-  })
+const sessionsLeft = Math.max(totalCount - completedCount, 0)
+const progressMessage = getProgressMessage({
+  totalCount,
+  completedCount,
+  progressPercent,
+})
 
-  const currentWeekNumber = getEffectiveWeekNumber({
+const scheduledWeekNumber =
+  weeklySchedule?.[0]?.week_number
+    ? Number(weeklySchedule[0].week_number)
+    : null
+
+const currentWeekNumber = getEffectiveWeekNumber({
   programmeWeekNumber: Number(
-    currentProgramme?.week_number || sessions[0]?.week_number || 1
+    scheduledWeekNumber ||
+      currentProgramme?.week_number ||
+      sessions[0]?.week_number ||
+      1
   ),
-  programmeStartDate: currentProgramme?.start_date || currentProgramme?.created_at,
+  programmeStartDate:
+    currentProgramme?.start_date || currentProgramme?.created_at,
   coachCurrentWeek: currentProgramme?.coach_current_week,
   sessions,
   completedSessionIds,
 })
 
-  const scheduledSessionIds = (weeklySchedule || []).map(
+const activeWeekSchedule = (weeklySchedule || []).filter(
+  (item: any) => Number(item.week_number || 1) === Number(currentWeekNumber)
+)
+
+const scheduledSessionIds = activeWeekSchedule.map(
   (item: any) => item.session_id
 )
 
@@ -660,6 +663,7 @@ const nextWorkout =
       Number(session.week_number || 1) === Number(currentWeekNumber) &&
       !completedSessionIds.has(session.id)
   ) ||
+  sessions.find((session: any) => !completedSessionIds.has(session.id)) ||
   sessions[0]
 
   const unreadLogFeedbackIds =

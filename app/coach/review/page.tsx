@@ -74,11 +74,30 @@ export default async function CoachReviewPage() {
   const { data: checkIns } = await supabase
   .from("check_ins")
   .select(
-    "id, user_id, created_at, bodyweight, training_rating, recovery_rating, nutrition_rating, cardio_steps, notes, reviewed"
-  )
+  "id, user_id, created_at, bodyweight, training_rating, recovery_rating, nutrition_rating, cardio_steps, notes, reviewed, coach_feedback, feedback_seen"
+)
   .eq("reviewed", false)
   .order("created_at", { ascending: false })
   .limit(100)
+
+  const { data: previousCheckInsWithFeedback } = await supabase
+  .from("check_ins")
+  .select("id, user_id, created_at, coach_feedback")
+  .not("coach_feedback", "is", null)
+  .order("created_at", { ascending: false })
+  .limit(300)
+
+function getPreviousCheckInFeedback(userId: string, currentCreatedAt: string) {
+  return (
+    previousCheckInsWithFeedback?.find(
+      (checkIn: any) =>
+        checkIn.user_id === userId &&
+        new Date(checkIn.created_at).getTime() <
+          new Date(currentCreatedAt).getTime() &&
+        String(checkIn.coach_feedback || "").trim()
+    ) || null
+  )
+}
 
   const coachAttentionItems = buildCoachAttentionItems({
     clients: clients || [],
@@ -169,6 +188,12 @@ export default async function CoachReviewPage() {
   nutrition_rating: checkIn.nutrition_rating,
   cardio_steps: checkIn.cardio_steps,
   notes: checkIn.notes,
+  coach_feedback: checkIn.coach_feedback || "",
+  feedback_seen: checkIn.feedback_seen,
+  previousCheckInFeedback: getPreviousCheckInFeedback(
+    checkIn.user_id,
+    checkIn.created_at
+  ),
 }))
 
   const rawItems = [...videosWithUrls, ...logItems].filter(
