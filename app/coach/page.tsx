@@ -293,15 +293,31 @@ export default async function CoachDashboard({
     unreviewedCountMap[client.user_id] = 0
   })
 
-  const newVideoCount = videos?.filter((video) => !video.reviewed).length || 0
-  const newLogCount = workoutLogs?.filter((log) => !log.reviewed).length || 0
-  const newCheckInCount =
-    recentCheckIns?.filter((checkIn) => !checkIn.reviewed).length || 0
-  const pendingPBCount = pendingPBs?.length || 0
-  const unreadMessageCount = unreadMessages || 0
+  const unreviewedSessionKeys = new Set<string>()
 
-  const reviewQueueCount =
-  newVideoCount + newLogCount + newCheckInCount
+;(workoutLogs || [])
+  .filter((log: any) => !log.reviewed && log.session_id)
+  .forEach((log: any) => {
+    unreviewedSessionKeys.add(`${log.user_id}-${log.session_id}`)
+  })
+
+;(videos || [])
+  .filter((video: any) => !video.reviewed && video.session_id)
+  .forEach((video: any) => {
+    unreviewedSessionKeys.add(`${video.user_id}-${video.session_id}`)
+  })
+
+const newSessionReviewCount = unreviewedSessionKeys.size
+
+const newVideoCount = videos?.filter((video) => !video.reviewed).length || 0
+const newLogCount = workoutLogs?.filter((log) => !log.reviewed).length || 0
+const newCheckInCount =
+  recentCheckIns?.filter((checkIn) => !checkIn.reviewed).length || 0
+const pendingPBCount = pendingPBs?.length || 0
+const unreadMessageCount = unreadMessages || 0
+
+const reviewQueueCount =
+  newSessionReviewCount + newCheckInCount
 
 const totalNewItems =
   reviewQueueCount + unreadMessageCount + pendingPBCount
@@ -624,7 +640,7 @@ const programmeForecastWeeks = [
                 Reviews
               </p>
               <p className="mt-1 text-xl font-black text-white">
-                {newLogCount + newVideoCount + newCheckInCount}
+                {reviewQueueCount}
               </p>
             </Link>
 

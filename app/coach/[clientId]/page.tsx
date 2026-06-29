@@ -984,11 +984,14 @@ function getTimelineDay(dateString: string) {
                   Logs
                 </p>
                 <p className="mt-1 text-xl font-black text-white">
-                  {unreviewedLogCount}
-                  <span className="text-sm text-white/35">
-                    /{workoutLogCount}
-                  </span>
-                </p>
+  {workoutLogCount}
+</p>
+
+{unreviewedLogCount > 0 && (
+  <p className="mt-1 text-[10px] font-bold text-red-300">
+    {unreviewedLogCount} awaiting review
+  </p>
+)}
               </div>
 
               <div className={`${innerPanel} p-3`}>
@@ -996,9 +999,14 @@ function getTimelineDay(dateString: string) {
                   Videos
                 </p>
                 <p className="mt-1 text-xl font-black text-white">
-                  {unreviewedVideoCount}
-                  <span className="text-sm text-white/35">/{videoCount}</span>
-                </p>
+  {videoCount}
+</p>
+
+{unreviewedVideoCount > 0 && (
+  <p className="mt-1 text-[10px] font-bold text-red-300">
+    {unreviewedVideoCount} awaiting review
+  </p>
+)}
               </div>
             </div>
           </div>

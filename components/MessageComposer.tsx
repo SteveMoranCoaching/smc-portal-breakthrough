@@ -136,7 +136,7 @@ export default function MessageComposer({
       return
     }
 
-    const maxSizeMb = 50
+    const maxSizeMb = 500
     const maxSizeBytes = maxSizeMb * 1024 * 1024
 
     if (selectedFile.size > maxSizeBytes) {

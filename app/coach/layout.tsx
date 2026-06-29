@@ -65,15 +65,31 @@ export default async function CoachLayout({
     .from("clients")
     .select("*", { count: "exact", head: true })
 
-  const { count: videoCount } = await supabase
-    .from("exercise_videos")
-    .select("*", { count: "exact", head: true })
-    .eq("reviewed", false)
+  const { data: unreviewedVideos } = await supabase
+  .from("exercise_videos")
+  .select("id, user_id, session_id")
+  .eq("reviewed", false)
 
-  const { count: logCount } = await supabase
-    .from("workout_logs")
-    .select("*", { count: "exact", head: true })
-    .eq("reviewed", false)
+const { data: unreviewedLogs } = await supabase
+  .from("workout_logs")
+  .select("id, user_id, session_id")
+  .eq("reviewed", false)
+
+const unreviewedSessionKeys = new Set<string>()
+
+;(unreviewedLogs || [])
+  .filter((log: any) => log.session_id)
+  .forEach((log: any) => {
+    unreviewedSessionKeys.add(`${log.user_id}-${log.session_id}`)
+  })
+
+;(unreviewedVideos || [])
+  .filter((video: any) => video.session_id)
+  .forEach((video: any) => {
+    unreviewedSessionKeys.add(`${video.user_id}-${video.session_id}`)
+  })
+
+const sessionReviewCount = unreviewedSessionKeys.size
 
   const { count: checkInCount } = await supabase
     .from("check_ins")
@@ -87,7 +103,7 @@ export default async function CoachLayout({
     .eq("pb_type", "estimated_1rm")
 
   const reviewQueueCount =
-    (videoCount || 0) + (logCount || 0) + (checkInCount || 0)
+  sessionReviewCount + (checkInCount || 0)
 
   const navItems = [
     { label: "Dashboard", href: "/coach", icon: "⌂" },

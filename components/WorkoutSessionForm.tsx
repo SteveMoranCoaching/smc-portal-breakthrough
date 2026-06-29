@@ -2417,9 +2417,9 @@ setSaving(false)
         )}
               </div>
 
-      {!keyboardActive && (
-        <div className="fixed inset-x-0 bottom-[92px] z-40 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
-          <div className="mx-auto w-full max-w-5xl rounded-[1.35rem] border border-white/[0.07] bg-black/90 p-2 shadow-[0_-10px_32px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+     {!keyboardActive && (
+  <div className="fixed inset-x-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-40 px-3"> 
+  <div className="mx-auto w-full max-w-5xl rounded-[1.35rem] border border-white/[0.07] bg-black/90 p-2 shadow-[0_-10px_32px_rgba(0,0,0,0.78)] backdrop-blur-xl">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-[10px] font-bold text-white/40">
                 {sessionStats.completedExercises}/{mainExercises.length} exercises
