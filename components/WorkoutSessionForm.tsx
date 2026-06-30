@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import AchievementUnlockToast from "@/components/AchievementUnlockToast"
+import FileUploader from "@/components/FileUploader"
 import {
   checkWorkoutAchievements,
   checkPBAchievements,
@@ -23,10 +24,17 @@ type SetEntry = {
   rpe: string
 }
 
+type UploadedVideo = {
+  path: string
+  name: string
+  type: "image" | "video" | "file"
+  size: number
+}
+
 type ExerciseEntry = {
   sets: SetEntry[]
   notes: string
-  videos: File[]
+  videos: UploadedVideo[]
 }
 
 type PBType = "heaviest" | "rep" | "estimated_1rm"
@@ -397,10 +405,6 @@ function groupPBResults(results: PBResult[]) {
   return results.sort((a, b) => priority[a.type] - priority[b.type]).slice(0, 2)
 }
 
-function safeFileName(fileName: string) {
-  return fileName.replace(/[^a-zA-Z0-9._-]/g, "-")
-}
-
 function detectPBs({
   exerciseName,
   currentSets,
@@ -669,7 +673,6 @@ if (parsed?.circuitExerciseComplete) {
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [saveError, setSaveError] = useState("")
   const [uploadingExercise, setUploadingExercise] = useState("")
-  const [uploadProgress, setUploadProgress] = useState(0)
   const [complete, setComplete] = useState(false)
   const [pbResults, setPbResults] = useState<PBResult[]>([])
   const [showPBModal, setShowPBModal] = useState(false)
@@ -1168,37 +1171,46 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
     )
   }
 
-  function updateVideos(exerciseIndex: number, files: FileList | null) {
-  setSaveError("")
+  function addUploadedVideo(exerciseIndex: number, video: UploadedVideo) {
+    setSaveError("")
 
-  if (!files || files.length === 0) return
-
-  const newFiles = Array.from(files)
-
-  setFormData((current) =>
-    current.map((exercise, i) =>
-      i === exerciseIndex
-        ? {
-            ...exercise,
-            videos: [...exercise.videos, ...newFiles],
-          }
-        : exercise
+    setFormData((current) =>
+      current.map((exercise, i) =>
+        i === exerciseIndex
+          ? {
+              ...exercise,
+              videos: [...exercise.videos, video],
+            }
+          : exercise
+      )
     )
-  )
-}
+  }
 
-function removeVideo(exerciseIndex: number, videoIndex: number) {
-  setFormData((current) =>
-    current.map((exercise, i) =>
-      i === exerciseIndex
-        ? {
-            ...exercise,
-            videos: exercise.videos.filter((_, j) => j !== videoIndex),
-          }
-        : exercise
+  function clearUploadedVideos(exerciseIndex: number) {
+    setFormData((current) =>
+      current.map((exercise, i) =>
+        i === exerciseIndex
+          ? {
+              ...exercise,
+              videos: [],
+            }
+          : exercise
+      )
     )
-  )
-}
+  }
+
+  function removeUploadedVideo(exerciseIndex: number, videoIndex: number) {
+    setFormData((current) =>
+      current.map((exercise, i) =>
+        i === exerciseIndex
+          ? {
+              ...exercise,
+              videos: exercise.videos.filter((_, j) => j !== videoIndex),
+            }
+          : exercise
+      )
+    )
+  }
 
   async function fetchHistoricalLogsByExercise() {
     const exerciseNames = exercises
@@ -1295,11 +1307,10 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
     setSaveError("")
     setMessage("Saving workout...")
     setUploadingExercise("")
-    setUploadProgress(0)
 
     try {
       const historicalLogsByExercise = await fetchHistoricalLogsByExercise()
-      const failedUploads: string[] = []
+      const failedVideoRows: string[] = []
 
       for (let i = 0; i < formData.length; i++) {
         const ex = exercises[i]
@@ -1313,71 +1324,43 @@ function removeVideo(exerciseIndex: number, videoIndex: number) {
         const completedSets = data.sets.filter(hasSetData)
 
         if (completedSets.length > 0 || data.notes.trim()) {
-  const existingLog = existingLogs.find(
-    (log: any) =>
-      String(log.exercise_name || "").toLowerCase().trim() ===
-      String(exerciseName).toLowerCase().trim()
-  )
+          const existingLog = existingLogs.find(
+            (log: any) =>
+              String(log.exercise_name || "").toLowerCase().trim() ===
+              String(exerciseName).toLowerCase().trim()
+          )
 
-  const { error: logError } = await supabase.from("workout_logs").upsert({
-    id: existingLog?.id,
-    user_id: userId,
-    programme_id: programmeId,
-    session_id: session.id,
-    exercise_name: exerciseName,
-    sets_completed: completedSets,
-    notes: data.notes,
-    reviewed: false,
-  })
+          const { error: logError } = await supabase.from("workout_logs").upsert({
+            id: existingLog?.id,
+            user_id: userId,
+            programme_id: programmeId,
+            session_id: session.id,
+            exercise_name: exerciseName,
+            sets_completed: completedSets,
+            notes: data.notes,
+            reviewed: false,
+          })
 
-  if (logError) throw logError
-}
-        
+          if (logError) throw logError
+        }
 
-for (let videoIndex = 0; videoIndex < data.videos.length; videoIndex++) {
-  const video = data.videos[videoIndex]
+        for (const video of data.videos) {
+          const { error: videoError } = await supabase
+            .from("exercise_videos")
+            .insert({
+              user_id: userId,
+              programme_id: programmeId,
+              session_id: session.id,
+              exercise_name: exerciseName,
+              exercise_index: i,
+              video_path: video.path,
+              reviewed: false,
+            })
 
-  const percent = Math.round(
-    ((videoIndex + 1) / data.videos.length) * 100
-  )
-
-  setUploadProgress(percent)
-
-  setUploadingExercise(
-    `Uploading ${exerciseName} (${percent}%)`
-  )
-
-  const filePath = `${userId}/${session.id}/${i}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}-${safeFileName(
-    video.name
-  )}`
-
-  const { error: uploadError } = await supabase.storage
-    .from("exercise-videos")
-    .upload(filePath, video)
-
-  if (uploadError) {
-    failedUploads.push(`${exerciseName}: ${uploadError.message}`)
-    continue
-  }
-
-  const { error: videoError } = await supabase
-    .from("exercise_videos")
-    .insert({
-      user_id: userId,
-      programme_id: programmeId,
-      session_id: session.id,
-      exercise_name: exerciseName,
-      exercise_index: i,
-      video_path: filePath,
-      reviewed: false,
-    })
-
-  if (videoError) {
-    failedUploads.push(`${exerciseName}: ${videoError.message}`)
-    continue
-  }
-}
-
+          if (videoError) {
+            failedVideoRows.push(`${exerciseName}: ${videoError.message}`)
+          }
+        }
       }
 
       setMessage("Checking PBs...")
@@ -1396,51 +1379,48 @@ for (let videoIndex = 0; videoIndex < data.videos.length; videoIndex++) {
       }
 
       if (detectedPBs.length > 0) {
-  await saveDetectedPBs(detectedPBs)
+        await saveDetectedPBs(detectedPBs)
 
-  const pbAchievementResult = await checkPBAchievements(supabase, userId)
-  const pbUnlock = normaliseAchievementUnlock(pbAchievementResult)
+        const pbAchievementResult = await checkPBAchievements(supabase, userId)
+        const pbUnlock = normaliseAchievementUnlock(pbAchievementResult)
 
-  if (pbUnlock) {
-    setAchievementUnlock(pbUnlock)
-  }
+        if (pbUnlock) {
+          setAchievementUnlock(pbUnlock)
+        }
 
-  setPbResults(detectedPBs)
-  setShowPBModal(true)
-}
+        setPbResults(detectedPBs)
+        setShowPBModal(true)
+      }
 
-      if (failedUploads.length > 0) {
-  setSaveError(
-    "Workout saved, but one or more videos failed to upload. You can retry them later."
-  )
-}
+      if (failedVideoRows.length > 0) {
+        setSaveError(
+          "Workout saved, but one or more video records failed to attach. The upload itself may still be in storage."
+        )
+      }
 
-const { error: completionError } = await supabase
-  .from("session_completions")
-  .upsert({
-    user_id: userId,
-    programme_id: programmeId,
-    session_id: session.id,
-    completed: true,
-    session_rating: sessionRating
-      ? Number(sessionRating)
-      : null,
-    notes: sessionNotes.trim() || null,
-  })
+      const { error: completionError } = await supabase
+        .from("session_completions")
+        .upsert({
+          user_id: userId,
+          programme_id: programmeId,
+          session_id: session.id,
+          completed: true,
+          session_rating: sessionRating ? Number(sessionRating) : null,
+          notes: sessionNotes.trim() || null,
+        })
 
-if (completionError) {
-  throw completionError
-}
+      if (completionError) {
+        throw completionError
+      }
 
-if (typeof window !== "undefined") {
-  window.localStorage.removeItem(autosaveKey)
-}
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(autosaveKey)
+      }
 
-setComplete(true)
-setMessage("")
-setUploadingExercise("")
-setUploadProgress(0)
-setSaving(false)
+      setComplete(true)
+      setMessage("")
+      setUploadingExercise("")
+      setSaving(false)
     } catch (err: any) {
       setSaveError(
         err?.message
@@ -1449,7 +1429,6 @@ setSaving(false)
       )
       setMessage("")
       setUploadingExercise("")
-      setUploadProgress(0)
       setSaving(false)
     }
   }
@@ -2223,41 +2202,41 @@ setSaving(false)
                   rows={2}
                 />
 
-                <div className="mt-2.5 rounded-2xl border border-white/[0.055] bg-black/20 p-2.5">
-                  <p className="mb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-                    Upload video
-                  </p>
+                <div className="mt-2.5 space-y-2.5">
+                  <FileUploader
+                    bucket="exercise-videos"
+                    pathPrefix={`${userId}/${session.id}/${exerciseIndex}`}
+                    accept="video/*"
+                    label="Add training video"
+                    buttonLabel="Choose video"
+                    maxVideoMb={500}
+                    disabled={saving || complete}
+                    onUploaded={(video) => addUploadedVideo(exerciseIndex, video)}
+                    onClear={() => clearUploadedVideos(exerciseIndex)}
+                  />
 
-                  <input
-  type="file"
-  accept="video/*"
-  multiple
-  onChange={(e) => updateVideos(exerciseIndex, e.target.files)}
-  className="w-full text-[11px] text-white/55 file:mr-2 file:rounded-xl file:border-0 file:bg-white/[0.07] file:px-2.5 file:py-2 file:text-[11px] file:font-bold file:text-white/75"
-/>
+                  {formData[exerciseIndex]?.videos.length > 0 && (
+                    <div className="space-y-1.5">
+                      {formData[exerciseIndex].videos.map((video, videoIndex) => (
+                        <div
+                          key={`${video.path}-${videoIndex}`}
+                          className="flex items-center justify-between gap-2 rounded-xl border border-smc-gold/20 bg-smc-gold/[0.06] px-3 py-2"
+                        >
+                          <p className="min-w-0 truncate text-[10px] font-bold text-smc-gold/80">
+                            Video uploaded: {video.name}
+                          </p>
 
-{formData[exerciseIndex]?.videos.length > 0 && (
-  <div className="mt-2 space-y-1.5">
-    {formData[exerciseIndex].videos.map((video, videoIndex) => (
-      <div
-        key={`${video.name}-${videoIndex}`}
-        className="flex items-center justify-between gap-2 rounded-xl border border-smc-gold/20 bg-smc-gold/[0.06] px-3 py-2"
-      >
-        <p className="min-w-0 truncate text-[10px] font-bold text-smc-gold/80">
-          Video ready: {video.name}
-        </p>
-
-        <button
-          type="button"
-          onClick={() => removeVideo(exerciseIndex, videoIndex)}
-          className="shrink-0 text-[10px] font-black text-red-300"
-        >
-          Remove
-        </button>
-      </div>
-    ))}
-  </div>
-)}
+                          <button
+                            type="button"
+                            onClick={() => removeUploadedVideo(exerciseIndex, videoIndex)}
+                            className="shrink-0 text-[10px] font-black text-red-300"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2433,11 +2412,7 @@ setSaving(false)
             <button
               type="button"
               onClick={() => handleSave()}
-              disabled={
-  saving ||
-  (uploadProgress > 0 && uploadProgress < 100) ||
-  !sessionStats.hasAnyLoggedWork
-}
+              disabled={saving || !sessionStats.hasAnyLoggedWork}
               className="min-h-12 w-full rounded-2xl bg-smc-gold py-3 text-[15px] font-black text-black shadow-[0_0_20px_rgba(212,175,55,0.18)] transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
             >
               {getSaveButtonText()}
@@ -2449,10 +2424,7 @@ setSaving(false)
                   saveError ? "text-red-300/85" : "text-white/45"
                 }`}
               >
-                {saveError ||
-  (uploadingExercise
-    ? `${uploadingExercise}`
-    : message)}
+                {saveError || message}
               </p>
             )}
           </div>

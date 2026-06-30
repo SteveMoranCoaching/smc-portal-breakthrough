@@ -2,6 +2,14 @@
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import FileUploader from "@/components/FileUploader"
+
+type UploadedAttachment = {
+  path: string
+  name: string
+  type: "image" | "video" | "file"
+  size: number
+}
 
 export default function MessageComposer({
   currentUserId,
@@ -17,12 +25,12 @@ export default function MessageComposer({
   placeholder?: string
 }) {
   const [body, setBody] = useState("")
-  const [file, setFile] = useState<File | null>(null)
+  const [uploadedAttachment, setUploadedAttachment] =
+    useState<UploadedAttachment | null>(null)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState("")
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const lastTypingSentRef = useRef(0)
   const submitLockRef = useRef(false)
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(
@@ -127,34 +135,8 @@ export default function MessageComposer({
     })
   }
 
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const selectedFile = event.target.files?.[0] || null
-    setError("")
-
-    if (!selectedFile) {
-      setFile(null)
-      return
-    }
-
-    const maxSizeMb = 500
-    const maxSizeBytes = maxSizeMb * 1024 * 1024
-
-    if (selectedFile.size > maxSizeBytes) {
-      setError(`Attachment is too large. Max file size is ${maxSizeMb}MB.`)
-      event.target.value = ""
-      setFile(null)
-      return
-    }
-
-    setFile(selectedFile)
-  }
-
-  function clearFile() {
-    setFile(null)
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
+  function clearAttachment() {
+    setUploadedAttachment(null)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -164,42 +146,17 @@ export default function MessageComposer({
 
     const trimmedBody = body.trim()
 
-    if (!trimmedBody && !file) return
+    if (!trimmedBody && !uploadedAttachment) return
 
     submitLockRef.current = true
     setSending(true)
     setError("")
 
-    let attachmentPath: string | null = null
-    let attachmentType: string | null = null
-    let attachmentName: string | null = null
+    const attachmentPath = uploadedAttachment?.path || null
+    const attachmentType = uploadedAttachment?.type || null
+    const attachmentName = uploadedAttachment?.name || null
 
     try {
-      if (file) {
-        const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "-")
-        const filePath = `${clientUserId}/${currentUserId}/${Date.now()}-${safeFileName}`
-
-        const { error: uploadError } = await supabase.storage
-          .from("message-attachments")
-          .upload(filePath, file)
-
-        if (uploadError) {
-          setError(`Upload failed: ${uploadError.message}`)
-          return
-        }
-
-        attachmentPath = filePath
-        attachmentName = file.name
-
-        if (file.type.startsWith("image/")) {
-          attachmentType = "image"
-        } else if (file.type.startsWith("video/")) {
-          attachmentType = "video"
-        } else {
-          attachmentType = "file"
-        }
-      }
-
       const { error: messageError } = await supabase.from("messages").insert({
         sender_id: currentUserId,
         recipient_id: recipientId,
@@ -226,7 +183,7 @@ export default function MessageComposer({
       })
 
       setBody("")
-      clearFile()
+      clearAttachment()
       textareaRef.current?.focus()
     } finally {
       setSending(false)
@@ -234,7 +191,7 @@ export default function MessageComposer({
     }
   }
 
-  const canSend = !sending && (!!body.trim() || !!file)
+  const canSend = !sending && (!!body.trim() || !!uploadedAttachment)
 
   return (
     <form
@@ -252,43 +209,15 @@ export default function MessageComposer({
         className="max-h-32 min-h-[44px] w-full resize-none rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 py-3 text-sm leading-5 text-white outline-none placeholder:text-white/30 focus:border-smc-gold/45 disabled:opacity-60"
       />
 
-      <div className="rounded-[1rem] border border-white/[0.07] bg-[#05070c] px-3 py-2.5">
-        <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
-          <span className="min-w-0 flex-1 truncate font-semibold text-white/80">
-            {file ? file.name : "Add image/video"}
-          </span>
-
-          <span className="shrink-0 rounded-[0.85rem] bg-smc-gold px-3 py-2 text-xs font-black text-black">
-            Choose file
-          </span>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,video/*"
-            onChange={handleFileChange}
-            className="hidden"
-            disabled={sending}
-          />
-        </label>
-
-        {file && (
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <p className="truncate text-xs text-white/35">
-              {(file.size / 1024 / 1024).toFixed(1)}MB selected
-            </p>
-
-            <button
-              type="button"
-              onClick={clearFile}
-              disabled={sending}
-              className="shrink-0 text-xs font-semibold text-white/45 underline disabled:opacity-50"
-            >
-              Remove
-            </button>
-          </div>
-        )}
-      </div>
+      <FileUploader
+        bucket="message-attachments"
+        pathPrefix={`${clientUserId}/${currentUserId}`}
+        label="Add image/video"
+        buttonLabel="Choose file"
+        disabled={sending}
+        onUploaded={setUploadedAttachment}
+        onClear={clearAttachment}
+      />
 
       {error && (
         <p className="rounded-[0.9rem] border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
@@ -301,7 +230,7 @@ export default function MessageComposer({
         disabled={!canSend}
         className="min-h-[44px] w-full rounded-[1rem] bg-smc-gold px-5 py-2.5 text-sm font-black text-black shadow-[0_0_20px_rgba(212,175,55,0.18)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
       >
-        {sending ? (file ? "Uploading..." : "Sending...") : "Send Message"}
+        {sending ? "Sending..." : "Send Message"}
       </button>
     </form>
   )
