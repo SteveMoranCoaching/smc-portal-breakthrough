@@ -90,13 +90,11 @@ function sortProgrammeSessions(sessions: any[]) {
 }
 
 function getEffectiveWeekNumber({
-  programmeWeekNumber,
   programmeStartDate,
   coachCurrentWeek,
   sessions,
   completedSessionIds,
 }: {
-  programmeWeekNumber: number
   programmeStartDate?: string | null
   coachCurrentWeek?: number | null
   sessions: any[]
@@ -106,7 +104,7 @@ function getEffectiveWeekNumber({
     new Set(sessions.map((session: any) => Number(session.week_number || 1)))
   ).sort((a, b) => a - b)
 
-  if (!weeks.length) return programmeWeekNumber || 1
+  if (!weeks.length) return 1
 
   const minWeek = weeks[0]
   const maxWeek = weeks[weeks.length - 1]
@@ -292,13 +290,8 @@ const scheduledWeekNumber =
     : null
 
 const plannerWeekNumber = getEffectiveWeekNumber({
-  programmeWeekNumber: Number(
-    scheduledWeekNumber ||
-      currentProgramme?.week_number ||
-      sessions[0]?.week_number ||
-      1
-  ),
-  programmeStartDate: currentProgramme?.start_date || currentProgramme?.created_at,
+  programmeStartDate:
+    currentProgramme?.start_date || currentProgramme?.created_at,
   coachCurrentWeek: currentProgramme?.coach_current_week,
   sessions,
   completedSessionIds,

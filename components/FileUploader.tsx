@@ -226,7 +226,7 @@ export default function FileUploader({
         </div>
 
         <span
-          className={`shrink-0 rounded-[0.85rem] px-3 py-2 text-xs font-black ${
+          className={`shrink-0 rounded-[0.85rem] px-3 py-2 text-[11px] font-black ${
             uploaded
               ? "bg-green-400 text-black"
               : uploading
@@ -234,7 +234,7 @@ export default function FileUploader({
                 : "bg-smc-gold text-black"
           }`}
         >
-          {uploaded ? "Done" : uploading ? `${percentage}%` : buttonLabel}
+          {uploaded ? "Add another file" : uploading ? `${percentage}%` : buttonLabel}
         </span>
 
         <input
