@@ -344,12 +344,14 @@ return prescribedExercise?.prescription || ""
   }
 
   async function markWholeSessionReviewed() {
-    if (!current || current.type !== "session") return
+  if (!current || current.type !== "session") return
 
-    setSavingId("whole-session")
-    setMessage("")
+  setSavingId("whole-session")
+  setMessage("")
 
-    const logUpdates = session.logs.map((log) =>
+  const logUpdates = session.logs
+    .filter((log) => log.id)
+    .map((log) =>
       supabase
         .from("workout_logs")
         .update({
@@ -360,7 +362,9 @@ return prescribedExercise?.prescription || ""
         .eq("id", log.id)
     )
 
-    const videoUpdates = session.videos.map((video) =>
+  const videoUpdates = session.videos
+    .filter((video) => video.id)
+    .map((video) =>
       supabase
         .from("exercise_videos")
         .update({
@@ -370,32 +374,34 @@ return prescribedExercise?.prescription || ""
         .eq("id", video.id)
     )
 
-    const sessionFeedbackUpdate = supabase
-      .from("session_completions")
-      .update({
-        coach_feedback: getSessionFeedbackValue(),
-        feedback_read: false,
-      })
-      .eq("id", current.completion?.id)
+  const updates = [...logUpdates, ...videoUpdates]
 
-    const results = await Promise.all([
-      sessionFeedbackUpdate,
-      ...logUpdates,
-      ...videoUpdates,
-    ])
-    const firstError = results.find((result) => result.error)?.error
-
-    setSavingId("")
-
-    if (firstError) {
-      setMessage(`Save failed: ${firstError.message}`)
-      return
-    }
-
-    setReviewItems((items) => items.filter((item) => item.id !== current.id))
-    setMessage("Session reviewed.")
-    scrollReviewToTop()
+  if (current.completion?.id) {
+    updates.unshift(
+      supabase
+        .from("session_completions")
+        .update({
+          coach_feedback: getSessionFeedbackValue(),
+          feedback_read: false,
+        })
+        .eq("id", current.completion.id)
+    )
   }
+
+  const results = await Promise.all(updates)
+  const firstError = results.find((result) => result.error)?.error
+
+  setSavingId("")
+
+  if (firstError) {
+    setMessage(`Save failed: ${firstError.message}`)
+    return
+  }
+
+  setReviewItems((items) => items.filter((item) => item.id !== current.id))
+  setMessage("Session reviewed.")
+  scrollReviewToTop()
+}
 
   function skipSession() {
   setReviewItems((items) => {

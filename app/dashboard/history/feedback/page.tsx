@@ -49,7 +49,7 @@ export default async function FeedbackHistoryPage() {
   const [{ data: workoutLogs }, { data: videos }] = await Promise.all([
     supabase
       .from("workout_logs")
-      .select("id, exercise_name, sets_completed, coach_feedback, created_at")
+      .select("id, exercise_name, sets_completed, coach_feedback, feedback_read, created_at")
       .eq("user_id", user.id)
       .eq("reviewed", true)
       .not("coach_feedback", "is", null)
@@ -58,7 +58,7 @@ export default async function FeedbackHistoryPage() {
 
     supabase
       .from("exercise_videos")
-      .select("id, exercise_name, feedback, created_at")
+      .select("id, exercise_name, feedback, feedback_read, created_at")
       .eq("user_id", user.id)
       .eq("reviewed", true)
       .not("feedback", "is", null)
@@ -80,7 +80,9 @@ export default async function FeedbackHistoryPage() {
           : "Workout log feedback"
 
       return {
-        id: `log-${log.id}`,
+        id: log.id,
+        source: "log",
+        read: Boolean(log.feedback_read),
         type: "Workout Log",
         exerciseName: log.exercise_name,
         context: setSummary,
@@ -90,7 +92,9 @@ export default async function FeedbackHistoryPage() {
     }),
 
     ...(videos || []).map((video: any) => ({
-      id: `video-${video.id}`,
+      id: video.id,
+      source: "video",
+      read: Boolean(video.feedback_read), 
       type: "Video Review",
       exerciseName: video.exercise_name,
       context: "Video feedback",
@@ -171,8 +175,25 @@ export default async function FeedbackHistoryPage() {
                     </p>
 
                     <p className="mt-2 whitespace-pre-line text-sm leading-6 text-white/72">
-                      {item.feedback}
-                    </p>
+  {item.feedback}
+</p>
+
+<form action="/api/feedback/read" method="post" className="mt-3">
+  <input type="hidden" name="id" value={item.id} />
+  <input type="hidden" name="source" value={item.source} />
+
+  <button
+    type="submit"
+    disabled={item.read}
+    className={`flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-black transition ${
+      item.read
+        ? "border border-green-500/25 bg-green-500/10 text-green-400"
+        : "bg-smc-gold text-black active:scale-[0.98]"
+    }`}
+  >
+    {item.read ? "✓ Read" : "Mark as read"}
+  </button>
+</form>
                   </div>
                 </div>
               </article>

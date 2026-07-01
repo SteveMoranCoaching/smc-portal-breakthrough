@@ -12,13 +12,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
   }
 
-  const { id, source } = await request.json()
+  const formData = await request.formData()
+
+  const id = formData.get("id")?.toString()
+  const source = formData.get("source")?.toString()
 
   if (!id || !source) {
-    return NextResponse.json({ error: "Missing feedback details" }, { status: 400 })
+    return NextResponse.json(
+      { error: "Missing feedback details" },
+      { status: 400 }
+    )
   }
 
-  const table = source === "video" ? "exercise_videos" : "workout_logs"
+  const table =
+    source === "video" ? "exercise_videos" : "workout_logs"
 
   const { error } = await supabase
     .from(table)
@@ -27,8 +34,13 @@ export async function POST(request: Request) {
     .eq("user_id", user.id)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    )
   }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.redirect(
+    new URL("/dashboard/history/feedback", request.url)
+  )
 }
