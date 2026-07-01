@@ -950,7 +950,7 @@ const closestAchievements = achievementProgress
               </p>
 
               <Link
-                href="/dashboard/workouts?focus=feedback"
+  href="/dashboard/history/feedback"
                 className="mt-2.5 flex min-h-[34px] items-center justify-center rounded-[1.15rem] bg-smc-gold px-5 text-center text-sm font-black text-black shadow-[0_0_24px_rgba(212,175,55,0.2)] transition active:scale-[0.99]"
               >
                 View Feedback <span className="ml-3 text-lg">→</span>

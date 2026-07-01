@@ -40,7 +40,5 @@ export async function POST(request: Request) {
     )
   }
 
-  return NextResponse.redirect(
-    new URL("/dashboard/history/feedback", request.url)
-  )
+  return NextResponse.json({ success: true })
 }

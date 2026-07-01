@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import EmptyStateCard from "@/components/ui/EmptyStateCard"
-import WorkoutFeedbackDetails from "@/components/WorkoutFeedbackDetails"
 import StartWorkoutButton from "@/components/StartWorkoutButton"
 import PrefetchSession from "@/components/PrefetchSession"
 import WeeklyWorkoutPlanner from "@/components/WeeklyWorkoutPlanner"
@@ -551,40 +550,6 @@ const latestVideoFeedback =
               </div>
             </div>
           </section>
-
-          {unreadFeedbackCount > 0 ? (
-            <section className="relative overflow-hidden rounded-[1.35rem] border border-smc-gold/25 bg-smc-gold/10 p-3.5 shadow-[0_14px_34px_rgba(0,0,0,0.68)]">
-              <div className="relative z-10">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-base font-black text-smc-text">
-                      New Coach Feedback
-                    </h2>
-                    <p className="mt-1 text-xs text-zinc-300">
-                      You have feedback waiting from Steve.
-                    </p>
-                  </div>
-
-                  <span className="rounded-full bg-smc-gold/90 px-2.5 py-1 text-[9px] font-black text-black shadow-[0_0_12px_rgba(212,175,55,0.35)]">
-                    {unreadFeedbackCount} NEW
-                  </span>
-                </div>
-
-                {latestFeedbackItems.length > 0 ? (
-                  <div className="mt-3 space-y-2">
-                    {latestFeedbackItems.map((item, index) => (
-                      <WorkoutFeedbackDetails
-                        key={`${item.type}-${index}`}
-                        item={item}
-                        softBorder={softBorder}
-                        dateLabel={formatDate(item.createdAt)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
 
           <WeeklyWorkoutPlanner
   programmeId={currentProgramme.id}

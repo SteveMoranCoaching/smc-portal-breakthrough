@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
+import MarkFeedbackReadButton from "@/components/MarkFeedbackReadButton"
 
 export const dynamic = "force-dynamic"
 
@@ -149,56 +150,52 @@ export default async function FeedbackHistoryPage() {
             </p>
           </section>
         ) : (
-          <section className="flex flex-col gap-3">
-            {feedbackItems.map((item) => (
-              <article key={item.id} className={shellCard}>
-                <div className="relative z-10">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
-                        {item.type}
-                      </p>
+          <section className="flex flex-col gap-2.5">
+  {feedbackItems.map((item) => (
+    <article
+      key={`${item.source}-${item.id}`}
+      className={`relative overflow-hidden rounded-[1.15rem] border px-3.5 py-3 transition ${
+        item.read
+          ? "border-white/[0.06] bg-white/[0.025]"
+          : "border-smc-gold/25 bg-smc-gold/[0.07] shadow-[0_0_18px_rgba(212,175,55,0.08)]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">
+              {item.source === "video" ? "🎥" : "🏋️"}
+            </span>
 
-                      <h2 className="mt-1 text-lg font-black text-white">
-                        {item.exerciseName}
-                      </h2>
+            <p className="truncate text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
+              {item.type}
+            </p>
+          </div>
 
-                      <p className="mt-1 text-xs text-white/40">
-                        {formatDate(item.createdAt)} · {item.context}
-                      </p>
-                    </div>
-                  </div>
+          <h2 className="mt-1 text-[0.95rem] font-black leading-tight text-white">
+            {item.exerciseName}
+          </h2>
 
-                  <div className="mt-3 rounded-[1.1rem] border border-white/[0.06] bg-black/32 p-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/32">
-                      Steve said
-                    </p>
+          <p className="mt-1 text-[11px] text-white/38">
+            {formatDate(item.createdAt)} · {item.context}
+          </p>
+        </div>
 
-                    <p className="mt-2 whitespace-pre-line text-sm leading-6 text-white/72">
-  {item.feedback}
-</p>
+        <div className="shrink-0">
+  <MarkFeedbackReadButton
+    id={item.id}
+    source={item.source as "log" | "video"}
+    initialRead={item.read}
+  />
+</div>
+      </div>
 
-<form action="/api/feedback/read" method="post" className="mt-3">
-  <input type="hidden" name="id" value={item.id} />
-  <input type="hidden" name="source" value={item.source} />
-
-  <button
-    type="submit"
-    disabled={item.read}
-    className={`flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-black transition ${
-      item.read
-        ? "border border-green-500/25 bg-green-500/10 text-green-400"
-        : "bg-smc-gold text-black active:scale-[0.98]"
-    }`}
-  >
-    {item.read ? "✓ Read" : "Mark as read"}
-  </button>
-</form>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </section>
+      <p className="mt-3 whitespace-pre-line text-[13px] leading-6 text-white/72">
+        {item.feedback}
+      </p>
+    </article>
+  ))}
+</section>
         )}
       </section>
     </main>
