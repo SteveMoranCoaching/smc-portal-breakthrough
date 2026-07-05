@@ -207,6 +207,17 @@ function getAutosaveKey(userId: string, sessionId: string) {
 }
 
 function getPrescribedSetCount(exercise: any) {
+  const blocks = Array.isArray(exercise?.prescriptions)
+    ? exercise.prescriptions
+    : []
+
+  const blockSetTotal = blocks.reduce((total: number, block: any) => {
+    const sets = Number(block?.sets || 0)
+    return total + (Number.isFinite(sets) ? sets : 0)
+  }, 0)
+
+  if (blockSetTotal > 0) return blockSetTotal
+
   const prescription = String(exercise?.prescription || "")
   const match = prescription.match(/^(\d+)\s*x/i)
   if (match) return Number(match[1])

@@ -54,9 +54,18 @@ function normaliseLogType(logType?: Partial<ExerciseLogType> | null): ExerciseLo
   }
 }
 
+type PrescriptionBlock = {
+  label: string
+  sets: string
+  reps: string
+  load: string
+  notes?: string
+}
+
 type Exercise = {
   name: string
   prescription: string
+  prescriptions?: PrescriptionBlock[]
   section?: "main" | "warmup" | "stretch" | "circuit"
   logType?: ExerciseLogType
   circuit?: {
@@ -349,6 +358,117 @@ export default function ProgrammeCreator() {
 
     updateActiveWeekSessions(next)
   }
+
+  function getPrescriptionBlocks(exercise: Exercise): PrescriptionBlock[] {
+  if (exercise.prescriptions?.length) return exercise.prescriptions
+
+  return [
+    {
+      label: "Main",
+      sets: "",
+      reps: "",
+      load: "",
+      notes: exercise.prescription || "",
+    },
+  ]
+}
+
+function updatePrescriptionBlock(
+  sessionIndex: number,
+  exerciseIndex: number,
+  blockIndex: number,
+  field: keyof PrescriptionBlock,
+  value: string
+) {
+  const next = [...sessions]
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises: [...next[sessionIndex].exercises],
+  }
+
+  const exercise = next[sessionIndex].exercises[exerciseIndex]
+  const currentBlocks = getPrescriptionBlocks(exercise)
+
+  const nextBlocks = currentBlocks.map((block, index) =>
+    index === blockIndex ? { ...block, [field]: value } : block
+  )
+
+  next[sessionIndex].exercises[exerciseIndex] = {
+    ...exercise,
+    prescriptions: nextBlocks,
+    prescription: nextBlocks
+      .map((block) =>
+        [
+          block.label,
+          block.sets && block.reps ? `${block.sets}x${block.reps}` : "",
+          block.load ? `@ ${block.load}` : "",
+          block.notes || "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      )
+      .join(" | "),
+  }
+
+  updateActiveWeekSessions(next)
+}
+
+function addPrescriptionBlock(
+  sessionIndex: number,
+  exerciseIndex: number
+) {
+  const next = [...sessions]
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises: [...next[sessionIndex].exercises],
+  }
+
+  const exercise = next[sessionIndex].exercises[exerciseIndex]
+  const blocks = getPrescriptionBlocks(exercise)
+
+  next[sessionIndex].exercises[exerciseIndex] = {
+    ...exercise,
+    prescriptions: [
+      ...blocks,
+      {
+        label: `Block ${blocks.length + 1}`,
+        sets: "",
+        reps: "",
+        load: "",
+        notes: "",
+      },
+    ],
+  }
+
+  updateActiveWeekSessions(next)
+}
+
+function removePrescriptionBlock(
+  sessionIndex: number,
+  exerciseIndex: number,
+  blockIndex: number
+) {
+  const next = [...sessions]
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises: [...next[sessionIndex].exercises],
+  }
+
+  const exercise = next[sessionIndex].exercises[exerciseIndex]
+  const blocks = getPrescriptionBlocks(exercise)
+
+  if (blocks.length <= 1) return
+
+  next[sessionIndex].exercises[exerciseIndex] = {
+    ...exercise,
+    prescriptions: blocks.filter((_, index) => index !== blockIndex),
+  }
+
+  updateActiveWeekSessions(next)
+}
 
   function updateExerciseLogType(
     sessionIndex: number,
@@ -1182,106 +1302,221 @@ const { data: programme, error: programmeError } = await supabase
     </button>
   </div>
 ) : (
-                          <div className="grid gap-2.5 sm:grid-cols-[0.8fr_1.2fr_1.2fr_0.9fr_0.9fr]">
-                            <select
-                              value={exercise.section || "main"}
-                              onChange={(e) =>
-                                updateExercise(
-                                  sessionIndex,
-                                  exerciseIndex,
-                                  "section",
-                                  e.target.value
-                                )
-                              }
-                              className={inputStyle}
-                            >
-                              <option value="warmup">Warm-up / Mobility</option>
-<option value="main">Main Exercise</option>
-<option value="circuit">Circuit Block</option>
-<option value="stretch">Post Session Stretch</option>
-                            </select>
+  <div className="space-y-3">
+    <div className="grid gap-2.5 sm:grid-cols-[0.8fr_1.2fr_0.9fr_0.9fr]">
+      <select
+        value={exercise.section || "main"}
+        onChange={(e) =>
+          updateExercise(
+            sessionIndex,
+            exerciseIndex,
+            "section",
+            e.target.value
+          )
+        }
+        className={inputStyle}
+      >
+        <option value="warmup">Warm-up / Mobility</option>
+        <option value="main">Main Exercise</option>
+        <option value="circuit">Circuit Block</option>
+        <option value="stretch">Post Session Stretch</option>
+      </select>
 
-                            <input
-                              value={exercise.name}
-                              onChange={(e) =>
-                                updateExercise(
-                                  sessionIndex,
-                                  exerciseIndex,
-                                  "name",
-                                  e.target.value
-                                )
-                              }
-                              placeholder={
-  exercise.section === "warmup"
-    ? "Warm-up name"
-    : exercise.section === "stretch"
-      ? "Stretch name"
-      : "Exercise name"
-}
-                              className={inputStyle}
-                            />
+      <input
+        value={exercise.name}
+        onChange={(e) =>
+          updateExercise(
+            sessionIndex,
+            exerciseIndex,
+            "name",
+            e.target.value
+          )
+        }
+        placeholder={
+          exercise.section === "warmup"
+            ? "Warm-up name"
+            : exercise.section === "stretch"
+              ? "Stretch name"
+              : "Exercise name"
+        }
+        className={inputStyle}
+      />
 
-                            <input
-                              value={exercise.prescription}
-                              onChange={(e) =>
-                                updateExercise(
-                                  sessionIndex,
-                                  exerciseIndex,
-                                  "prescription",
-                                  e.target.value
-                                )
-                              }
-                              placeholder={
-  exercise.section === "warmup"
-    ? "e.g. 2x10 each side"
-    : exercise.section === "stretch"
-      ? "e.g. 30s holds"
-      : "e.g. 3x5 @ RPE 7"
-}
-                              className={inputStyle}
-                            />
+      <select
+        value={normaliseLogType(exercise.logType).primary}
+        onChange={(e) =>
+          updateExerciseLogType(
+            sessionIndex,
+            exerciseIndex,
+            "primary",
+            e.target.value
+          )
+        }
+        className={inputStyle}
+        title="Primary logging field"
+      >
+        {primaryLogOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
 
-                            <select
-                              value={normaliseLogType(exercise.logType).primary}
-                              onChange={(e) =>
-                                updateExerciseLogType(
-                                  sessionIndex,
-                                  exerciseIndex,
-                                  "primary",
-                                  e.target.value
-                                )
-                              }
-                              className={inputStyle}
-                              title="Primary logging field"
-                            >
-                              {primaryLogOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+      <select
+        value={normaliseLogType(exercise.logType).secondary}
+        onChange={(e) =>
+          updateExerciseLogType(
+            sessionIndex,
+            exerciseIndex,
+            "secondary",
+            e.target.value
+          )
+        }
+        className={inputStyle}
+        title="Secondary logging field"
+      >
+        {secondaryLogOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
 
-                            <select
-                              value={normaliseLogType(exercise.logType).secondary}
-                              onChange={(e) =>
-                                updateExerciseLogType(
-                                  sessionIndex,
-                                  exerciseIndex,
-                                  "secondary",
-                                  e.target.value
-                                )
-                              }
-                              className={inputStyle}
-                              title="Secondary logging field"
-                            >
-                              {secondaryLogOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
+    {exercise.section === "warmup" || exercise.section === "stretch" ? (
+      <input
+        value={exercise.prescription}
+        onChange={(e) =>
+          updateExercise(
+            sessionIndex,
+            exerciseIndex,
+            "prescription",
+            e.target.value
+          )
+        }
+        placeholder={
+          exercise.section === "warmup"
+            ? "e.g. 2x10 each side"
+            : "e.g. 30s holds"
+        }
+        className={inputStyle}
+      />
+    ) : (
+      <div className="space-y-2 rounded-[0.95rem] border border-white/[0.06] bg-black/25 p-2">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-smc-gold/70">
+          Prescription
+        </p>
+
+        {getPrescriptionBlocks(exercise).map((block, blockIndex) => (
+          <div
+            key={blockIndex}
+            className="grid gap-2 rounded-[0.85rem] border border-white/[0.05] bg-black/30 p-2 sm:grid-cols-[0.9fr_0.55fr_0.55fr_0.8fr_1fr_auto]"
+          >
+            <input
+              value={block.label}
+              onChange={(e) =>
+                updatePrescriptionBlock(
+                  sessionIndex,
+                  exerciseIndex,
+                  blockIndex,
+                  "label",
+                  e.target.value
+                )
+              }
+              placeholder="Top set"
+              className={inputStyle}
+            />
+
+            <input
+              value={block.sets}
+              onChange={(e) =>
+                updatePrescriptionBlock(
+                  sessionIndex,
+                  exerciseIndex,
+                  blockIndex,
+                  "sets",
+                  e.target.value
+                )
+              }
+              placeholder="Sets"
+              className={inputStyle}
+            />
+
+            <input
+              value={block.reps}
+              onChange={(e) =>
+                updatePrescriptionBlock(
+                  sessionIndex,
+                  exerciseIndex,
+                  blockIndex,
+                  "reps",
+                  e.target.value
+                )
+              }
+              placeholder="Reps"
+              className={inputStyle}
+            />
+
+            <input
+              value={block.load}
+              onChange={(e) =>
+                updatePrescriptionBlock(
+                  sessionIndex,
+                  exerciseIndex,
+                  blockIndex,
+                  "load",
+                  e.target.value
+                )
+              }
+              placeholder="115kg"
+              className={inputStyle}
+            />
+
+            <input
+              value={block.notes || ""}
+              onChange={(e) =>
+                updatePrescriptionBlock(
+                  sessionIndex,
+                  exerciseIndex,
+                  blockIndex,
+                  "notes",
+                  e.target.value
+                )
+              }
+              placeholder="Notes"
+              className={inputStyle}
+            />
+
+            <button
+              type="button"
+              onClick={() =>
+                removePrescriptionBlock(
+                  sessionIndex,
+                  exerciseIndex,
+                  blockIndex
+                )
+              }
+              disabled={getPrescriptionBlocks(exercise).length <= 1}
+              className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-black text-red-300 disabled:opacity-25"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          onClick={() =>
+            addPrescriptionBlock(sessionIndex, exerciseIndex)
+          }
+          className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-smc-gold"
+        >
+          + Add another prescription
+        </button>
+      </div>
+    )}
+  </div>
+)}
                         </div>
                       ))}
                     </div>
