@@ -73,6 +73,7 @@ type Programme = {
   user_id: string
   title: string
   week_number: number
+  planned_weeks: number | null
   notes: string | null
   start_date: string | null
   end_date: string | null
@@ -239,7 +240,7 @@ export default function ProgrammeEditor({
 
       const { data: programmeData, error: programmeError } = await supabase
         .from("programmes")
-        .select("id, user_id, title, week_number, notes, start_date, end_date")
+        .select("id, user_id, title, week_number, planned_weeks, notes, start_date, end_date")
         .eq("id", programmeId)
         .single()
 
@@ -299,7 +300,7 @@ export default function ProgrammeEditor({
 
       setProgramme(programmeData)
       setTitle(programmeData.title ?? "")
-      setProgrammeLength(String(maxWeek))
+      setProgrammeLength(String(programmeData.planned_weeks || maxWeek))
       setActiveWeek(1)
       setNotes(programmeData.notes ?? "")
 
@@ -309,7 +310,7 @@ setStartDate(loadedStartDate)
 
 setEndDate(
   loadedStartDate
-    ? calculateEndDate(loadedStartDate, maxWeek)
+    ? calculateEndDate(loadedStartDate, programmeData.planned_weeks || maxWeek)
     : ""
 )
 
@@ -705,6 +706,7 @@ function removeCircuitExercise(
         user_id: programme.user_id,
         title: `${title.trim()} Copy`,
         week_number: 1,
+        planned_weeks: Number(programmeLength) || 1,
         notes: notes.trim(),
         start_date: startDate || null,
         end_date: endDate || null,
@@ -779,6 +781,7 @@ function removeCircuitExercise(
       .update({
         title: title.trim(),
         week_number: 1,
+        planned_weeks: Number(programmeLength) || 1,
         notes: notes.trim(),
         start_date: startDate || null,
         end_date: endDate || null,
