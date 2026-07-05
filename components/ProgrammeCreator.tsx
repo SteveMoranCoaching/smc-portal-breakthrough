@@ -66,7 +66,7 @@ type Exercise = {
   name: string
   prescription: string
   prescriptions?: PrescriptionBlock[]
-  section?: "main" | "warmup" | "stretch" | "circuit"
+  section?: "main" | "warmup" | "stretch" | "circuit" | "superset"
   logType?: ExerciseLogType
   circuit?: {
     rounds: number
@@ -115,7 +115,7 @@ function shouldSaveExercise(exercise: Exercise) {
     Boolean(exercise.name.trim()) || Boolean(exercise.prescription.trim())
 
   const hasCircuitDetails =
-    exercise.section === "circuit" &&
+    (exercise.section === "circuit" || exercise.section === "superset") &&
     Boolean(
       exercise.circuit?.exercises?.some(
         (item) => item.name.trim() || item.prescription.trim()
@@ -344,7 +344,7 @@ export default function ProgrammeCreator() {
       ...currentExercise,
       [field]: value,
       logType: currentExercise.logType || defaultLogType,
-      ...(field === "section" && value === "circuit" && !currentExercise.circuit
+      ...(field === "section" && (value === "circuit" || value === "superset") && !currentExercise.circuit
         ? {
             circuit: {
               rounds: 1,
@@ -797,6 +797,7 @@ const { data: programme, error: programmeError } = await supabase
     user_id: clientUserId,
     title: title.trim(),
     week_number: 1,
+    planned_weeks: Number(programmeLength) || 1,
     notes: notes.trim(),
     is_active: true,
     start_date: startDate || null,
@@ -1129,7 +1130,7 @@ const { data: programme, error: programmeError } = await supabase
   ? "Warm-up"
   : exercise.section === "stretch"
     ? "Stretch"
-    : exercise.section === "circuit"
+    : exercise.section === "circuit" || exercise.section === "superset"
       ? "Circuit"
       : "Main"}
                               </span>
@@ -1147,7 +1148,7 @@ const { data: programme, error: programmeError } = await supabase
                             </button>
                           </div>
 
-{exercise.section === "circuit" ? (
+{exercise.section === "circuit" || exercise.section === "superset" ? (
   <div className="space-y-3">
     <select
       value={exercise.section || "main"}
@@ -1158,6 +1159,7 @@ const { data: programme, error: programmeError } = await supabase
     >
       <option value="warmup">Warm-up / Mobility</option>
       <option value="main">Main Exercise</option>
+      <option value="superset">Superset</option>
       <option value="circuit">Circuit Block</option>
       <option value="stretch">Post Session Stretch</option>
     </select>
@@ -1318,6 +1320,7 @@ const { data: programme, error: programmeError } = await supabase
       >
         <option value="warmup">Warm-up / Mobility</option>
         <option value="main">Main Exercise</option>
+        <option value="superset">Superset</option>
         <option value="circuit">Circuit Block</option>
         <option value="stretch">Post Session Stretch</option>
       </select>

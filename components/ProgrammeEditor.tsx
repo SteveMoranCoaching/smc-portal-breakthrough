@@ -59,7 +59,7 @@ type Exercise = {
   name: string
   prescription: string
   prescriptions?: PrescriptionBlock[]
-  section?: "main" | "warmup" | "stretch" | "circuit"
+  section?: "main" | "warmup" | "stretch" | "circuit" | "superset"
   logType?: ExerciseLogType
   circuit?: {
     rounds: number
@@ -129,12 +129,12 @@ function shouldSaveExercise(exercise: Exercise) {
     Boolean(exercise.name.trim()) || Boolean(exercise.prescription.trim())
 
   const hasCircuitDetails =
-    exercise.section === "circuit" &&
-    Boolean(
-      exercise.circuit?.exercises?.some(
-        (item) => item.name.trim() || item.prescription.trim()
-      )
+  (exercise.section === "circuit" || exercise.section === "superset") &&
+  Boolean(
+    exercise.circuit?.exercises?.some(
+      (item) => item.name.trim() || item.prescription.trim()
     )
+  )
 
   return hasBasicDetails || hasCircuitDetails
 }
@@ -408,7 +408,7 @@ setEndDate(
       ...currentExercise,
       [field]: value,
       logType: currentExercise.logType || defaultLogType,
-      ...(field === "section" && value === "circuit" && !currentExercise.circuit
+      ...(field === "section" && (value === "circuit" || value === "superset") && !currentExercise.circuit
         ? {
             circuit: {
               rounds: 1,
@@ -1336,7 +1336,7 @@ function removeCircuitExercise(
   ? "Warm-up"
   : exercise.section === "stretch"
     ? "Stretch"
-    : exercise.section === "circuit"
+    : exercise.section === "circuit" || exercise.section === "superset"
       ? "Circuit"
       : "Main"}
                               </span>
@@ -1354,7 +1354,7 @@ function removeCircuitExercise(
                             </button>
                           </div>
 
-                          {exercise.section === "circuit" ? (
+                          {exercise.section === "circuit" || exercise.section === "superset" ? (
   <div className="space-y-3">
     <select
       value={exercise.section || "main"}
@@ -1365,6 +1365,7 @@ function removeCircuitExercise(
     >
       <option value="warmup">Warm-up / Mobility</option>
       <option value="main">Main Exercise</option>
+      <option value="superset">Superset</option>
       <option value="circuit">Circuit Block</option>
       <option value="stretch">Post Session Stretch</option>
     </select>
@@ -1443,7 +1444,7 @@ function removeCircuitExercise(
 
     <div className="space-y-2">
       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold/70">
-        Circuit exercises
+        {exercise.section === "superset" ? "Superset exercises" : "Circuit exercises"}
       </p>
 
       {(exercise.circuit?.exercises || [{ name: "", prescription: "" }]).map(
@@ -1505,7 +1506,9 @@ function removeCircuitExercise(
       onClick={() => addCircuitExercise(sessionIndex, exerciseIndex)}
       className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-smc-gold transition hover:bg-smc-gold hover:text-black"
     >
-      + Add circuit exercise
+      {exercise.section === "superset"
+  ? "+ Add superset exercise"
+  : "+ Add circuit exercise"}
     </button>
   </div>
 ) : (
@@ -1525,6 +1528,7 @@ function removeCircuitExercise(
       >
         <option value="warmup">Warm-up / Mobility</option>
         <option value="main">Main Exercise</option>
+        <option value="superset">Superset</option>
         <option value="circuit">Circuit Block</option>
         <option value="stretch">Post Session Stretch</option>
       </select>

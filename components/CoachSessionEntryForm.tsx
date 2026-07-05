@@ -221,7 +221,7 @@ function normaliseSection(section?: string | null): ExerciseSection {
   }
 
   if (
-    value === "circuit" ||
+    value === "circuit" || value === "superset" ||
     value === "circuit block" ||
     value === "conditioning circuit"
   ) {
