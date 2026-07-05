@@ -8,15 +8,26 @@ export const dynamic = "force-dynamic"
 const shellCard =
   "relative overflow-hidden rounded-[1.35rem] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.016))] p-3.5 shadow-[0_14px_34px_rgba(0,0,0,0.68)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[1.35rem] before:bg-[linear-gradient(rgba(255,255,255,0.035),transparent)]"
 
+function getExerciseSection(exercise: any) {
+  return String(exercise?.section || "").toLowerCase().trim()
+}
+
 function isCircuitExercise(exercise: any) {
-  return String(exercise?.section || "").toLowerCase() === "circuit"
+  return getExerciseSection(exercise) === "circuit"
+}
+
+function isSupersetExercise(exercise: any) {
+  return getExerciseSection(exercise) === "superset"
 }
 
 function getExerciseCount(session: any) {
   const exercises = Array.isArray(session?.exercises) ? session.exercises : []
 
   return exercises.reduce((total: number, exercise: any) => {
-    if (isCircuitExercise(exercise) && exercise?.circuit?.exercises?.length) {
+    if (
+  (isCircuitExercise(exercise) || isSupersetExercise(exercise)) &&
+  exercise?.circuit?.exercises?.length
+) {
       return total + exercise.circuit.exercises.length
     }
 

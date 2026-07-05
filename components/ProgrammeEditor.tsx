@@ -1336,8 +1336,10 @@ function removeCircuitExercise(
   ? "Warm-up"
   : exercise.section === "stretch"
     ? "Stretch"
-    : exercise.section === "circuit" || exercise.section === "superset"
-      ? "Circuit"
+    : exercise.section === "circuit"
+  ? "Circuit"
+  : exercise.section === "superset"
+    ? "Superset"
       : "Main"}
                               </span>
                             </div>
@@ -1376,7 +1378,7 @@ function removeCircuitExercise(
         onChange={(e) =>
           updateExercise(sessionIndex, exerciseIndex, "name", e.target.value)
         }
-        placeholder="Circuit name"
+        placeholder={exercise.section === "superset" ? "Superset name" : "Circuit name"}
         className={inputStyle}
       />
 
@@ -1390,7 +1392,11 @@ function removeCircuitExercise(
             e.target.value
           )
         }
-        placeholder="Circuit notes e.g. Rest 90s between rounds"
+        placeholder={
+  exercise.section === "superset"
+    ? "Superset notes e.g. 3 rounds, rest after both"
+    : "Circuit notes e.g. Rest 90s between rounds"
+}
         className={inputStyle}
       />
     </div>

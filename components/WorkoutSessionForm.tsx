@@ -293,6 +293,15 @@ function getExerciseSection(exercise: any) {
   return "circuit"
 }
 
+if (
+  section === "superset" ||
+  section === "super set" ||
+  section === "super-set" ||
+  section === "paired set"
+) {
+  return "superset"
+}
+
   return "main"
 }
 
@@ -306,6 +315,10 @@ function isStretchExercise(exercise: any) {
 
 function isCircuitExercise(exercise: any) {
   return getExerciseSection(exercise) === "circuit"
+}
+
+function isSupersetExercise(exercise: any) {
+  return getExerciseSection(exercise) === "superset"
 }
 
 function isMainExercise(exercise: any) {
@@ -788,6 +801,17 @@ if (parsed?.circuitExerciseComplete) {
         originalIndex: index,
       }))
       .filter((item: any) => isCircuitExercise(item.exercise)),
+  [exercises]
+)
+
+const supersetExercises = useMemo(
+  () =>
+    exercises
+      .map((exercise: any, index: number) => ({
+        exercise,
+        originalIndex: index,
+      }))
+      .filter((item: any) => isSupersetExercise(item.exercise)),
   [exercises]
 )
 
@@ -1867,6 +1891,55 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
             </div>
           </section>
         )}
+
+        {supersetExercises.length > 0 && (
+  <section className={`${card} p-3`}>
+    <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/70">
+      Superset
+    </p>
+
+    <div className="mt-3 space-y-2">
+      {supersetExercises.map((item: any) => {
+        const superset = item.exercise
+        const nestedExercises = Array.isArray(superset?.circuit?.exercises)
+  ? superset.circuit.exercises
+  : []
+
+        return (
+          <div
+            key={`superset-${item.originalIndex}`}
+            className="rounded-2xl border border-white/[0.06] bg-black/25 p-3"
+          >
+            <p className="text-sm font-black text-white">
+              {superset?.name || `Superset ${item.originalIndex + 1}`}
+            </p>
+
+            <p className="mt-1 text-xs text-white/45">
+              {superset?.prescription || "Complete exercises back-to-back."}
+            </p>
+
+            <div className="mt-3 space-y-2">
+              {nestedExercises.map((nested: any, nestedIndex: number) => (
+                <div
+                  key={`${nested?.name || "exercise"}-${nestedIndex}`}
+                  className="rounded-xl border border-white/[0.055] bg-black/30 px-3 py-2"
+                >
+                  <p className="text-sm font-black text-white">
+                    {nested?.name || `Exercise ${nestedIndex + 1}`}
+                  </p>
+
+                  <p className="mt-0.5 text-xs leading-5 text-white/45">
+                    {nested?.prescription || "No prescription"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  </section>
+)}
 
         {exercises.map((ex: any, exerciseIndex: number) => {
           if (!isMainExercise(ex)) return null

@@ -1130,8 +1130,10 @@ const { data: programme, error: programmeError } = await supabase
   ? "Warm-up"
   : exercise.section === "stretch"
     ? "Stretch"
-    : exercise.section === "circuit" || exercise.section === "superset"
-      ? "Circuit"
+    : exercise.section === "circuit"
+  ? "Circuit"
+  : exercise.section === "superset"
+    ? "Superset"
       : "Main"}
                               </span>
                             </div>
@@ -1238,7 +1240,7 @@ const { data: programme, error: programmeError } = await supabase
 
     <div className="space-y-2">
       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-smc-gold/70">
-        Circuit exercises
+        {exercise.section === "superset" ? "Superset exercises" : "Circuit exercises"}
       </p>
 
       {(exercise.circuit?.exercises || [{ name: "", prescription: "" }]).map(
@@ -1300,7 +1302,9 @@ const { data: programme, error: programmeError } = await supabase
       onClick={() => addCircuitExercise(sessionIndex, exerciseIndex)}
       className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-smc-gold transition hover:bg-smc-gold hover:text-black"
     >
-      + Add circuit exercise
+      {exercise.section === "superset"
+  ? "+ Add superset exercise"
+  : "+ Add circuit exercise"}
     </button>
   </div>
 ) : (

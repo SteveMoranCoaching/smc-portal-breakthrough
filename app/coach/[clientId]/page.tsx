@@ -346,15 +346,26 @@ function groupSessionsByWeek(sessions: any[]) {
   }, {})
 }
 
+function getExerciseSection(exercise: any) {
+  return String(exercise?.section || "").toLowerCase().trim()
+}
+
 function isCircuitExercise(exercise: any) {
-  return String(exercise?.section || "").toLowerCase() === "circuit"
+  return getExerciseSection(exercise) === "circuit"
+}
+
+function isSupersetExercise(exercise: any) {
+  return getExerciseSection(exercise) === "superset"
 }
 
 function getDisplayExerciseCount(session: any) {
   const exercises = Array.isArray(session?.exercises) ? session.exercises : []
 
   return exercises.reduce((total: number, exercise: any) => {
-    if (isCircuitExercise(exercise) && exercise?.circuit?.exercises?.length) {
+    if (
+      (isCircuitExercise(exercise) || isSupersetExercise(exercise)) &&
+      exercise?.circuit?.exercises?.length
+    ) {
       return total + exercise.circuit.exercises.length
     }
 
@@ -363,7 +374,12 @@ function getDisplayExerciseCount(session: any) {
 }
 
 function renderProgrammeExercise(exercise: any, index: number) {
-  if (isCircuitExercise(exercise) && exercise?.circuit) {
+  const isCircuit = isCircuitExercise(exercise)
+  const isSuperset = isSupersetExercise(exercise)
+
+  if ((isCircuit || isSuperset) && exercise?.circuit) {
+    const blockLabel = isSuperset ? "Superset" : "Circuit"
+
     return (
       <div
         key={index}
@@ -371,7 +387,7 @@ function renderProgrammeExercise(exercise: any, index: number) {
       >
         <div className="mb-2 flex flex-wrap gap-2">
           <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
-            Circuit
+            {blockLabel}
           </span>
 
           <span className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/45">
@@ -392,7 +408,7 @@ function renderProgrammeExercise(exercise: any, index: number) {
         </div>
 
         <p className="text-sm font-bold text-white">
-          {exercise.name || "Circuit"}
+          {exercise.name || blockLabel}
         </p>
 
         {exercise.prescription ? (
@@ -408,7 +424,7 @@ function renderProgrammeExercise(exercise: any, index: number) {
               className="rounded-[0.7rem] border border-white/[0.045] bg-black/25 px-2.5 py-2"
             >
               <p className="text-xs font-black text-white">
-                {item.name || `Circuit exercise ${itemIndex + 1}`}
+                {item.name || `${blockLabel} exercise ${itemIndex + 1}`}
               </p>
 
               {item.prescription ? (
