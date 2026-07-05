@@ -200,14 +200,15 @@ export default async function WorkoutsPage() {
     supabase
       .from("programmes")
       .select(`
-        id,
-        title,
-        week_number,
-        notes,
-        start_date,
-        coach_current_week,
-        created_at,
-        is_active,
+  id,
+  title,
+  week_number,
+  notes,
+  start_date,
+  end_date,
+  coach_current_week,
+  created_at,
+  is_active,
         programme_sessions (
           id,
           week_number,
@@ -295,6 +296,14 @@ const plannerWeekNumber = getEffectiveWeekNumber({
   sessions,
   completedSessionIds,
 })
+
+const currentProgrammeEndDate: Date | null = currentProgramme?.end_date
+  ? new Date(`${currentProgramme.end_date}T23:59:59`)
+  : null
+
+const programmeExpired =
+  currentProgrammeEndDate !== null &&
+  currentProgrammeEndDate < new Date()
 
 const weeklySchedule = (existingWeeklySchedule || []).filter(
   (item: any) => Number(item.week_number || 1) === Number(plannerWeekNumber)
@@ -461,15 +470,15 @@ const latestVideoFeedback =
         </div>
       </section>
 
-      {!currentProgramme ? (
-        <EmptyStateCard
-          eyebrow="Training block"
-          title="No programme assigned yet"
-          body="Once your coach assigns your first programme, your sessions, workout previews and weekly progress will appear here."
-          href="/dashboard"
-          actionLabel="Back to dashboard"
-        />
-      ) : sessions.length === 0 ? (
+      {!currentProgramme || programmeExpired ? (
+  <EmptyStateCard
+    eyebrow="Training block"
+    title="Programme Pending"
+    body="Contact Steve for details."
+    href="/dashboard/messages"
+    actionLabel="Message Steve"
+  />
+) : sessions.length === 0 ? (
         <EmptyStateCard
           eyebrow="Programme sessions"
           title="Programme assigned, sessions pending"

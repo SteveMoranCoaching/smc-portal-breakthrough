@@ -841,7 +841,7 @@ const { data: programme, error: programmeError } = await supabase
                 onChange={(e) => updateProgrammeLength(e.target.value)}
                 className={inputStyle}
               >
-                {[1, 2, 3, 4, 5, 6, 8, 10, 12, 16].map((week) => (
+                {Array.from({ length: 16 }, (_, index) => index + 1).map((week) => (
                   <option key={week} value={week}>
                     {week} week{week === 1 ? "" : "s"}
                   </option>
