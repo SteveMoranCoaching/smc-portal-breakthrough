@@ -214,9 +214,10 @@ export default async function CoachDashboard({
     .eq("read_by_coach", false)
 
   const { data: clients, error } = await supabase
-    .from("clients")
-    .select("id, user_id, name, email, goal, status")
-    .order("name", { ascending: true })
+  .from("clients")
+  .select("id, user_id, name, email, goal, status")
+  .eq("status", "Active")
+  .order("name", { ascending: true })
 
   if (error) {
     return <div className="p-6 text-white">Error loading clients.</div>

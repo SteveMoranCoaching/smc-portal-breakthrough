@@ -62,8 +62,9 @@ export default async function CoachLayout({
     .eq("read_by_coach", false)
 
   const { count: clientCount } = await supabase
-    .from("clients")
-    .select("*", { count: "exact", head: true })
+  .from("clients")
+  .select("*", { count: "exact", head: true })
+  .eq("status", "Active")
 
   const { data: unreviewedVideos } = await supabase
   .from("exercise_videos")

@@ -1,5 +1,4 @@
 import Link from "next/link"
-import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import { requireCoach } from "@/lib/authGuards"
 
 export const dynamic = "force-dynamic"
@@ -66,33 +65,11 @@ export default async function CoachClientsPage({
   const resolvedSearchParams = searchParams ? await searchParams : {}
 
   const selectedGoal = resolvedSearchParams?.goal || "All"
-  const selectedStatus = resolvedSearchParams?.status || "All"
+  const selectedStatus = resolvedSearchParams?.status || "Active"
   const selectedSort = resolvedSearchParams?.sort || "az"
   const query = String(resolvedSearchParams?.q || "").trim().toLowerCase()
 
-  const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return <div className="p-6 text-white">You must be logged in.</div>
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "coach") {
-    return (
-      <div className="p-6 text-white">
-        You do not have permission to view this page.
-      </div>
-    )
-  }
+  const { supabase } = await requireCoach()
 
   const { data: clients, error } = await supabase
     .from("clients")
