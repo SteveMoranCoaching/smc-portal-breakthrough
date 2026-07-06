@@ -820,6 +820,8 @@ function removeCircuitExercise(
       text: "Duplicating programme...",
     })
 
+    const calculatedEndDate = calculateEndDate(startDate, programmeLength)
+
     const { data: duplicatedProgramme, error: programmeError } = await supabase
       .from("programmes")
       .insert({
@@ -829,7 +831,7 @@ function removeCircuitExercise(
         planned_weeks: Number(programmeLength) || 1,
         notes: notes.trim(),
         start_date: startDate || null,
-        end_date: endDate || null,
+        end_date: calculatedEndDate || null,
       })
       .select("id")
       .single()
