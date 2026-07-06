@@ -896,6 +896,8 @@ function removeCircuitExercise(
       text: "Saving programme...",
     })
 
+    const calculatedEndDate = calculateEndDate(startDate, programmeLength)
+
     const { error: programmeError } = await supabase
       .from("programmes")
       .update({
@@ -904,7 +906,7 @@ function removeCircuitExercise(
         planned_weeks: Number(programmeLength) || 1,
         notes: notes.trim(),
         start_date: startDate || null,
-        end_date: endDate || null,
+        end_date: calculatedEndDate || null,
       })
       .eq("id", programme.id)
 
