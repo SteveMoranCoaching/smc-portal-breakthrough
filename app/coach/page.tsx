@@ -257,7 +257,7 @@ export default async function CoachDashboard({
       "id, user_id, exercise_name, pb_type, weight, reps, estimated_1rm, previous_best, created_at, team_feed_status"
     )
     .eq("team_feed_status", "pending")
-    .eq("pb_type", "estimated_1rm")
+    .neq("pb_type", "estimated_1rm")
     .order("created_at", { ascending: false })
     .limit(10)
 

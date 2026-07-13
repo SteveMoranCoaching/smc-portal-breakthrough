@@ -7,7 +7,6 @@ export const dynamic = "force-dynamic"
 
 function formatPBType(type: string | null) {
   if (type === "heaviest") return "Heaviest"
-  if (type === "estimated_1rm") return "Estimated 1RM"
   if (type === "rep") return "Rep PB"
   return "PB"
 }
@@ -71,13 +70,10 @@ async function approvePBToTeamFeed(formData: FormData) {
 
   const clientName = client?.name || "A client"
   const pbLabel = formatPBType(pb.pb_type)
-  const estimatedLine = pb.estimated_1rm
-    ? ` Estimated 1RM: ${pb.estimated_1rm}kg.`
-    : ""
 
   const { error: postError } = await supabase.from("team_feed_posts").insert({
     title: `${clientName} hit a ${pbLabel}`,
-    body: `${clientName} just logged ${pb.weight}kg × ${pb.reps} on ${pb.exercise_name}.${estimatedLine}`,
+    body: `${clientName} just logged ${pb.weight}kg × ${pb.reps} on ${pb.exercise_name}.`,
     type: "PB",
   })
 
@@ -155,7 +151,7 @@ export default async function PBReviewPage({
       "id, user_id, exercise_name, pb_type, weight, reps, estimated_1rm, previous_best, created_at, team_feed_status"
     )
     .eq("team_feed_status", "pending")
-    .eq("pb_type", "estimated_1rm")
+    .neq("pb_type", "estimated_1rm")
     .order("created_at", { ascending: false })
 
   const { data: clients } = await supabase

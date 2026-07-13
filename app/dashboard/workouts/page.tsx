@@ -108,9 +108,10 @@ function getEffectiveWeekNumber({
   const minWeek = weeks[0]
   const maxWeek = weeks[weeks.length - 1]
 
-  if (coachCurrentWeek && Number.isFinite(Number(coachCurrentWeek))) {
-    return Math.min(Math.max(Number(coachCurrentWeek), minWeek), maxWeek)
-  }
+  const coachOverrideWeek =
+  coachCurrentWeek && Number.isFinite(Number(coachCurrentWeek))
+    ? Math.min(Math.max(Number(coachCurrentWeek), minWeek), maxWeek)
+    : minWeek
 
   const startDate = programmeStartDate
     ? new Date(`${programmeStartDate}T00:00:00`)
@@ -156,7 +157,10 @@ function getEffectiveWeekNumber({
     break
   }
 
-  return Math.min(Math.max(dateBasedWeek, completionBasedWeek), maxWeek)
+  return Math.min(
+  Math.max(dateBasedWeek, completionBasedWeek, coachOverrideWeek),
+  maxWeek
+)
 }
 
 function groupSessionsByWeek(sessions: any[]) {

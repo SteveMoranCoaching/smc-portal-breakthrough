@@ -37,7 +37,7 @@ type ExerciseEntry = {
   videos: UploadedVideo[]
 }
 
-type PBType = "heaviest" | "rep" | "estimated_1rm"
+type PBType = "heaviest" | "rep"
 
 type PBResult = {
   exerciseName: string
@@ -421,10 +421,9 @@ function isCompletedSet(set: SetEntry) {
 
 function groupPBResults(results: PBResult[]) {
   const priority: Record<PBType, number> = {
-    heaviest: 1,
-    estimated_1rm: 2,
-    rep: 3,
-  }
+  heaviest: 1,
+  rep: 2,
+}
 
   return results.sort((a, b) => priority[a.type] - priority[b.type]).slice(0, 2)
 }
@@ -530,22 +529,6 @@ function detectPBs({
     })
   }
 
-  if (
-  isMainLift(exerciseName) &&
-  bestCurrentEstimated.estimated1RM > previousBestEstimated
-) {
-  pbResults.push({
-    exerciseName,
-    type: "estimated_1rm",
-    weight: bestCurrentEstimated.weight,
-    reps: bestCurrentEstimated.reps,
-    estimated1RM: bestCurrentEstimated.estimated1RM,
-    previousBest: previousBestEstimated,
-    label: "New Estimated Max",
-    summary: `${bestCurrentEstimated.estimated1RM}kg estimated 1RM`,
-  })
-}
-
   return groupPBResults(
     pbResults.filter((pb, index, array) => {
       return (
@@ -626,6 +609,7 @@ export default function WorkoutSessionForm({
 )
 
   const [activeDemo, setActiveDemo] = useState<any | null>(null)
+  const [activeExerciseInfo, setActiveExerciseInfo] = useState<any | null>(null)
   const [prefillMode, setPrefillMode] = useState<"unset" | "previous" | "blank">(
     "unset"
   )
@@ -1983,9 +1967,21 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
                     )}
                   </div>
 
-                  <h3 className="mt-1 break-words text-xl font-black leading-tight text-white">
-                    {exerciseName}
-                  </h3>
+                  <button
+  type="button"
+  onClick={() =>
+    setActiveExerciseInfo({
+      exercise: ex,
+      exerciseName,
+      demo,
+      previousPerformance,
+      previousCoachFeedback,
+    })
+  }
+  className="mx-auto mt-1 block break-words text-xl font-black leading-tight text-white transition hover:text-smc-gold active:scale-[0.98]"
+>
+  {exerciseName}
+</button>
 
                   <div className="mt-2 flex justify-center">
                     <span className="max-w-full break-words rounded-full border border-smc-gold/25 bg-smc-gold/[0.08] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold">
@@ -2514,6 +2510,104 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
           </div>
         </div>
       )}
+
+      {activeExerciseInfo && (
+  <div className="fixed inset-0 z-50 flex items-end bg-black/70 backdrop-blur-sm">
+    <button
+      type="button"
+      aria-label="Close exercise details"
+      onClick={() => setActiveExerciseInfo(null)}
+      className="absolute inset-0"
+    />
+
+    <section className="relative z-10 max-h-[82vh] w-full overflow-y-auto rounded-t-[2rem] border border-white/[0.08] bg-[#050505] p-4 shadow-[0_-20px_60px_rgba(0,0,0,0.85)]">
+      <div className="mx-auto h-1.5 w-12 rounded-full bg-white/18" />
+
+      <div className="mt-4 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold">
+            Exercise Details
+          </p>
+
+          <h2 className="mt-1 text-2xl font-black text-white">
+            {activeExerciseInfo.exerciseName}
+          </h2>
+
+          <p className="mt-1 text-xs leading-5 text-white/45">
+            {activeExerciseInfo.exercise?.prescription || "No prescription added"}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveExerciseInfo(null)}
+          className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-black text-white/55"
+        >
+          Close
+        </button>
+      </div>
+
+      {activeExerciseInfo.demo?.video_url && (
+        <button
+          type="button"
+          onClick={() => setActiveDemo(activeExerciseInfo.demo)}
+          className="mt-4 w-full rounded-2xl border border-smc-gold/20 bg-smc-gold/[0.08] px-4 py-3 text-left text-sm font-black text-smc-gold"
+        >
+          ▶ Watch demo video
+        </button>
+      )}
+
+      {activeExerciseInfo.demo?.coach_notes && (
+        <div className="mt-3 rounded-2xl border border-white/[0.06] bg-white/[0.035] p-3">
+          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
+            Steve’s Cues
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/72">
+            {activeExerciseInfo.demo.coach_notes}
+          </p>
+        </div>
+      )}
+
+      {activeExerciseInfo.previousPerformance && (
+        <div className="mt-3 rounded-2xl border border-white/[0.06] bg-white/[0.035] p-3">
+          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
+            Previous Performance
+          </p>
+
+          <p className="mt-2 text-lg font-black text-white">
+            {activeExerciseInfo.previousPerformance.bestSet.weight}kg ×{" "}
+            {activeExerciseInfo.previousPerformance.bestSet.reps}
+          </p>
+
+          <p className="mt-1 text-xs text-white/42">
+            Last completed {activeExerciseInfo.previousPerformance.date}
+          </p>
+        </div>
+      )}
+
+      {activeExerciseInfo.previousCoachFeedback && (
+        <div className="mt-3 rounded-2xl border border-smc-gold/20 bg-smc-gold/[0.06] p-3">
+          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
+            Last Coach Note
+          </p>
+
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/75">
+            {activeExerciseInfo.previousCoachFeedback}
+          </p>
+        </div>
+      )}
+
+      <Link
+        href={`/dashboard/history/${encodeURIComponent(
+          activeExerciseInfo.exerciseName
+        )}`}
+        className="mt-4 flex min-h-[46px] items-center justify-center rounded-2xl bg-smc-gold px-4 text-sm font-black text-black"
+      >
+        View Full History
+      </Link>
+    </section>
+  </div>
+)}
 
       {activeDemo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 px-3 backdrop-blur-xl">
