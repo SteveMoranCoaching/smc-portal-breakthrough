@@ -455,6 +455,103 @@ function renderProgrammeExercise(exercise: any, index: number) {
   )
 }
 
+function getStartOfWeekDate(dateInput?: string | Date) {
+  const date = dateInput ? new Date(dateInput) : new Date()
+  const day = date.getDay()
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
+
+  const monday = new Date(date)
+  monday.setDate(diff)
+  monday.setHours(0, 0, 0, 0)
+
+  return monday
+}
+
+function getEffectiveWeekNumber({
+  programmeStartDate,
+  coachCurrentWeek,
+  sessions,
+  completedSessionIds,
+}: {
+  programmeStartDate?: string | null
+  coachCurrentWeek?: number | null
+  sessions: any[]
+  completedSessionIds: Set<string>
+}) {
+  const weeks = Array.from(
+    new Set(
+      sessions.map((session: any) => Number(session.week_number || 1))
+    )
+  ).sort((a, b) => a - b)
+
+  if (!weeks.length) return 1
+
+  const minWeek = weeks[0]
+  const maxWeek = weeks[weeks.length - 1]
+
+  const coachOverrideWeek =
+    coachCurrentWeek && Number.isFinite(Number(coachCurrentWeek))
+      ? Math.min(
+          Math.max(Number(coachCurrentWeek), minWeek),
+          maxWeek
+        )
+      : minWeek
+
+  const programmeWeekStart = getStartOfWeekDate(
+    programmeStartDate || new Date()
+  )
+
+  const currentWeekStart = getStartOfWeekDate()
+
+  const weeksElapsed = Math.max(
+    0,
+    Math.floor(
+      (currentWeekStart.getTime() - programmeWeekStart.getTime()) /
+        (1000 * 60 * 60 * 24 * 7)
+    )
+  )
+
+  const dateBasedWeek = Math.min(
+    minWeek + weeksElapsed,
+    maxWeek
+  )
+
+  let completionBasedWeek = minWeek
+
+  for (const week of weeks) {
+    const weekSessions = sessions.filter(
+      (session: any) =>
+        Number(session.week_number || 1) === week
+    )
+
+    const weekComplete =
+      weekSessions.length > 0 &&
+      weekSessions.every((session: any) =>
+        completedSessionIds.has(session.id)
+      )
+
+    if (weekComplete && week < maxWeek) {
+      completionBasedWeek = week + 1
+      continue
+    }
+
+    if (weekComplete && week === maxWeek) {
+      completionBasedWeek = maxWeek
+    }
+
+    break
+  }
+
+  return Math.min(
+    Math.max(
+      dateBasedWeek,
+      completionBasedWeek,
+      coachOverrideWeek
+    ),
+    maxWeek
+  )
+}
+
 export default async function ClientProfilePage({
   params,
   searchParams,
@@ -1720,7 +1817,16 @@ function getTimelineDay(dateString: string) {
                 <div className="space-y-3">
                   {programmes?.map((programme: any, programmeIndex: number) => {
                     const sessions = programme.programme_sessions ?? []
-                    const sessionsByWeek = groupSessionsByWeek(sessions)
+
+const effectiveWeekNumber = getEffectiveWeekNumber({
+  programmeStartDate:
+    programme.start_date || programme.created_at,
+  coachCurrentWeek: programme.coach_current_week,
+  sessions,
+  completedSessionIds,
+})
+
+const sessionsByWeek = groupSessionsByWeek(sessions)
                     const weekEntries = Object.entries(sessionsByWeek).sort(
                       ([weekA], [weekB]) => Number(weekA) - Number(weekB)
                     )
@@ -1815,7 +1921,7 @@ function getTimelineDay(dateString: string) {
 
                                 <select
                                   name="week"
-                                  defaultValue={programme.coach_current_week || programme.week_number || 1}
+                                  defaultValue={effectiveWeekNumber}
                                   className="min-h-[40px] rounded-[0.9rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none focus:border-smc-gold/45"
                                 >
                                   {Array.from({ length: weekCount }, (_, index) => index + 1).map((week) => (
@@ -1849,7 +1955,8 @@ function getTimelineDay(dateString: string) {
                                           Week {weekNumber}
                                         </p>
 
-                                        {Number(weekNumber) === Number(programme.coach_current_week || programme.week_number || 1) && (
+                                        {Number(weekNumber) ===
+  Number(effectiveWeekNumber) && (
                                           <span className="rounded-full bg-smc-gold px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-black">
                                             Current
                                           </span>
