@@ -2787,20 +2787,16 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
         : null
 
     function getPBDisplayLabel() {
-      if (pb.type === "estimated_1rm") {
-        return "Estimated 1RM PB"
-      }
+  if (pb.type === "heaviest") {
+    return "Heaviest Set PB"
+  }
 
-      if (pb.type === "heaviest") {
-        return "Heaviest Set PB"
-      }
+  if (pb.type === "rep") {
+    return `${pb.reps}RM PB`
+  }
 
-      if (pb.type === "rep") {
-        return `${pb.reps}RM PB`
-      }
-
-      return "PB"
-    }
+  return "PB"
+}
 
     return (
       <div
