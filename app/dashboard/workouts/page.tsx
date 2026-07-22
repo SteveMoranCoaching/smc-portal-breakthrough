@@ -4,6 +4,18 @@ import EmptyStateCard from "@/components/ui/EmptyStateCard"
 import StartWorkoutButton from "@/components/StartWorkoutButton"
 import PrefetchSession from "@/components/PrefetchSession"
 import WeeklyWorkoutPlanner from "@/components/WeeklyWorkoutPlanner"
+import { isProgrammeExpired } from "@/lib/programmes/dates"
+import {
+  groupProgrammeSessionsByWeek,
+  getSessionsForWeek,
+  sortProgrammeSessions,
+} from "@/lib/programmes/sessions"
+import {
+  getCurrentProgramme,
+  getEffectiveProgrammeWeek,
+  getProgrammeProgress,
+  getNextProgrammeSession,
+} from "@/lib/programmes/progression"
 
 export const dynamic = "force-dynamic"
 
@@ -22,25 +34,6 @@ function getStartOfWeek() {
   const monday = new Date(now.setDate(diff))
   monday.setHours(0, 0, 0, 0)
   return monday.toISOString()
-}
-
-function getStartOfWeekDate(dateInput?: string | Date) {
-  const date = dateInput ? new Date(dateInput) : new Date()
-  const day = date.getDay()
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
-
-  const monday = new Date(date)
-  monday.setDate(diff)
-  monday.setHours(0, 0, 0, 0)
-
-  return monday
-}
-
-function formatDate(dateString: string) {
-  const date = new Date(dateString)
-  const day = date.getDate().toString().padStart(2, "0")
-  const month = date.toLocaleString("en-GB", { month: "short" })
-  return `${day} ${month}`
 }
 
 function getLastCompletedText(logs: any[]) {
@@ -70,106 +63,6 @@ function getLastCompletedText(logs: any[]) {
 
 function getExerciseCount(session: any) {
   return Array.isArray(session?.exercises) ? session.exercises.length : 0
-}
-
-function getDayOrder(day?: string | null) {
-  const match = String(day || "").match(/\d+/)
-  return match ? Number(match[0]) : 999
-}
-
-function sortProgrammeSessions(sessions: any[]) {
-  return [...sessions].sort((a, b) => {
-    const weekA = Number(a.week_number || 1)
-    const weekB = Number(b.week_number || 1)
-
-    if (weekA !== weekB) return weekA - weekB
-
-    return getDayOrder(a.day) - getDayOrder(b.day)
-  })
-}
-
-function getEffectiveWeekNumber({
-  programmeStartDate,
-  coachCurrentWeek,
-  sessions,
-  completedSessionIds,
-}: {
-  programmeStartDate?: string | null
-  coachCurrentWeek?: number | null
-  sessions: any[]
-  completedSessionIds: Set<string>
-}) {
-  const weeks = Array.from(
-    new Set(sessions.map((session: any) => Number(session.week_number || 1)))
-  ).sort((a, b) => a - b)
-
-  if (!weeks.length) return 1
-
-  const minWeek = weeks[0]
-  const maxWeek = weeks[weeks.length - 1]
-
-  const coachOverrideWeek =
-  coachCurrentWeek && Number.isFinite(Number(coachCurrentWeek))
-    ? Math.min(Math.max(Number(coachCurrentWeek), minWeek), maxWeek)
-    : minWeek
-
-  const startDate = programmeStartDate
-    ? new Date(`${programmeStartDate}T00:00:00`)
-    : new Date()
-
-  startDate.setHours(0, 0, 0, 0)
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const daysElapsed = Math.max(
-    0,
-    Math.floor(
-      (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-    )
-  )
-
-  const dateBasedWeek = Math.min(
-    minWeek + Math.floor(daysElapsed / 7),
-    maxWeek
-  )
-
-  let completionBasedWeek = minWeek
-
-  for (const week of weeks) {
-    const weekSessions = sessions.filter(
-      (session: any) => Number(session.week_number || 1) === week
-    )
-
-    const weekComplete =
-      weekSessions.length > 0 &&
-      weekSessions.every((session: any) => completedSessionIds.has(session.id))
-
-    if (weekComplete && week < maxWeek) {
-      completionBasedWeek = week + 1
-      continue
-    }
-
-    if (weekComplete && week === maxWeek) {
-      completionBasedWeek = maxWeek
-    }
-
-    break
-  }
-
-  return Math.min(
-  Math.max(dateBasedWeek, completionBasedWeek, coachOverrideWeek),
-  maxWeek
-)
-}
-
-function groupSessionsByWeek(sessions: any[]) {
-  return sessions.reduce((acc: Record<number, any[]>, session: any) => {
-    const weekNumber = Number(session.week_number || 1)
-    if (!acc[weekNumber]) acc[weekNumber] = []
-    acc[weekNumber].push(session)
-    return acc
-  }, {})
 }
 
 function getSessionImage(sessionTitle?: string | null) {
@@ -261,8 +154,7 @@ export default async function WorkoutsPage() {
     throw new Error("Workouts failed to load")
   }
 
-  const currentProgramme: any =
-    programmes?.find((programme: any) => programme.is_active) || programmes?.[0]
+  const currentProgramme = getCurrentProgramme(programmes)
 
   const sessions = sortProgrammeSessions(
     currentProgramme?.programme_sessions || []
@@ -288,12 +180,7 @@ const { data: existingWeeklySchedule } = await supabase
   .lt("planned_date", endOfWeek)
   .order("planned_order", { ascending: true })
 
-const scheduledWeekNumber =
-  existingWeeklySchedule?.[0]?.week_number
-    ? Number(existingWeeklySchedule[0].week_number)
-    : null
-
-const plannerWeekNumber = getEffectiveWeekNumber({
+const plannerWeekNumber = getEffectiveProgrammeWeek({
   programmeStartDate:
     currentProgramme?.start_date || currentProgramme?.created_at,
   coachCurrentWeek: currentProgramme?.coach_current_week,
@@ -301,57 +188,45 @@ const plannerWeekNumber = getEffectiveWeekNumber({
   completedSessionIds,
 })
 
-const currentProgrammeEndDate: Date | null = currentProgramme?.end_date
-  ? new Date(`${currentProgramme.end_date}T23:59:59`)
-  : null
-
-const programmeExpired =
-  currentProgrammeEndDate !== null &&
-  currentProgrammeEndDate < new Date()
+const programmeExpired = isProgrammeExpired({
+  endDate: currentProgramme?.end_date,
+})
 
 const weeklySchedule = (existingWeeklySchedule || []).filter(
   (item: any) => Number(item.week_number || 1) === Number(plannerWeekNumber)
 )
 
-  const sessionsByWeek = groupSessionsByWeek(sessions)
+  const sessionsByWeek = groupProgrammeSessionsByWeek(sessions)
 
   const weekEntries = Object.entries(sessionsByWeek).sort(
     ([weekA], [weekB]) => Number(weekA) - Number(weekB)
   )
 
-  const completedCount = sessions.filter((session: any) =>
-    completedSessionIds.has(session.id)
-  ).length
+  const programmeProgress = getProgrammeProgress({
+  sessions,
+  completedSessionIds,
+})
 
-  const totalCount = sessions.length
-  const progressPercent =
-    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+const {
+  completedCount,
+  totalCount,
+  percentage: progressPercent,
+} = programmeProgress
 
   const scheduledSessionIds = (weeklySchedule || []).map(
   (item: any) => item.session_id
 )
 
-const scheduledSessions = scheduledSessionIds
-  .map((sessionId: string) =>
-    sessions.find((session: any) => session.id === sessionId)
-  )
-  .filter(Boolean)
+const nextWorkout = getNextProgrammeSession({
+  sessions,
+  currentWeek: plannerWeekNumber,
+  completedSessionIds,
+  scheduledSessionIds,
+})
 
-const nextWorkout =
-  scheduledSessions.find(
-    (session: any) => !completedSessionIds.has(session.id)
-  ) ||
-  sessions.find(
-    (session: any) =>
-      Number(session.week_number || 1) === Number(plannerWeekNumber) &&
-      !completedSessionIds.has(session.id)
-  ) ||
-  sessions.find((session: any) => !completedSessionIds.has(session.id)) ||
-  sessions[0]
-
-const thisWeekPlannerSessions = sessions.filter(
-  (session: any) =>
-    Number(session.week_number || 1) === Number(plannerWeekNumber)
+const thisWeekPlannerSessions = getSessionsForWeek(
+  sessions,
+  plannerWeekNumber
 )
 
   const unreadLogFeedbackIds =
@@ -363,51 +238,6 @@ const thisWeekPlannerSessions = sessions.filter(
     videos
       ?.filter((video: any) => video.feedback && !video.feedback_read)
       .map((video: any) => video.id) || []
-
-  const unreadFeedbackCount =
-    unreadLogFeedbackIds.length + unreadVideoFeedbackIds.length
-
-  const latestLogFeedback =
-  workoutLogs?.filter(
-    (log: any) => log.coach_feedback && !log.feedback_read
-  )?.[0] || null
-
-const latestVideoFeedback =
-  videos?.filter(
-    (video: any) => video.feedback && !video.feedback_read
-  )?.[0] || null
-
-  const latestFeedbackItems = [
-    ...(latestLogFeedback
-      ? [
-          {
-            id: latestLogFeedback.id,
-            source: "log",
-            type: "Workout log",
-            exerciseName: latestLogFeedback.exercise_name,
-            feedback: latestLogFeedback.coach_feedback,
-            createdAt: latestLogFeedback.created_at,
-          },
-        ]
-      : []),
-    ...(latestVideoFeedback
-      ? [
-          {
-            id: latestVideoFeedback.id,
-            source: "video",
-            type: "Video review",
-            exerciseName: latestVideoFeedback.exercise_name,
-            feedback: latestVideoFeedback.feedback,
-            createdAt: latestVideoFeedback.created_at,
-          },
-        ]
-      : []),
-  ]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-    .slice(0, 2)
 
   return (
     <div className="flex flex-col gap-3 pb-4">

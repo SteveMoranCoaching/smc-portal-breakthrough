@@ -1,12 +1,18 @@
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import { createSupabaseAdminClient } from "@/lib/supabaseAdmin"
 import VideoGroup from "./VideoGroup"
 import WorkoutLogReviewButton from "./WorkoutLogReviewButton"
 import WorkoutLogFeedbackBox from "./WorkoutLogFeedbackBox"
 import { requireCoach } from "@/lib/authGuards"
+import {
+  groupProgrammeSessionsByWeek,
+} from "@/lib/programmes/sessions"
+
+import {
+  getEffectiveProgrammeWeek,
+} from "@/lib/programmes/progression"
 
 export const dynamic = "force-dynamic"
 
@@ -29,38 +35,33 @@ async function updateClientProfile(formData: FormData) {
 
   if (!clientId) return
 
-  const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) redirect("/")
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "coach") redirect("/dashboard")
+  await requireCoach()
 
   const admin = createSupabaseAdminClient()
 
-  await admin
-    .from("clients")
-    .update({
-      goal,
-      status,
-      coach_notes: coachNotes,
-    })
-    .eq("id", clientId)
+  const { error } = await admin
+  .from("clients")
+  .update({
+    goal,
+    status,
+    coach_notes: coachNotes,
+  })
+  .eq("id", clientId)
 
-  revalidatePath(`/coach/${clientId}`)
-  revalidatePath("/coach/clients")
-  revalidatePath("/coach")
+if (error) {
+  console.error("Client profile update failed:", {
+    clientId,
+    error,
+  })
 
-  redirect(`/coach/${clientId}?updated=true`)
+  throw new Error("Client profile update failed")
+}
+
+revalidatePath(`/coach/${clientId}`)
+revalidatePath("/coach/clients")
+revalidatePath("/coach")
+
+redirect(`/coach/${clientId}?updated=true`)
 }
 
 async function addManualCheckIn(formData: FormData) {
@@ -72,23 +73,8 @@ async function addManualCheckIn(formData: FormData) {
     redirect("/coach/clients?manualCheckInError=missing-client-id")
   }
 
-  const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) redirect("/")
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "coach") redirect("/dashboard")
-
-  const admin = createSupabaseAdminClient()
+  const { user } = await requireCoach()
+const admin = createSupabaseAdminClient()
 
   const { data: client, error: clientError } = await admin
     .from("clients")
@@ -106,7 +92,7 @@ async function addManualCheckIn(formData: FormData) {
     )
   }
 
-  const { error } = await supabase.from("check_ins").insert({
+  const { error } = await admin.from("check_ins").insert({
     user_id: client.user_id,
     bodyweight: Number(formData.get("bodyweight")) || null,
     training_rating: Number(formData.get("training_rating")) || null,
@@ -157,12 +143,6 @@ async function updateProgrammeWeekOverride(formData: FormData) {
 
   const admin = createSupabaseAdminClient()
 
-  console.log("Programme week override payload:", {
-    clientId,
-    programmeId,
-    week,
-  })
-
   const { data: updatedProgramme, error: updateError } = await admin
     .from("programmes")
     .update({
@@ -188,8 +168,6 @@ async function updateProgrammeWeekOverride(formData: FormData) {
     )
   }
 
-  console.log("Programme week override updated:", updatedProgramme)
-
   revalidatePath(`/coach/${clientId}`)
   revalidatePath("/coach")
   revalidatePath("/dashboard")
@@ -213,7 +191,7 @@ async function toggleSessionCompletionOverride(formData: FormData) {
   const { user } = await requireCoach()
   const admin = createSupabaseAdminClient()
 
-  const { data: existing } = await admin
+  const { data: existing, error: lookupError } = await admin
     .from("session_completions")
     .select("id, completed")
     .eq("user_id", clientUserId)
@@ -221,19 +199,48 @@ async function toggleSessionCompletionOverride(formData: FormData) {
     .eq("session_id", sessionId)
     .maybeSingle()
 
+    if (lookupError) {
+  console.error("Session completion override lookup failed:", {
+    clientId,
+    clientUserId,
+    programmeId,
+    sessionId,
+    lookupError,
+  })
+
+  throw new Error("Session completion override lookup failed")
+}
+
   if (existing?.id) {
-    await admin
-      .from("session_completions")
-      .update({
-        completed: !existing.completed,
-        manual_entry: true,
-        submitted_by: "coach",
-        coach_id: user.id,
-        source: existing.completed ? "coach_override_removed" : "coach_override",
-      })
-      .eq("id", existing.id)
-  } else {
-    await admin.from("session_completions").insert({
+  const { error: updateError } = await admin
+    .from("session_completions")
+    .update({
+      completed: !existing.completed,
+      manual_entry: true,
+      submitted_by: "coach",
+      coach_id: user.id,
+      source: existing.completed
+        ? "coach_override_removed"
+        : "coach_override",
+    })
+    .eq("id", existing.id)
+
+  if (updateError) {
+    console.error("Session completion override update failed:", {
+      clientId,
+      clientUserId,
+      programmeId,
+      sessionId,
+      completionId: existing.id,
+      updateError,
+    })
+
+    throw new Error("Session completion override update failed")
+  }
+} else {
+  const { error: insertError } = await admin
+    .from("session_completions")
+    .insert({
       user_id: clientUserId,
       programme_id: programmeId,
       session_id: sessionId,
@@ -243,7 +250,19 @@ async function toggleSessionCompletionOverride(formData: FormData) {
       coach_id: user.id,
       source: "coach_override",
     })
+
+  if (insertError) {
+    console.error("Session completion override insert failed:", {
+      clientId,
+      clientUserId,
+      programmeId,
+      sessionId,
+      insertError,
+    })
+
+    throw new Error("Session completion override insert failed")
   }
+}
 
   revalidatePath(`/coach/${clientId}`)
   revalidatePath("/coach")
@@ -316,34 +335,6 @@ function getInitials(name?: string | null) {
     .map((word) => word[0])
     .join("")
     .toUpperCase()
-}
-
-function getDayOrder(day?: string | null) {
-  const match = String(day || "").match(/\d+/)
-  return match ? Number(match[0]) : 999
-}
-
-function groupSessionsByWeek(sessions: any[]) {
-  const sortedSessions = [...sessions].sort((a, b) => {
-    const weekA = Number(a.week_number || 1)
-    const weekB = Number(b.week_number || 1)
-
-    if (weekA !== weekB) return weekA - weekB
-
-    return getDayOrder(a.day) - getDayOrder(b.day)
-  })
-
-  return sortedSessions.reduce((acc: Record<number, any[]>, session: any) => {
-    const weekNumber = Number(session.week_number || 1)
-
-    if (!acc[weekNumber]) {
-      acc[weekNumber] = []
-    }
-
-    acc[weekNumber].push(session)
-
-    return acc
-  }, {})
 }
 
 function getExerciseSection(exercise: any) {
@@ -455,103 +446,6 @@ function renderProgrammeExercise(exercise: any, index: number) {
   )
 }
 
-function getStartOfWeekDate(dateInput?: string | Date) {
-  const date = dateInput ? new Date(dateInput) : new Date()
-  const day = date.getDay()
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
-
-  const monday = new Date(date)
-  monday.setDate(diff)
-  monday.setHours(0, 0, 0, 0)
-
-  return monday
-}
-
-function getEffectiveWeekNumber({
-  programmeStartDate,
-  coachCurrentWeek,
-  sessions,
-  completedSessionIds,
-}: {
-  programmeStartDate?: string | null
-  coachCurrentWeek?: number | null
-  sessions: any[]
-  completedSessionIds: Set<string>
-}) {
-  const weeks = Array.from(
-    new Set(
-      sessions.map((session: any) => Number(session.week_number || 1))
-    )
-  ).sort((a, b) => a - b)
-
-  if (!weeks.length) return 1
-
-  const minWeek = weeks[0]
-  const maxWeek = weeks[weeks.length - 1]
-
-  const coachOverrideWeek =
-    coachCurrentWeek && Number.isFinite(Number(coachCurrentWeek))
-      ? Math.min(
-          Math.max(Number(coachCurrentWeek), minWeek),
-          maxWeek
-        )
-      : minWeek
-
-  const programmeWeekStart = getStartOfWeekDate(
-    programmeStartDate || new Date()
-  )
-
-  const currentWeekStart = getStartOfWeekDate()
-
-  const weeksElapsed = Math.max(
-    0,
-    Math.floor(
-      (currentWeekStart.getTime() - programmeWeekStart.getTime()) /
-        (1000 * 60 * 60 * 24 * 7)
-    )
-  )
-
-  const dateBasedWeek = Math.min(
-    minWeek + weeksElapsed,
-    maxWeek
-  )
-
-  let completionBasedWeek = minWeek
-
-  for (const week of weeks) {
-    const weekSessions = sessions.filter(
-      (session: any) =>
-        Number(session.week_number || 1) === week
-    )
-
-    const weekComplete =
-      weekSessions.length > 0 &&
-      weekSessions.every((session: any) =>
-        completedSessionIds.has(session.id)
-      )
-
-    if (weekComplete && week < maxWeek) {
-      completionBasedWeek = week + 1
-      continue
-    }
-
-    if (weekComplete && week === maxWeek) {
-      completionBasedWeek = maxWeek
-    }
-
-    break
-  }
-
-  return Math.min(
-    Math.max(
-      dateBasedWeek,
-      completionBasedWeek,
-      coachOverrideWeek
-    ),
-    maxWeek
-  )
-}
-
 export default async function ClientProfilePage({
   params,
   searchParams,
@@ -608,11 +502,20 @@ export default async function ClientProfilePage({
 
   const { supabase } = await requireCoach()
 
-  const { data: client } = await supabase
-    .from("clients")
-    .select("id, user_id, name, email, goal, status, coach_notes")
-    .eq("id", clientId)
-    .single()
+  const { data: client, error: clientError } = await supabase
+  .from("clients")
+  .select("id, user_id, name, email, goal, status, coach_notes")
+  .eq("id", clientId)
+  .maybeSingle()
+
+if (clientError) {
+  console.error("Client profile lookup failed:", {
+    clientId,
+    clientError,
+  })
+
+  throw new Error("Client profile failed to load")
+}
 
   if (!client) {
     return (
@@ -622,122 +525,184 @@ export default async function ClientProfilePage({
     )
   }
 
-  const { data: programmes } = await supabase
+  const [
+  { data: programmes, error: programmesError },
+  { data: videos, error: videosError },
+  { data: workoutLogs, error: workoutLogsError },
+  { data: sessionCompletions, error: sessionCompletionsError },
+  { data: checkIns, error: checkInsError },
+] = await Promise.all([
+  supabase
     .from("programmes")
     .select(`
-      id,
-      title,
-      week_number,
-      notes,
-      start_date,
-      end_date,
-      coach_current_week,
-      created_at,
-      is_active,
-      programme_sessions (
-        id,
-        week_number,
-        day,
-        title,
-        exercises
-      )
-    `)
+  id,
+  title,
+  notes,
+  start_date,
+  coach_current_week,
+  created_at,
+  is_active,
+  programme_sessions (
+    id,
+    week_number,
+    day,
+    title,
+    exercises
+  )
+`)
     .eq("user_id", client.user_id)
     .order("is_active", { ascending: false })
-    .order("created_at", { ascending: false })
+    .order("created_at", { ascending: false }),
 
-  const { data: videos } = await supabase
+  supabase
     .from("exercise_videos")
     .select("*")
     .eq("user_id", client.user_id)
-    .order("created_at", { ascending: false })
+    .order("created_at", { ascending: false }),
 
-  const { data: workoutLogs, error: workoutLogsError } = await supabase
-  .from("workout_logs")
-  .select(`
-    id,
-    user_id,
-    programme_id,
-    session_id,
-    exercise_name,
-    sets_completed,
-    notes,
-    created_at,
-    reviewed,
-    coach_feedback,
-    feedback_read,
-    manual_entry,
-    submitted_by,
-    source
-  `)
-  .eq("user_id", client.user_id)
-  .order("created_at", { ascending: false })
+  supabase
+    .from("workout_logs")
+    .select(`
+  id,
+  session_id,
+  exercise_name,
+  sets_completed,
+  notes,
+  created_at,
+  reviewed,
+  coach_feedback
+`)
+    .eq("user_id", client.user_id)
+    .order("created_at", { ascending: false }),
 
-    const { data: sessionCompletions } = await supabase
-  .from("session_completions")
-  .select(`
-    id,
-    programme_id,
-    session_id,
-    created_at,
-    session_rating,
-    duration_minutes,
-    notes,
-    coach_feedback,
-    feedback_read,
-    completed,
-    manual_entry,
-    submitted_by,
-    source
-  `)
-  .eq("user_id", client.user_id)
-  .eq("completed", true)
-  .order("created_at", { ascending: false })
+  supabase
+    .from("session_completions")
+    .select(`
+  id,
+  session_id,
+  created_at,
+  session_rating,
+  duration_minutes,
+  notes,
+  coach_feedback,
+  completed,
+  manual_entry,
+  submitted_by
+`)
+    .eq("user_id", client.user_id)
+    .eq("completed", true)
+    .order("created_at", { ascending: false }),
 
-  const { data: checkIns } = await supabase
-  .from("check_ins")
-  .select(`
-    id,
-    user_id,
-    created_at,
-    reviewed,
-    manual_entry,
-    submitted_by,
-    bodyweight,
-    training_rating,
-    recovery_rating,
-    nutrition_rating,
-    cardio_steps,
-    notes,
-    coach_feedback,
-    feedback_seen
-  `)
-  .eq("user_id", client.user_id)
-  .order("created_at", { ascending: false })
+  supabase
+    .from("check_ins")
+    .select(`
+  id,
+  created_at,
+  reviewed,
+  manual_entry,
+  submitted_by,
+  bodyweight,
+  training_rating,
+  recovery_rating,
+  nutrition_rating,
+  cardio_steps,
+  notes,
+  coach_feedback
+`)
+    .eq("user_id", client.user_id)
+    .order("created_at", { ascending: false }),
+])
+
+if (
+  programmesError ||
+  videosError ||
+  workoutLogsError ||
+  sessionCompletionsError ||
+  checkInsError
+) {
+  console.error("Client profile data failed to load:", {
+    programmesError,
+    videosError,
+    workoutLogsError,
+    sessionCompletionsError,
+    checkInsError,
+  })
+
+  throw new Error("Client profile data failed to load")
+}
 
   const videosWithUrls = await Promise.all(
-    (videos ?? []).map(async (video) => {
-      const { data } = await supabase.storage
-        .from("exercise-videos")
-        .createSignedUrl(video.video_path, 60 * 60)
+  (videos ?? []).map(async (video) => {
+    if (!video.video_path) {
+      return {
+        ...video,
+        signedUrl: null,
+      }
+    }
+
+    const { data, error } = await supabase.storage
+      .from("exercise-videos")
+      .createSignedUrl(video.video_path, 60 * 60)
+
+    if (error) {
+      console.error("Exercise video signed URL failed:", {
+        videoId: video.id,
+        videoPath: video.video_path,
+        error,
+      })
 
       return {
         ...video,
-        signedUrl: data?.signedUrl,
+        signedUrl: null,
       }
-    })
-  )
+    }
+
+    return {
+      ...video,
+      signedUrl: data?.signedUrl || null,
+    }
+  })
+)
 
   const groupedVideos = Object.entries(
-    (videosWithUrls ?? []).reduce((acc: any, video) => {
-      if (!acc[video.exercise_name]) {
-        acc[video.exercise_name] = []
+  (videosWithUrls ?? []).reduce(
+    (acc: Record<string, any[]>, video: any) => {
+      const exerciseName =
+        video.exercise_name || "Unnamed exercise"
+
+      if (!acc[exerciseName]) {
+        acc[exerciseName] = []
       }
 
-      acc[video.exercise_name].unshift(video)
+      acc[exerciseName].push(video)
+
       return acc
-    }, {})
+    },
+    {}
   )
+).sort(([, videosA]: any, [, videosB]: any) => {
+  const aHasUnreviewed = videosA.some(
+    (video: any) => !video.reviewed
+  )
+
+  const bHasUnreviewed = videosB.some(
+    (video: any) => !video.reviewed
+  )
+
+  if (aHasUnreviewed !== bHasUnreviewed) {
+    return aHasUnreviewed ? -1 : 1
+  }
+
+  const latestA = new Date(
+    videosA[0]?.created_at || 0
+  ).getTime()
+
+  const latestB = new Date(
+    videosB[0]?.created_at || 0
+  ).getTime()
+
+  return latestB - latestA
+})
 
   const programmeCount = programmes?.length ?? 0
   const sessionCount =
@@ -747,7 +712,8 @@ export default async function ClientProfilePage({
       0
     ) ?? 0
 
-  const workoutLogCount = sessionCompletions?.length ?? 0
+  const completedSessionCount = sessionCompletions?.length ?? 0
+const workoutLogCount = workoutLogs?.length ?? 0
   const unreviewedLogCount =
     workoutLogs?.filter((log: any) => !log.reviewed).length ?? 0
 
@@ -776,72 +742,88 @@ const attentionFlags = [
 const latestCompletedSession = sessionCompletions?.[0] || null
 
 const allProgrammeSessions =
-  programmes?.flatMap((programme: any) => programme.programme_sessions || []) ||
-  []
+  programmes?.flatMap(
+    (programme: any) => programme.programme_sessions || []
+  ) || []
+
+const sessionInfoById = new Map(
+  allProgrammeSessions.map((session: any) => [
+    String(session.id),
+    session,
+  ])
+)
+
+const logsBySessionId = new Map<string, any[]>()
+
+for (const log of workoutLogs || []) {
+  if (!log.session_id) continue
+
+  const sessionId = String(log.session_id)
+  const existingLogs = logsBySessionId.get(sessionId) || []
+
+  existingLogs.push(log)
+  logsBySessionId.set(sessionId, existingLogs)
+}
 
 const groupedSessionLogs =
   sessionCompletions?.map((completion: any) => {
+    const sessionId = String(completion.session_id)
+
     const logsForSession =
-      workoutLogs?.filter(
-        (log: any) => log.session_id === completion.session_id
-      ) || []
+      logsBySessionId.get(sessionId) || []
 
-    const sessionInfo = allProgrammeSessions.find(
-      (session: any) => session.id === completion.session_id
-    )
+    const sessionInfo =
+      sessionInfoById.get(sessionId) || null
 
-    const unreviewedCount = logsForSession.filter(
-      (log: any) => !log.reviewed
-    ).length
+    const hasLogs = logsForSession.length > 0
 
-    return {
-      completion,
-      sessionInfo,
-      logs: logsForSession,
-      unreviewedCount,
-      allReviewed:
-        logsForSession.length > 0 &&
-        unreviewedCount === 0,
-    }
+const unreviewedCount = logsForSession.filter(
+  (log: any) => !log.reviewed
+).length
+
+return {
+  completion,
+  sessionInfo,
+  logs: logsForSession,
+  hasLogs,
+  unreviewedCount,
+  allReviewed: hasLogs && unreviewedCount === 0,
+}
   }) || []
 
 const completedSessionIds = new Set(
   (sessionCompletions || []).map(
-    (completion: any) => completion.session_id
+    (completion: any) => String(completion.session_id)
   )
 )
 
-const orphanWorkoutLogs =
-  workoutLogs?.filter(
-    (log: any) =>
-      log.session_id &&
-      !completedSessionIds.has(log.session_id)
-  ) || []
+const latestCompletedSessionInfo =
+  latestCompletedSession
+    ? sessionInfoById.get(
+        String(latestCompletedSession.session_id)
+      ) || null
+    : null
 
-const latestCompletedSessionInfo = latestCompletedSession
-  ? allProgrammeSessions.find(
-      (session: any) => session.id === latestCompletedSession.session_id
-    )
-  : null
-
-const latestBodyweight = latestCheckIn?.bodyweight || null
+const latestBodyweight =
+  latestCheckIn?.bodyweight ?? null
 
 const previousBodyweightCheckIn =
   checkIns?.find(
     (checkIn: any) =>
-      checkIn.id !== latestCheckIn?.id && checkIn.bodyweight
+      checkIn.id !== latestCheckIn?.id &&
+checkIn.bodyweight != null
   ) || null
 
 const bodyweightChange =
-  latestBodyweight && previousBodyweightCheckIn?.bodyweight
+  latestBodyweight != null &&
+previousBodyweightCheckIn?.bodyweight != null
     ? Number(latestBodyweight) - Number(previousBodyweightCheckIn.bodyweight)
     : null
 
 const timelineEvents = [
   ...(sessionCompletions || []).map((session: any) => {
-    const sessionInfo = allProgrammeSessions.find(
-      (s: any) => s.id === session.session_id
-    )
+    const sessionInfo =
+  sessionInfoById.get(String(session.session_id)) || null
 
     const isCoachEntry =
       session.manual_entry || session.submitted_by === "coach"
@@ -852,9 +834,13 @@ const timelineEvents = [
       title: isCoachEntry ? "Coach Added Session" : "Session Completed",
       subtitle: sessionInfo?.title || "Workout Session",
       meta: [
-        session.session_rating ? `${session.session_rating}/10` : null,
-        session.duration_minutes ? `${session.duration_minutes} mins` : null,
-      ].filter(Boolean),
+  session.session_rating != null
+    ? `${session.session_rating}/10`
+    : null,
+  session.duration_minutes != null
+    ? `${session.duration_minutes} mins`
+    : null,
+].filter(Boolean),
     }
   }),
 
@@ -867,13 +853,22 @@ const timelineEvents = [
       created_at: checkIn.created_at,
       title: isCoachEntry ? "Coach Added Check-In" : "Check-In Submitted",
       subtitle: [
-        checkIn.recovery_rating ? `Recovery ${checkIn.recovery_rating}/10` : null,
-        checkIn.training_rating ? `Training ${checkIn.training_rating}/10` : null,
-        checkIn.nutrition_rating ? `Nutrition ${checkIn.nutrition_rating}/10` : null,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      meta: checkIn.bodyweight ? [`${checkIn.bodyweight}kg`] : [],
+  checkIn.recovery_rating != null
+    ? `Recovery ${checkIn.recovery_rating}/10`
+    : null,
+  checkIn.training_rating != null
+    ? `Training ${checkIn.training_rating}/10`
+    : null,
+  checkIn.nutrition_rating != null
+    ? `Nutrition ${checkIn.nutrition_rating}/10`
+    : null,
+]
+  .filter(Boolean)
+  .join(" · "),
+meta:
+  checkIn.bodyweight != null
+    ? [`${checkIn.bodyweight}kg`]
+    : [],
     }
   }),
 
@@ -881,7 +876,7 @@ const timelineEvents = [
     type: "video",
     created_at: video.created_at,
     title: "Video Uploaded",
-    subtitle: video.exercise_name,
+    subtitle: video.exercise_name || "Unnamed exercise",
     meta: [],
   })),
 ].sort(
@@ -907,18 +902,22 @@ const groupedTimeline = timelineEvents.reduce(
 
 
   const tabs = [
-    { label: "Overview", value: "overview", badge: 0 },
-    { label: "Timeline", value: "timeline", badge: 0 },
-    { label: "Programme", value: "programme", badge: 0 },
-    { label: "Check-ins", value: "check-ins", badge: unreviewedCheckInCount },
-    { label: "Logs", value: "logs", badge: groupedSessionLogs.filter(
-  (session) => !session.allReviewed
-).length },
-    { label: "Videos", value: "videos", badge: unreviewedVideoCount },
-    { label: "Notes", value: "notes", badge: 0 },
-  ]
+  { label: "Overview", value: "overview", badge: 0 },
+  { label: "Timeline", value: "timeline", badge: 0 },
+  { label: "Programme", value: "programme", badge: 0 },
+  { label: "Check-ins", value: "check-ins", badge: unreviewedCheckInCount },
+  { label: "Logs", value: "logs", badge: unreviewedLogCount },
+  { label: "Videos", value: "videos", badge: unreviewedVideoCount },
+  { label: "Notes", value: "notes", badge: 0 },
+]
 
-  function getTimelineIcon(type: string) {
+const activeProgrammeIndex =
+  programmes?.findIndex((programme: any) => programme.is_active) ?? -1
+
+const defaultOpenProgrammeIndex =
+  activeProgrammeIndex >= 0 ? activeProgrammeIndex : 0
+
+function getTimelineIcon(type: string) {
   if (type === "session") return "🏋️"
   if (type === "coach_session") return "✍️"
   if (type === "checkin") return "📋"
@@ -1094,17 +1093,18 @@ function getTimelineDay(dateString: string) {
 
               <div className={`${innerPanel} p-3`}>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                  Logs
+                  Completed
                 </p>
-                <p className="mt-1 text-xl font-black text-white">
-  {workoutLogCount}
-</p>
 
-{unreviewedLogCount > 0 && (
-  <p className="mt-1 text-[10px] font-bold text-red-300">
-    {unreviewedLogCount} awaiting review
-  </p>
-)}
+                <p className="mt-1 text-xl font-black text-white">
+                  {completedSessionCount}
+                </p>
+
+                  {unreviewedLogCount > 0 && (
+                <p className="mt-1 text-[10px] font-bold text-red-300">
+                  {unreviewedLogCount} awaiting review
+                </p>
+                  )}
               </div>
 
               <div className={`${innerPanel} p-3`}>
@@ -1209,7 +1209,9 @@ function getTimelineDay(dateString: string) {
                 Bodyweight
               </p>
               <p className="text-lg font-black text-white">
-                {latestBodyweight ?? "-"}
+                {latestBodyweight != null
+  ? `${latestBodyweight}kg`
+  : "—"}
               </p>
             </div>
 
@@ -1265,12 +1267,13 @@ function getTimelineDay(dateString: string) {
 
         <span
           className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${
-            latestCompletedSession.manual_entry
+            latestCompletedSession.manual_entry ||
+latestCompletedSession.submitted_by === "coach"
               ? "border-smc-gold/25 bg-smc-gold/10 text-smc-gold"
               : "border-white/[0.08] bg-white/[0.04] text-white/45"
           }`}
         >
-          {latestCompletedSession.manual_entry ? "Coach Entered" : "Client"}
+          {latestCompletedSession.manual_entry || latestCompletedSession.submitted_by === "coach" ? "Coach Entered" : "Client"}
         </span>
       </div>
 
@@ -1281,7 +1284,9 @@ function getTimelineDay(dateString: string) {
           </p>
 
           <p className="mt-1 text-2xl font-black text-white">
-            {latestCompletedSession.session_rating ?? "-"} / 10
+            {latestCompletedSession.session_rating != null
+  ? `${latestCompletedSession.session_rating} / 10`
+  : "—"}
           </p>
         </div>
 
@@ -1354,6 +1359,19 @@ function getTimelineDay(dateString: string) {
               <span className="font-black text-smc-gold">{unreviewedVideoCount}</span>
             </Link>
           )}
+
+          {unreviewedCheckInCount > 0 && (
+  <Link
+    href={`/coach/${client.id}?tab=check-ins`}
+    className="flex justify-between rounded-[0.9rem] border border-white/[0.05] bg-black/25 px-3 py-2 text-white/65 hover:text-white"
+  >
+    <span>Check-ins awaiting review</span>
+
+    <span className="font-black text-smc-gold">
+      {unreviewedCheckInCount}
+    </span>
+  </Link>
+)}
         </div>
       </>
     ) : (
@@ -1629,7 +1647,9 @@ function getTimelineDay(dateString: string) {
                 Bodyweight
               </p>
               <p className="mt-1 text-lg font-black text-white">
-                {checkIn.bodyweight ?? "-"}
+                {checkIn.bodyweight != null
+  ? `${checkIn.bodyweight}kg`
+  : "—"}
               </p>
             </div>
 
@@ -1638,7 +1658,9 @@ function getTimelineDay(dateString: string) {
                 Recovery
               </p>
               <p className="mt-1 text-lg font-black text-white">
-                {checkIn.recovery_rating ?? "-"} / 10
+                {checkIn.recovery_rating != null
+  ? `${checkIn.recovery_rating} / 10`
+  : "—"}
               </p>
             </div>
 
@@ -1647,7 +1669,9 @@ function getTimelineDay(dateString: string) {
                 Training
               </p>
               <p className="mt-1 text-lg font-black text-white">
-                {checkIn.training_rating ?? "-"} / 10
+                {checkIn.training_rating != null
+  ? `${checkIn.training_rating} / 10`
+  : "—"}
               </p>
             </div>
 
@@ -1656,7 +1680,9 @@ function getTimelineDay(dateString: string) {
                 Nutrition
               </p>
               <p className="mt-1 text-lg font-black text-white">
-                {checkIn.nutrition_rating ?? "-"} / 10
+                {checkIn.nutrition_rating != null
+  ? `${checkIn.nutrition_rating} / 10`
+  : "—"}
               </p>
             </div>
           </div>
@@ -1818,7 +1844,7 @@ function getTimelineDay(dateString: string) {
                   {programmes?.map((programme: any, programmeIndex: number) => {
                     const sessions = programme.programme_sessions ?? []
 
-const effectiveWeekNumber = getEffectiveWeekNumber({
+const effectiveWeekNumber = getEffectiveProgrammeWeek({
   programmeStartDate:
     programme.start_date || programme.created_at,
   coachCurrentWeek: programme.coach_current_week,
@@ -1826,7 +1852,9 @@ const effectiveWeekNumber = getEffectiveWeekNumber({
   completedSessionIds,
 })
 
-const sessionsByWeek = groupSessionsByWeek(sessions)
+const sessionsByWeek =
+  groupProgrammeSessionsByWeek(sessions)
+
                     const weekEntries = Object.entries(sessionsByWeek).sort(
                       ([weekA], [weekB]) => Number(weekA) - Number(weekB)
                     )
@@ -1842,7 +1870,7 @@ const sessionsByWeek = groupSessionsByWeek(sessions)
                     return (
                       <details
                         key={programme.id}
-                        open={programmeIndex === 0}
+                        open={programmeIndex === defaultOpenProgrammeIndex}
                         className={`${innerPanel} group overflow-hidden`}
                       >
                         <summary className="cursor-pointer list-none p-3.5 transition hover:bg-white/[0.025]">
@@ -1924,11 +1952,15 @@ const sessionsByWeek = groupSessionsByWeek(sessions)
                                   defaultValue={effectiveWeekNumber}
                                   className="min-h-[40px] rounded-[0.9rem] border border-white/[0.07] bg-[#05070c] px-3 text-sm text-white outline-none focus:border-smc-gold/45"
                                 >
-                                  {Array.from({ length: weekCount }, (_, index) => index + 1).map((week) => (
-                                    <option key={week} value={week}>
-                                      Week {week}
-                                    </option>
-                                  ))}
+                                  {weekEntries.map(([weekNumber]) => {
+  const week = Number(weekNumber)
+
+  return (
+    <option key={week} value={week}>
+      Week {week}
+    </option>
+  )
+})}
                                 </select>
 
                                 <button
@@ -1971,10 +2003,7 @@ const sessionsByWeek = groupSessionsByWeek(sessions)
 
                                   <div className="grid gap-2.5 md:grid-cols-2">
                                     {weekSessions.map((session: any) => {
-                                      const completion = sessionCompletions?.find(
-                                        (item: any) => item.session_id === session.id
-                                      )
-                                      const completed = Boolean(completion?.completed)
+                                      const completed = completedSessionIds.has(String(session.id))
 
                                       return (
                                       <details
@@ -2071,12 +2100,13 @@ const sessionsByWeek = groupSessionsByWeek(sessions)
 
           {groupedSessionLogs.map((group: any) => {
             const {
-              completion,
-              sessionInfo,
-              logs,
-              unreviewedCount,
-              allReviewed,
-            } = group
+  completion,
+  sessionInfo,
+  logs,
+  hasLogs,
+  unreviewedCount,
+  allReviewed,
+} = group
 
             return (
               <details
@@ -2137,17 +2167,20 @@ const sessionsByWeek = groupSessionsByWeek(sessions)
                       </span>
 
                       <span
-                        className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em]
-                        ${
-                          allReviewed
-                            ? "border border-green-500/25 bg-green-500/10 text-green-300"
-                            : "border border-red-500/25 bg-red-500/10 text-red-300"
-                        }`}
-                      >
-                        {allReviewed
-                          ? "Reviewed"
-                          : `Needs Review (${unreviewedCount})`}
-                      </span>
+  className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${
+    !hasLogs
+      ? "border-white/[0.08] bg-white/[0.04] text-white/45"
+      : allReviewed
+        ? "border-green-500/25 bg-green-500/10 text-green-300"
+        : "border-red-500/25 bg-red-500/10 text-red-300"
+  }`}
+>
+  {!hasLogs
+    ? "No Exercise Logs"
+    : allReviewed
+      ? "Reviewed"
+      : `Needs Review (${unreviewedCount})`}
+</span>
                     </div>
                   </div>
 
@@ -2195,6 +2228,13 @@ const sessionsByWeek = groupSessionsByWeek(sessions)
                       </button>
                     </div>
                   </form>
+
+                  {!hasLogs && (
+  <div className="rounded-[1rem] border border-white/[0.05] bg-black/30 p-3 text-sm text-white/45">
+    This session is marked complete, but no individual exercise logs were
+    recorded.
+  </div>
+)}
 
                   {logs.map((log: any) => (
                     <div
@@ -2292,7 +2332,9 @@ const sessionsByWeek = groupSessionsByWeek(sessions)
                 </div>
 
                 <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-2.5 py-1 text-[10px] font-black uppercase text-smc-gold">
-                  {groupedVideos.length} exercises
+                  {videoCount} video{videoCount === 1 ? "" : "s"} ·{" "}
+{groupedVideos.length} exercise
+{groupedVideos.length === 1 ? "" : "s"}
                 </span>
               </div>
 
