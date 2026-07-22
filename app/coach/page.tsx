@@ -6,6 +6,7 @@ import CoachActivityFeed from "@/components/CoachActivityFeed"
 import RealtimeUnreadMessageCount from "@/components/RealtimeUnreadMessageCount"
 import { requireCoach } from "@/lib/authGuards"
 import { getEffectiveProgrammeWeek } from "@/lib/programmes/progression"
+import { getUploadedProgrammeWeekCount } from "@/lib/programmes/sessions"
 import {
   buildCoachAttentionItems,
   getFlagLabel,
@@ -118,18 +119,6 @@ function formatWeekHeader(date: Date) {
   })
 }
 
-function getProgrammeStartDate(programme: any) {
-  return programme?.start_date || programme?.created_at || null
-}
-
-function getUploadedWeekCount(programme: any) {
-  const weeks = (programme?.programme_sessions || [])
-    .map((session: any) => Number(session.week_number || 1))
-    .filter((week: number) => Number.isFinite(week) && week > 0)
-
-  return weeks.length ? Math.max(...weeks) : 0
-}
-
 function getProgrammeProgressCell(
   programme: any,
   currentWeek: number,
@@ -143,7 +132,9 @@ function getProgrammeProgressCell(
     }
   }
 
-  const uploadedWeeks = getUploadedWeekCount(programme)
+  const uploadedWeeks = getUploadedProgrammeWeekCount(
+  programme.programme_sessions || []
+)
   const plannedWeeks = Number(
     programme.planned_weeks || uploadedWeeks || 4
   )
@@ -446,7 +437,11 @@ const programmeForecastWeeks = [
         clientProgrammes[0] ||
         null
 
-      const uploadedWeeks = getUploadedWeekCount(activeProgramme)
+      const uploadedWeeks = activeProgramme
+  ? getUploadedProgrammeWeekCount(
+      activeProgramme.programme_sessions || []
+    )
+  : 0
 
 const plannedWeeks = activeProgramme
   ? Number(activeProgramme.planned_weeks || uploadedWeeks || 4)

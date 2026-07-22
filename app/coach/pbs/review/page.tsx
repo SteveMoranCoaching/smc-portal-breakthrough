@@ -154,9 +154,14 @@ export default async function PBReviewPage({
     .neq("pb_type", "estimated_1rm")
     .order("created_at", { ascending: false })
 
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id, user_id, name, email")
+  const { data: clients, error: clientsError } = await supabase
+  .from("clients")
+  .select("id, user_id, name, email")
+
+if (clientsError) {
+  console.error("Review centre clients failed to load:", clientsError)
+  throw new Error("Review centre failed to load clients")
+}
 
   const clientMap = new Map(
     (clients || []).map((client) => [client.user_id, client])

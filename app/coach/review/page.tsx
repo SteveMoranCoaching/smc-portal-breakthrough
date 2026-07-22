@@ -261,14 +261,20 @@ function getPreviousCheckInFeedback(userId: string, currentCreatedAt: string) {
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       ),
     }))
-    .sort((a: any, b: any) => {
-      const scoreA = a.attention?.score || 0
-      const scoreB = b.attention?.score || 0
+    .sort(
+  (a: any, b: any) =>
+    new Date(a.created_at).getTime() -
+    new Date(b.created_at).getTime()
+)
 
-      if (scoreB !== scoreA) return scoreB - scoreA
-
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    })
+const reviewItems = [
+  ...standaloneCheckInItems,
+  ...(groupedReviewItems as any),
+].sort(
+  (a: any, b: any) =>
+    new Date(a.created_at).getTime() -
+    new Date(b.created_at).getTime()
+)
 
   return (
     <main className="min-h-screen bg-black p-6 text-white">
@@ -292,9 +298,7 @@ function getPreviousCheckInFeedback(userId: string, currentCreatedAt: string) {
           </Link>
         </div>
 
-        <ReviewSession
-  items={[...standaloneCheckInItems, ...(groupedReviewItems as any)]}
-/>
+        <ReviewSession items={reviewItems} />
       </div>
     </main>
   )
