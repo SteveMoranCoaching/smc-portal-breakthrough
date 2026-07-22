@@ -32,7 +32,7 @@ export default async function CoachReviewPage() {
     )
     .eq("reviewed", false)
     .order("created_at", { ascending: false })
-    .limit(100)
+    .limit(300)
 
   const { data: workoutLogs } = await supabase
     .from("workout_logs")
@@ -41,7 +41,7 @@ export default async function CoachReviewPage() {
     )
     .eq("reviewed", false)
     .order("created_at", { ascending: false })
-    .limit(100)
+    .limit(300)
 
   const { data: sessionCompletions } = await supabase
     .from("session_completions")
@@ -49,7 +49,7 @@ export default async function CoachReviewPage() {
       "id, user_id, programme_id, session_id, completed, session_rating, notes, created_at"
     )
     .order("created_at", { ascending: false })
-    .limit(100)
+    .limit(300)
 
   const sessionIds = Array.from(
     new Set([
@@ -78,7 +78,7 @@ export default async function CoachReviewPage() {
 )
   .eq("reviewed", false)
   .order("created_at", { ascending: false })
-  .limit(100)
+  .limit(300)
 
   const { data: previousCheckInsWithFeedback } = await supabase
   .from("check_ins")

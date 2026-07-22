@@ -4,25 +4,49 @@ import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import {
+  isCircuitExercise,
+  isMainExercise,
+  isStretchExercise,
+  isSupersetExercise,
+  isWarmupExercise,
+} from "@/lib/exerciseSections"
+import {
+  detectPBs,
+  getPreviousPerformance,
+  isMainLift,
+  type PBResult,
+  type SetEntry,
+} from "@/lib/pbs"
+import {
+  getCircuitExerciseKey,
+  getCircuitKey,
+  getSetKey,
+  getStretchKey,
+  getWarmupKey,
+} from "@/lib/workoutKeys"
+import {
+  createBlankSet,
+  formatFlexibleSet,
+  getExerciseLogType,
+  getLoggedFieldKeys,
+  getSetFieldValue,
+  primaryFieldConfig,
+  secondaryFieldConfig,
+} from "@/lib/exerciseLogTypes"
+import {
+  getDemoForExercise,
+  getExerciseDisplayLabel,
+  getPrescribedSetCount,
+  getPreviousCoachFeedback,
+  getPreviousLogForExercise,
+} from "@/lib/exerciseHelpers"
 import AchievementUnlockToast from "@/components/AchievementUnlockToast"
 import FileUploader from "@/components/FileUploader"
 import {
   checkWorkoutAchievements,
   checkPBAchievements,
 } from "@/lib/achievements"
-
-type SetEntry = {
-  weight: string
-  bodyweight?: string
-  height?: string
-  speed?: string
-  distance?: string
-  reps: string
-  time?: string
-  calories?: string
-  rounds?: string
-  rpe: string
-}
 
 type UploadedVideo = {
   path: string
@@ -37,32 +61,6 @@ type ExerciseEntry = {
   videos: UploadedVideo[]
 }
 
-type PBType = "heaviest" | "rep"
-
-type PBResult = {
-  exerciseName: string
-  type: PBType
-  weight: number
-  reps: number
-  estimated1RM: number
-  previousBest?: number
-  label: string
-  summary: string
-}
-
-type ParsedSet = {
-  weight: number
-  reps: number
-  estimated1RM: number
-}
-
-type PreviousPerformanceSet = {
-  weight: number
-  reps: number
-  rpe: string
-  estimated1RM: number
-}
-
 type AchievementUnlock = {
   title: string
   description?: string
@@ -74,110 +72,6 @@ const card =
 
 const inputStyle =
   "h-11 min-h-11 rounded-xl border border-white/[0.07] bg-black/35 px-2 text-center text-base font-black text-white outline-none placeholder:text-white/20 transition focus:border-smc-gold/70 focus:bg-black/50 focus:shadow-[0_0_14px_rgba(212,175,55,0.12)]"
-
-
-type LogPrimaryField = "kg" | "bodyweight" | "height" | "speed" | "distance" | "none"
-type LogSecondaryField = "reps" | "time" | "distance" | "calories" | "rounds" | "none"
-
-type ExerciseLogType = {
-  primary: LogPrimaryField
-  secondary: LogSecondaryField
-}
-
-const defaultLogType: ExerciseLogType = {
-  primary: "kg",
-  secondary: "reps",
-}
-
-const primaryFieldConfig: Record<LogPrimaryField, { key: keyof SetEntry | ""; label: string; placeholder: string; inputMode: "decimal" | "numeric" | "text"; type: string }> = {
-  kg: { key: "weight", label: "Kg", placeholder: "Kg", inputMode: "decimal", type: "number" },
-  bodyweight: { key: "bodyweight", label: "BW", placeholder: "BW", inputMode: "text", type: "text" },
-  height: { key: "height", label: "Height", placeholder: "Height", inputMode: "decimal", type: "number" },
-  speed: { key: "speed", label: "Speed", placeholder: "Speed", inputMode: "decimal", type: "number" },
-  distance: { key: "distance", label: "Distance", placeholder: "Distance", inputMode: "decimal", type: "number" },
-  none: { key: "", label: "", placeholder: "", inputMode: "text", type: "text" },
-}
-
-const secondaryFieldConfig: Record<LogSecondaryField, { key: keyof SetEntry | ""; label: string; placeholder: string; inputMode: "decimal" | "numeric" | "text"; type: string }> = {
-  reps: { key: "reps", label: "Reps", placeholder: "Reps", inputMode: "numeric", type: "number" },
-  time: { key: "time", label: "Time", placeholder: "Time", inputMode: "text", type: "text" },
-  distance: { key: "distance", label: "Distance", placeholder: "Distance", inputMode: "decimal", type: "number" },
-  calories: { key: "calories", label: "Calories", placeholder: "Cals", inputMode: "numeric", type: "number" },
-  rounds: { key: "rounds", label: "Rounds", placeholder: "Rounds", inputMode: "numeric", type: "number" },
-  none: { key: "", label: "", placeholder: "", inputMode: "text", type: "text" },
-}
-
-function getExerciseLogType(exercise: any): ExerciseLogType {
-  return {
-    primary: exercise?.logType?.primary || defaultLogType.primary,
-    secondary: exercise?.logType?.secondary || defaultLogType.secondary,
-  }
-}
-
-function createBlankSet(exercise?: any, inferredReps = ""): SetEntry {
-  const logType = getExerciseLogType(exercise)
-  const primaryKey = primaryFieldConfig[logType.primary].key
-  const secondaryKey = secondaryFieldConfig[logType.secondary].key
-
-  return {
-    weight: "",
-    bodyweight: primaryKey === "bodyweight" ? "BW" : "",
-    height: "",
-    speed: "",
-    distance: "",
-    reps: secondaryKey === "reps" ? inferredReps : "",
-    time: "",
-    calories: "",
-    rounds: "",
-    rpe: "",
-  }
-}
-
-function getSetFieldValue(set: SetEntry, field: keyof SetEntry | "") {
-  if (!field) return ""
-  return String(set[field] || "")
-}
-
-function getLoggedFieldKeys(set: SetEntry) {
-  return [
-    "weight",
-    "bodyweight",
-    "height",
-    "speed",
-    "distance",
-    "reps",
-    "time",
-    "calories",
-    "rounds",
-    "rpe",
-  ] as (keyof SetEntry)[]
-}
-
-function formatFlexibleSet(set: SetEntry, exercise?: any) {
-  const logType = getExerciseLogType(exercise)
-  const primary = primaryFieldConfig[logType.primary]
-  const secondary = secondaryFieldConfig[logType.secondary]
-
-  const parts: string[] = []
-
-  if (primary.key) {
-    const value = getSetFieldValue(set, primary.key)
-    if (value) {
-      parts.push(logType.primary === "bodyweight" ? "BW" : `${value}${primary.label === "Kg" ? "kg" : ` ${primary.label}`}`)
-    }
-  }
-
-  if (secondary.key) {
-    const value = getSetFieldValue(set, secondary.key)
-    if (value) {
-      parts.push(logType.secondary === "reps" ? `× ${value}` : `${value} ${secondary.label}`)
-    }
-  }
-
-  if (set.rpe) parts.push(`@ RPE ${set.rpe}`)
-
-  return parts.length > 0 ? parts.join(" ") : "No data"
-}
 
 function getAutosaveKey(userId: string, sessionId: string) {
   return `smc-workout-autosave-${userId}-${sessionId}`
@@ -206,208 +100,6 @@ function getAutosaveKey(userId: string, sessionId: string) {
   return null
 }
 
-function getPrescribedSetCount(exercise: any) {
-  const blocks = Array.isArray(exercise?.prescriptions)
-    ? exercise.prescriptions
-    : []
-
-  const blockSetTotal = blocks.reduce((total: number, block: any) => {
-    const sets = Number(block?.sets || 0)
-    return total + (Number.isFinite(sets) ? sets : 0)
-  }, 0)
-
-  if (blockSetTotal > 0) return blockSetTotal
-
-  const prescription = String(exercise?.prescription || "")
-  const match = prescription.match(/^(\d+)\s*x/i)
-  if (match) return Number(match[1])
-
-  const setsMatch = prescription.match(/(\d+)\s*sets?/i)
-  if (setsMatch) return Number(setsMatch[1])
-
-  return 1
-}
-
-function getPreviousLogForExercise(
-  previousLogs: any[],
-  exerciseName: string
-) {
-  const matchingLogs = previousLogs.filter(
-    (log) =>
-      String(log.exercise_name || "").trim().toLowerCase() ===
-      String(exerciseName || "").trim().toLowerCase()
-  )
-
-  const withFeedback = matchingLogs.find(
-    (log) =>
-      log.coach_feedback &&
-      String(log.coach_feedback).trim() !== ""
-  )
-
-  return withFeedback || matchingLogs[0] || null
-}
-
-function getDemoForExercise(exerciseDemos: any[], exerciseName: string) {
-  return exerciseDemos.find(
-    (demo) =>
-      String(demo.exercise_name || "").toLowerCase().trim() ===
-      String(exerciseName || "").toLowerCase().trim()
-  )
-}
-
-function getExerciseSection(exercise: any) {
-  const section = String(
-    exercise?.section || exercise?.type || exercise?.category || "main"
-  )
-    .toLowerCase()
-    .trim()
-
-  if (
-    section === "warmup" ||
-    section === "warm-up" ||
-    section === "warm up" ||
-    section === "mobility" ||
-    section === "activation"
-  ) {
-    return "warmup"
-  }
-
-  if (
-    section === "stretch" ||
-    section === "stretches" ||
-    section === "post-session-stretch" ||
-    section === "post session stretch" ||
-    section === "post_session_stretch" ||
-    section === "cooldown" ||
-    section === "cool-down" ||
-    section === "cool down"
-  ) {
-    return "stretch"
-  }
-
-  if (
-  section === "circuit" ||
-  section === "circuit block" ||
-  section === "conditioning circuit"
-) {
-  return "circuit"
-}
-
-if (
-  section === "superset" ||
-  section === "super set" ||
-  section === "super-set" ||
-  section === "paired set"
-) {
-  return "superset"
-}
-
-  return "main"
-}
-
-function isWarmupExercise(exercise: any) {
-  return getExerciseSection(exercise) === "warmup"
-}
-
-function isStretchExercise(exercise: any) {
-  return getExerciseSection(exercise) === "stretch"
-}
-
-function isCircuitExercise(exercise: any) {
-  return getExerciseSection(exercise) === "circuit"
-}
-
-function isSupersetExercise(exercise: any) {
-  return getExerciseSection(exercise) === "superset"
-}
-
-function isMainExercise(exercise: any) {
-  return getExerciseSection(exercise) === "main"
-}
-
-function getExerciseDisplayLabel(exercise: any) {
-  const prescription = exercise?.prescription
-  const notes = exercise?.notes
-
-  if (prescription && notes) return `${prescription} · ${notes}`
-  if (prescription) return prescription
-  if (notes) return notes
-
-  return "Complete before starting the main workout"
-}
-
-function toNumber(value: string | number | null | undefined) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : 0
-}
-
-function estimateOneRM(weight: number, reps: number) {
-  if (!weight || !reps) return 0
-  return Math.round(weight * (1 + reps / 30))
-}
-
-function isMainLift(exerciseName: string) {
-  const name = exerciseName.toLowerCase().trim()
-
-  return (
-    name === "squat" ||
-    name === "competition squat" ||
-    name === "comp squat" ||
-    name === "bench" ||
-    name === "bench press" ||
-    name === "competition bench press" ||
-    name === "comp bench" ||
-    name === "deadlift" ||
-    name === "competition deadlift" ||
-    name === "comp deadlift"
-  )
-}
-
-function formatLogDate(dateString?: string | null) {
-  if (!dateString) return "No date"
-
-  return new Date(dateString).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-  })
-}
-
-function getPreviousCoachFeedback(previousLog: any) {
-  return String(previousLog?.coach_feedback || "").trim()
-}
-
-function getPreviousPerformance(previousLog: any) {
-  const sets = Array.isArray(previousLog?.sets_completed)
-    ? previousLog.sets_completed
-    : []
-
-  const parsedSets: PreviousPerformanceSet[] = sets
-    .map((set: SetEntry) => {
-      const weight = toNumber(set.weight)
-      const reps = toNumber(set.reps)
-
-      return {
-        weight,
-        reps,
-        rpe: set.rpe || "",
-        estimated1RM: estimateOneRM(weight, reps),
-      }
-    })
-    .filter((set: PreviousPerformanceSet) => set.weight > 0 && set.reps > 0)
-
-  if (parsedSets.length === 0) return null
-
-  const bestSet = parsedSets.reduce((best, set) =>
-    set.estimated1RM > best.estimated1RM ? set : best
-  )
-
-  return {
-    date: formatLogDate(previousLog?.created_at),
-    setCount: parsedSets.length,
-    bestSet,
-  }
-}
-
 function hasSetData(set: SetEntry) {
   return getLoggedFieldKeys(set).some((key) => Boolean(String(set[key] || "").trim()))
 }
@@ -419,134 +111,8 @@ function isCompletedSet(set: SetEntry) {
   return hasPrimary && hasSecondary
 }
 
-function groupPBResults(results: PBResult[]) {
-  const priority: Record<PBType, number> = {
-  heaviest: 1,
-  rep: 2,
-}
-
-  return results.sort((a, b) => priority[a.type] - priority[b.type]).slice(0, 2)
-}
-
-function detectPBs({
-  exerciseName,
-  currentSets,
-  previousLogs,
-}: {
-  exerciseName: string
-  currentSets: SetEntry[]
-  previousLogs: any[]
-}): PBResult[] {
-  const previousSets: ParsedSet[] = previousLogs.flatMap((log) => {
-    if (!Array.isArray(log.sets_completed)) return []
-
-    return log.sets_completed
-      .map((set: SetEntry) => {
-        const weight = toNumber(set.weight)
-        const reps = toNumber(set.reps)
-
-        return {
-          weight,
-          reps,
-          estimated1RM: estimateOneRM(weight, reps),
-        }
-      })
-      .filter((set: ParsedSet) => set.weight > 0 && set.reps > 0)
-  })
-
-  const currentParsedSets: ParsedSet[] = currentSets
-    .map((set) => {
-      const weight = toNumber(set.weight)
-      const reps = toNumber(set.reps)
-
-      return {
-        weight,
-        reps,
-        estimated1RM: estimateOneRM(weight, reps),
-      }
-    })
-    .filter((set: ParsedSet) => set.weight > 0 && set.reps > 0)
-
-  if (currentParsedSets.length === 0) return []
-
-  const previousHeaviest = Math.max(0, ...previousSets.map((set) => set.weight))
-  const previousBestEstimated = Math.max(
-    0,
-    ...previousSets.map((set) => set.estimated1RM)
-  )
-
-  const previousRepMap = new Map<number, number>()
-
-  previousSets.forEach((set) => {
-    const currentBestWeightForReps = previousRepMap.get(set.reps) || 0
-    if (set.weight > currentBestWeightForReps) {
-      previousRepMap.set(set.reps, set.weight)
-    }
-  })
-
-  const bestCurrentHeaviest = currentParsedSets.reduce((best, set) =>
-    set.weight > best.weight ? set : best
-  )
-
-  const bestCurrentEstimated = currentParsedSets.reduce((best, set) =>
-    set.estimated1RM > best.estimated1RM ? set : best
-  )
-
-  const pbResults: PBResult[] = []
-
-  if (bestCurrentHeaviest.weight > previousHeaviest) {
-    pbResults.push({
-      exerciseName,
-      type: "heaviest",
-      weight: bestCurrentHeaviest.weight,
-      reps: bestCurrentHeaviest.reps,
-      estimated1RM: bestCurrentHeaviest.estimated1RM,
-      previousBest: previousHeaviest,
-      label: "New Heaviest",
-      summary: `${bestCurrentHeaviest.weight}kg × ${bestCurrentHeaviest.reps}`,
-    })
-  }
-
-  const repPBs = currentParsedSets
-    .filter((set) => {
-      const previousBestWeightForReps = previousRepMap.get(set.reps) || 0
-      return set.weight > previousBestWeightForReps
-    })
-    .sort((a, b) => b.weight - a.weight || b.reps - a.reps)
-
-  const bestRepPB = repPBs[0]
-
-  if (bestRepPB) {
-    pbResults.push({
-      exerciseName,
-      type: "rep",
-      weight: bestRepPB.weight,
-      reps: bestRepPB.reps,
-      estimated1RM: bestRepPB.estimated1RM,
-      previousBest: previousRepMap.get(bestRepPB.reps) || 0,
-      label: `${bestRepPB.reps} Rep PB`,
-      summary: `${bestRepPB.weight}kg × ${bestRepPB.reps}`,
-    })
-  }
-
-  return groupPBResults(
-    pbResults.filter((pb, index, array) => {
-      return (
-        array.findIndex(
-          (item) =>
-            item.exerciseName === pb.exerciseName &&
-            item.type === pb.type &&
-            item.weight === pb.weight &&
-            item.reps === pb.reps
-        ) === index
-      )
-    })
-  )
-}
-
 export default function WorkoutSessionForm({
   session,
-  sessionId,
   programmeId,
   userId,
   previousLogs = [],
@@ -970,10 +536,6 @@ const hasAnyLoggedWork =
     return "Complete Workout"
   }
 
-  function getSetKey(exerciseIndex: number, setIndex: number) {
-    return `${exerciseIndex}-${setIndex}`
-  }
-
   function fillFromPreviousSession() {
     setPrefillMode("previous")
     setConfirmedSets({})
@@ -1017,10 +579,6 @@ const hasAnyLoggedWork =
     setSaveError("")
   }
 
-  function getWarmupKey(exerciseIndex: number, exerciseName: string) {
-    return `${exerciseIndex}-${exerciseName}`
-  }
-
   function toggleWarmupItem(exerciseIndex: number, exerciseName: string) {
     const key = getWarmupKey(exerciseIndex, exerciseName)
 
@@ -1029,23 +587,6 @@ const hasAnyLoggedWork =
       [key]: !current[key],
     }))
   }
-
-  function getStretchKey(exerciseIndex: number, exerciseName: string) {
-    return `${exerciseIndex}-${exerciseName}`
-  }
-
-  function getCircuitKey(exerciseIndex: number, circuitName: string) {
-  return `${exerciseIndex}-${circuitName}`
-}
-
-function getCircuitExerciseKey(
-  exerciseIndex: number,
-  circuitName: string,
-  circuitExerciseIndex: number,
-  circuitExerciseName: string
-) {
-  return `${exerciseIndex}-${circuitName}-${circuitExerciseIndex}-${circuitExerciseName}`
-}
 
 function toggleCircuitExerciseItem(
   exerciseIndex: number,
@@ -1264,9 +805,10 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
       if (!isMainExercise(exercise)) return
 
       const exerciseName = exercise?.name
-      if (!exerciseName) return
+if (!exerciseName) return
+if (!isMainLift(exerciseName)) return
 
-      const key = String(exerciseName).toLowerCase().trim()
+const key = String(exerciseName).toLowerCase().trim()
       const previousExerciseLogs = historicalLogsByExercise[key] || []
 
       detectedPBs.push(
