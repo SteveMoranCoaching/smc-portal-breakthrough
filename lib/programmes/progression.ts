@@ -73,27 +73,28 @@ export function getEffectiveProgrammeWeek({
       week < maxWeek ? week + 1 : maxWeek
   }
 
-  const coachOverrideWeek =
-    coachCurrentWeek !== null &&
-    coachCurrentWeek !== undefined &&
-    Number.isFinite(Number(coachCurrentWeek))
-      ? Math.min(
-          Math.max(
-            Number(coachCurrentWeek),
-            minWeek
-          ),
-          maxWeek
-        )
-      : minWeek
+  const hasCoachOverride =
+  coachCurrentWeek !== null &&
+  coachCurrentWeek !== undefined &&
+  Number.isFinite(Number(coachCurrentWeek))
 
+if (hasCoachOverride) {
   return Math.min(
     Math.max(
-      dateBasedWeek,
-      completionBasedWeek,
-      coachOverrideWeek
+      Number(coachCurrentWeek),
+      minWeek
     ),
     maxWeek
   )
+}
+
+return Math.min(
+  Math.max(
+    dateBasedWeek,
+    completionBasedWeek
+  ),
+  maxWeek
+)
 }
 
 export function getProgrammeProgress({

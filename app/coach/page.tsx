@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import CoachActivityFeed from "@/components/CoachActivityFeed"
 import RealtimeUnreadMessageCount from "@/components/RealtimeUnreadMessageCount"
 import { requireCoach } from "@/lib/authGuards"
+import { getEffectiveProgrammeWeek } from "@/lib/programmes/progression"
 import {
   buildCoachAttentionItems,
   getFlagLabel,
@@ -129,38 +130,11 @@ function getUploadedWeekCount(programme: any) {
   return weeks.length ? Math.max(...weeks) : 0
 }
 
-function getProgrammeCurrentWeek(programme: any) {
-  if (!programme) return 0
-
-  const uploadedWeeks = getUploadedWeekCount(programme)
-  const plannedWeeks = Number(programme.planned_weeks || uploadedWeeks || 4)
-
-  if (
-    programme.coach_current_week &&
-    Number.isFinite(Number(programme.coach_current_week))
-  ) {
-    return Math.min(Math.max(Number(programme.coach_current_week), 1), plannedWeeks)
-  }
-
-  const startDateRaw = getProgrammeStartDate(programme)
-
-  if (!startDateRaw) return Number(programme.week_number || 1)
-
-  const programmeStart = getWeekStartDate(startDateRaw)
-  const currentWeekStart = getWeekStartDate()
-
-  const weeksElapsed = Math.max(
-    0,
-    Math.floor(
-      (currentWeekStart.getTime() - programmeStart.getTime()) /
-        (1000 * 60 * 60 * 24 * 7)
-    )
-  )
-
-  return Math.min(weeksElapsed + 1, plannedWeeks)
-}
-
-function getProgrammeProgressCell(programme: any, weekOffset: number) {
+function getProgrammeProgressCell(
+  programme: any,
+  currentWeek: number,
+  weekOffset: number
+) {
   if (!programme) {
     return {
       label: "Needs Programme",
@@ -170,8 +144,10 @@ function getProgrammeProgressCell(programme: any, weekOffset: number) {
   }
 
   const uploadedWeeks = getUploadedWeekCount(programme)
-  const plannedWeeks = Number(programme.planned_weeks || uploadedWeeks || 4)
-  const currentWeek = getProgrammeCurrentWeek(programme)
+  const plannedWeeks = Number(
+    programme.planned_weeks || uploadedWeeks || 4
+  )
+
   const forecastWeek = currentWeek + weekOffset
 
   if (forecastWeek > plannedWeeks) {
@@ -471,12 +447,27 @@ const programmeForecastWeeks = [
         null
 
       const uploadedWeeks = getUploadedWeekCount(activeProgramme)
-      const plannedWeeks = activeProgramme
-        ? Number(activeProgramme.planned_weeks || uploadedWeeks || 4)
-        : 0
 
-      const cells = programmeForecastWeeks.map((week) =>
-  getProgrammeProgressCell(activeProgramme, week.offset)
+const plannedWeeks = activeProgramme
+  ? Number(activeProgramme.planned_weeks || uploadedWeeks || 4)
+  : 0
+
+const currentWeek = activeProgramme
+  ? getEffectiveProgrammeWeek({
+      programmeStartDate:
+        activeProgramme.start_date || activeProgramme.created_at,
+      coachCurrentWeek: activeProgramme.coach_current_week,
+      sessions: activeProgramme.programme_sessions || [],
+      completedSessionIds: new Set<string>(),
+    })
+  : 0
+
+const cells = programmeForecastWeeks.map((week) =>
+  getProgrammeProgressCell(
+    activeProgramme,
+    currentWeek,
+    week.offset
+  )
 )
 
       const nextWeekCell = cells[2]
@@ -489,7 +480,7 @@ const programmeForecastWeeks = [
         activeProgramme,
         uploadedWeeks,
         plannedWeeks,
-        currentWeek: getProgrammeCurrentWeek(activeProgramme),
+        currentWeek,
         cells,
         needsNumbers,
         needsProgramme,
