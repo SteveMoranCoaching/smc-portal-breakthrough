@@ -109,6 +109,10 @@ export default function RealtimeMessageThread({
     body: string
   } | null>(null)
 
+  const [downloadingMessageId, setDownloadingMessageId] = useState<string | null>(
+  null
+)
+
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -171,6 +175,45 @@ export default function RealtimeMessageThread({
       setToastMessage(null)
     }, 3500)
   }
+
+  async function handleAttachmentDownload(
+  messageId: string,
+  downloadUrl: string,
+  fileName?: string | null
+) {
+  if (downloadingMessageId) return
+
+  setDownloadingMessageId(messageId)
+  showInAppToast("Download", "Preparing your file...")
+
+  try {
+    const response = await fetch(downloadUrl)
+
+    if (!response.ok) {
+      throw new Error("Download failed")
+    }
+
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+
+    const link = document.createElement("a")
+    link.href = objectUrl
+    link.download = fileName || "attachment"
+
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+
+    URL.revokeObjectURL(objectUrl)
+
+    showInAppToast("Download", "Download started")
+  } catch (error) {
+    console.error(error)
+    showInAppToast("Download", "Unable to download file")
+  } finally {
+    setDownloadingMessageId(null)
+  }
+}
 
   useEffect(() => {
     setRealtimeStatus("connecting")
@@ -390,16 +433,26 @@ function getAttachmentDownloadUrl(
                   )}
 
                   {attachmentDownloadUrl && (
-  <a
-    href={attachmentDownloadUrl}
-    className={`inline-flex items-center rounded-[0.75rem] px-2.5 py-1.5 text-[11px] font-bold transition ${
+  <button
+    type="button"
+    disabled={downloadingMessageId === message.id}
+    onClick={() =>
+      handleAttachmentDownload(
+        message.id,
+        attachmentDownloadUrl,
+        message.attachment_name
+      )
+    }
+    className={`inline-flex items-center rounded-[0.75rem] px-2.5 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-60 ${
       isOwn
         ? "bg-black/10 text-black hover:bg-black/15"
         : "bg-white/[0.07] text-white/75 hover:bg-white/[0.11] hover:text-white"
     }`}
   >
-    Download
-  </a>
+    {downloadingMessageId === message.id
+      ? "Preparing download..."
+      : "Download"}
+  </button>
 )}
                 </div>
 

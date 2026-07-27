@@ -1,7 +1,4 @@
 import Link from "next/link"
-import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
-import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import CoachActivityFeed from "@/components/CoachActivityFeed"
 import RealtimeUnreadMessageCount from "@/components/RealtimeUnreadMessageCount"
 import { requireCoach } from "@/lib/authGuards"
@@ -37,29 +34,6 @@ function getInitials(name: string) {
     .map((word) => word[0])
     .join("")
     .toUpperCase()
-}
-
-async function createTeamFeedPost(formData: FormData) {
-  "use server"
-
-  const title = String(formData.get("title") || "").trim()
-  const body = String(formData.get("body") || "").trim()
-  const type = String(formData.get("type") || "Announcement")
-
-  if (!title || !body) return
-
-  const supabase = await createSupabaseServerClient()
-
-  await supabase.from("team_feed_posts").insert({
-    title,
-    body,
-    type,
-  })
-
-  revalidatePath("/dashboard")
-  revalidatePath("/coach")
-
-  redirect("/coach?posted=true")
 }
 
 const monthNames = [
