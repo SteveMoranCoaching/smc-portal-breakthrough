@@ -287,9 +287,21 @@ export default function RealtimeMessageThread({
   }, [])
 
   function getAttachmentUrl(path: string) {
-    return supabase.storage.from("message-attachments").getPublicUrl(path).data
-      .publicUrl
-  }
+  return supabase.storage
+    .from("message-attachments")
+    .getPublicUrl(path).data.publicUrl
+}
+
+function getAttachmentDownloadUrl(
+  path: string,
+  fileName?: string | null
+) {
+  return supabase.storage
+    .from("message-attachments")
+    .getPublicUrl(path, {
+      download: fileName || true,
+    }).data.publicUrl
+}
 
   return (
     <>
@@ -313,6 +325,13 @@ export default function RealtimeMessageThread({
           const attachmentUrl = message.attachment_path
             ? getAttachmentUrl(message.attachment_path)
             : null
+
+          const attachmentDownloadUrl = message.attachment_path
+  ? getAttachmentDownloadUrl(
+      message.attachment_path,
+      message.attachment_name
+    )
+  : null  
 
           return (
             <div
@@ -369,6 +388,19 @@ export default function RealtimeMessageThread({
                       {message.attachment_name || "View attachment"}
                     </a>
                   )}
+
+                  {attachmentDownloadUrl && (
+  <a
+    href={attachmentDownloadUrl}
+    className={`inline-flex items-center rounded-[0.75rem] px-2.5 py-1.5 text-[11px] font-bold transition ${
+      isOwn
+        ? "bg-black/10 text-black hover:bg-black/15"
+        : "bg-white/[0.07] text-white/75 hover:bg-white/[0.11] hover:text-white"
+    }`}
+  >
+    Download
+  </a>
+)}
                 </div>
 
                 <p
