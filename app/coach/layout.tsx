@@ -109,6 +109,11 @@ const sessionReviewCount = unreviewedSessionKeys.size
   const navItems = [
     { label: "Dashboard", href: "/coach", icon: "⌂" },
     {
+      label: "SMC Home",
+      href: "/coach/smc-home",
+      icon: "⌂",
+    },
+    {
       label: "Review Queue",
       href: "/coach/review",
       icon: "✓",
