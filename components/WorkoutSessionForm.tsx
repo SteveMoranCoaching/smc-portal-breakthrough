@@ -1,114 +1,62 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { isMainExercise } from "@/lib/exerciseSections"
 import {
-  isCircuitExercise,
-  isMainExercise,
-  isStretchExercise,
-  isSupersetExercise,
-  isWarmupExercise,
-} from "@/lib/exerciseSections"
-import {
-  detectPBs,
+  checkForPBs,
   getPreviousPerformance,
-  isMainLift,
   type PBResult,
   type SetEntry,
 } from "@/lib/pbs"
 import {
   getCircuitExerciseKey,
   getCircuitKey,
-  getSetKey,
   getStretchKey,
   getWarmupKey,
 } from "@/lib/workoutKeys"
 import {
-  createBlankSet,
-  formatFlexibleSet,
-  getExerciseLogType,
-  getLoggedFieldKeys,
-  getSetFieldValue,
-  primaryFieldConfig,
-  secondaryFieldConfig,
-} from "@/lib/exerciseLogTypes"
-import {
   getDemoForExercise,
   getExerciseDisplayLabel,
-  getPrescribedSetCount,
   getPreviousCoachFeedback,
   getPreviousLogForExercise,
 } from "@/lib/exerciseHelpers"
+import {
+  hasSetData,
+  isCompletedExercise,
+} from "@/lib/setStatus"
+import {
+  normaliseAchievementUnlock,
+  type AchievementUnlock,
+} from "@/lib/achievementHelpers"
 import AchievementUnlockToast from "@/components/AchievementUnlockToast"
-import FileUploader from "@/components/FileUploader"
 import {
   checkWorkoutAchievements,
   checkPBAchievements,
 } from "@/lib/achievements"
-
-type UploadedVideo = {
-  path: string
-  name: string
-  type: "image" | "video" | "file"
-  size: number
-}
-
-type ExerciseEntry = {
-  sets: SetEntry[]
-  notes: string
-  videos: UploadedVideo[]
-}
-
-type AchievementUnlock = {
-  title: string
-  description?: string
-  category?: string
-}
+import WorkoutExerciseCard from "@/components/workouts/WorkoutExerciseCard"
+import ExerciseDetailsModal from "@/components/workouts/ExerciseDetailsModal"
+import useWorkoutEditor from "@/hooks/useWorkoutEditor"
+import WorkoutNotes from "@/components/workouts/WorkoutNotes"
+import WorkoutVideoUploader from "@/components/workouts/WorkoutVideoUploader"
+import WorkoutSetList from "@/components/workouts/WorkoutSetList"
+import useWorkoutProgress from "@/hooks/useWorkoutProgress"
+import WorkoutWarmupSection from "@/components/workouts/WorkoutWarmupSection"
+import WorkoutCircuitSection from "@/components/workouts/WorkoutCircuitSection"
+import WorkoutStretchSection from "@/components/workouts/WorkoutStretchSection"
 
 const card =
   "relative scroll-mt-24 overflow-hidden rounded-[1.35rem] border border-white/[0.055] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] shadow-[0_12px_30px_rgba(0,0,0,0.55)]"
 
-const inputStyle =
-  "h-11 min-h-11 rounded-xl border border-white/[0.07] bg-black/35 px-2 text-center text-base font-black text-white outline-none placeholder:text-white/20 transition focus:border-smc-gold/70 focus:bg-black/50 focus:shadow-[0_0_14px_rgba(212,175,55,0.12)]"
-
 function getAutosaveKey(userId: string, sessionId: string) {
   return `smc-workout-autosave-${userId}-${sessionId}`
-}
-
-  function normaliseAchievementUnlock(result: any): AchievementUnlock | null {
-  const achievement = Array.isArray(result) ? result[0] : result
-  if (!achievement) return null
-
-  if (achievement.title) {
-    return {
-      title: achievement.title,
-      description: achievement.description || undefined,
-      category: achievement.category || undefined,
-    }
-  }
-
-  if (achievement.achievement_definition?.title) {
-    return {
-      title: achievement.achievement_definition.title,
-      description: achievement.achievement_definition.description || undefined,
-      category: achievement.achievement_definition.category || undefined,
-    }
-  }
-
-  return null
-}
-
-function hasSetData(set: SetEntry) {
-  return getLoggedFieldKeys(set).some((key) => Boolean(String(set[key] || "").trim()))
-}
-
-function isCompletedSet(set: SetEntry) {
-  const hasPrimary = Boolean(set.weight || set.bodyweight || set.height || set.speed || set.distance)
-  const hasSecondary = Boolean(set.reps || set.time || set.calories || set.rounds || set.distance)
-
-  return hasPrimary && hasSecondary
 }
 
 export default function WorkoutSessionForm({
@@ -121,65 +69,37 @@ export default function WorkoutSessionForm({
   isEditMode = false,
 }: any) {
   const router = useRouter()
-  const inputRefs = useRef<any[]>([])
+  const [saveError, setSaveError] = useState("")
   const exercises = useMemo(
     () => (Array.isArray(session?.exercises) ? session.exercises : []),
     [session?.exercises]
   )
 
-  const initialFormData = useMemo(
-  () =>
-    exercises.map((exercise: any) => {
-      const existingLog = existingLogs.find(
-        (log: any) =>
-          String(log.exercise_name || "").toLowerCase().trim() ===
-          String(exercise.name || "").toLowerCase().trim()
-      )
-
-      if (existingLog) {
-        return {
-          sets:
-            Array.isArray(existingLog.sets_completed) &&
-            existingLog.sets_completed.length > 0
-              ? existingLog.sets_completed.map((set: any) => ({
-                  weight: set.weight?.toString() || "",
-                  bodyweight: set.bodyweight?.toString() || "",
-                  height: set.height?.toString() || "",
-                  speed: set.speed?.toString() || "",
-                  distance: set.distance?.toString() || "",
-                  reps: set.reps?.toString() || "",
-                  time: set.time?.toString() || "",
-                  calories: set.calories?.toString() || "",
-                  rounds: set.rounds?.toString() || "",
-                  rpe: set.rpe?.toString() || "",
-                }))
-              : [
-                  createBlankSet(exercise),
-                ],
-          notes: existingLog.notes || "",
-          videos: [],
-        }
-      }
-
-      const setCount = getPrescribedSetCount(exercise)
-
-      return {
-        sets: Array.from({ length: Math.max(1, setCount) }, () =>
-          createBlankSet(exercise)
-        ),
-        notes: "",
-        videos: [],
-      }
-    }),
-  [exercises, existingLogs]
-)
+  const {
+  formData,
+  setFormData,
+  prefillMode,
+  confirmedSets,
+  fillFromPreviousSession,
+  startBlankSession,
+  confirmSet,
+  updateSetField,
+  addSet,
+  removeSet,
+  updateNotes,
+  addUploadedVideo,
+  clearUploadedVideos,
+  removeUploadedVideo,
+  setInputRef,
+} = useWorkoutEditor({
+  exercises,
+  previousLogs,
+  existingLogs,
+  onEdit: () => setSaveError(""),
+})
 
   const [activeDemo, setActiveDemo] = useState<any | null>(null)
   const [activeExerciseInfo, setActiveExerciseInfo] = useState<any | null>(null)
-  const [prefillMode, setPrefillMode] = useState<"unset" | "previous" | "blank">(
-    "unset"
-  )
-  const [confirmedSets, setConfirmedSets] = useState<Record<string, boolean>>({})
   const [warmupComplete, setWarmupComplete] = useState<Record<string, boolean>>({})
   const [warmupSectionComplete, setWarmupSectionComplete] = useState(false)
   const [stretchComplete, setStretchComplete] = useState<Record<string, boolean>>({})
@@ -188,7 +108,6 @@ export default function WorkoutSessionForm({
   const [circuitExerciseComplete, setCircuitExerciseComplete] = useState<Record<string, boolean>>({})
   const autosaveKey = getAutosaveKey(userId, session.id)
 
-const [formData, setFormData] = useState<ExerciseEntry[]>(initialFormData)
 useEffect(() => {
   if (typeof window === "undefined") return
 
@@ -245,7 +164,6 @@ if (parsed?.circuitExerciseComplete) {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved">("idle")
-  const [saveError, setSaveError] = useState("")
   const [uploadingExercise, setUploadingExercise] = useState("")
   const [complete, setComplete] = useState(false)
   const [pbResults, setPbResults] = useState<PBResult[]>([])
@@ -255,6 +173,29 @@ if (parsed?.circuitExerciseComplete) {
   const [sessionNotes, setSessionNotes] = useState("")
   const [achievementUnlock, setAchievementUnlock] =
     useState<AchievementUnlock | null>(null)
+  const {
+  warmupExercises,
+  mainExercises,
+  stretchExercises,
+  circuitExercises,
+  supersetExercises,
+  warmupCompletedCount,
+  warmupAllComplete,
+  stretchCompletedCount,
+  stretchAllComplete,
+  circuitCompletedCount,
+  circuitAnyCompletedCount,
+  sessionStats,
+} = useWorkoutProgress({
+  exercises,
+  formData,
+  warmupComplete,
+  warmupSectionComplete,
+  stretchComplete,
+  stretchSectionComplete,
+  circuitComplete,
+  circuitExerciseComplete,
+})
 
  useEffect(() => {
   if (typeof window === "undefined") return
@@ -310,206 +251,6 @@ if (parsed?.circuitExerciseComplete) {
   })[0]
 }, [pbResults])
 
-  const warmupExercises = useMemo(
-    () =>
-      exercises
-        .map((exercise: any, index: number) => ({
-          exercise,
-          originalIndex: index,
-        }))
-        .filter((item: any) => isWarmupExercise(item.exercise)),
-    [exercises]
-  )
-
-  const mainExercises = useMemo(
-    () =>
-      exercises
-        .map((exercise: any, index: number) => ({
-          exercise,
-          originalIndex: index,
-        }))
-        .filter((item: any) => isMainExercise(item.exercise)),
-    [exercises]
-  )
-
-  const stretchExercises = useMemo(
-    () =>
-      exercises
-        .map((exercise: any, index: number) => ({
-          exercise,
-          originalIndex: index,
-        }))
-        .filter((item: any) => isStretchExercise(item.exercise)),
-    [exercises]
-  )
-
-  const circuitExercises = useMemo(
-  () =>
-    exercises
-      .map((exercise: any, index: number) => ({
-        exercise,
-        originalIndex: index,
-      }))
-      .filter((item: any) => isCircuitExercise(item.exercise)),
-  [exercises]
-)
-
-const supersetExercises = useMemo(
-  () =>
-    exercises
-      .map((exercise: any, index: number) => ({
-        exercise,
-        originalIndex: index,
-      }))
-      .filter((item: any) => isSupersetExercise(item.exercise)),
-  [exercises]
-)
-
-  const warmupCompletedCount = warmupExercises.filter((item: any) => {
-    const exerciseName =
-      item.exercise?.name || `Warm-up ${item.originalIndex + 1}`
-
-    return warmupComplete[`${item.originalIndex}-${exerciseName}`]
-  }).length
-
-  const warmupAllComplete =
-    warmupExercises.length > 0 &&
-    warmupCompletedCount >= warmupExercises.length &&
-    warmupSectionComplete
-
-  const stretchCompletedCount = stretchExercises.filter((item: any) => {
-    const exerciseName =
-      item.exercise?.name || `Stretch ${item.originalIndex + 1}`
-
-    return stretchComplete[`${item.originalIndex}-${exerciseName}`]
-  }).length
-
-  const stretchAllComplete =
-    stretchExercises.length > 0 &&
-    stretchCompletedCount >= stretchExercises.length &&
-    stretchSectionComplete
-
-  const circuitCompletedCount = circuitExercises.filter((item: any) => {
-    const circuit = item.exercise
-    const exerciseIndex = item.originalIndex
-    const circuitName = circuit?.name || `Circuit ${exerciseIndex + 1}`
-    const circuitKey = getCircuitKey(exerciseIndex, circuitName)
-
-    const nestedExercises = Array.isArray(circuit?.circuit?.exercises)
-      ? circuit.circuit.exercises
-      : []
-
-    const nestedAllComplete =
-      nestedExercises.length > 0 &&
-      nestedExercises.every((circuitExercise: any, circuitExerciseIndex: number) => {
-        const circuitExerciseName =
-          circuitExercise.name || `Exercise ${circuitExerciseIndex + 1}`
-
-        const circuitExerciseKey = getCircuitExerciseKey(
-          exerciseIndex,
-          circuitName,
-          circuitExerciseIndex,
-          circuitExerciseName
-        )
-
-        return Boolean(circuitExerciseComplete[circuitExerciseKey])
-      })
-
-    return Boolean(circuitComplete[circuitKey]) || nestedAllComplete
-  }).length
-
-  const circuitAnyCompletedCount = circuitExercises.reduce(
-    (total: number, item: any) => {
-      const circuit = item.exercise
-      const exerciseIndex = item.originalIndex
-      const circuitName = circuit?.name || `Circuit ${exerciseIndex + 1}`
-      const circuitKey = getCircuitKey(exerciseIndex, circuitName)
-
-      const outerComplete = circuitComplete[circuitKey] ? 1 : 0
-
-      const nestedExercises = Array.isArray(circuit?.circuit?.exercises)
-        ? circuit.circuit.exercises
-        : []
-
-      const nestedCompleteCount = nestedExercises.filter(
-        (circuitExercise: any, circuitExerciseIndex: number) => {
-          const circuitExerciseName =
-            circuitExercise.name || `Exercise ${circuitExerciseIndex + 1}`
-
-          const circuitExerciseKey = getCircuitExerciseKey(
-            exerciseIndex,
-            circuitName,
-            circuitExerciseIndex,
-            circuitExerciseName
-          )
-
-          return Boolean(circuitExerciseComplete[circuitExerciseKey])
-        }
-      ).length
-
-      return total + outerComplete + nestedCompleteCount
-    },
-    0
-  )
-
-  const sessionStats = useMemo(() => {
-    const mainEntries = mainExercises.map((item: any) => formData[item.originalIndex])
-
-    const completedExercises = mainEntries.filter((entry: {
-  sets: any[]
-}) => {
-      const completedSetCount = entry?.sets.filter((set: any) => isCompletedSet(set)).length || 0
-      return completedSetCount >= Math.max(1, entry?.sets.length || 1)
-    }).length
-
-    const totalCompletedSets = mainEntries.reduce((total: number, entry: any) => {
-  return total + (entry?.sets.filter((set: any) => isCompletedSet(set)).length || 0)
-}, 0)
-
-const totalLoggedSets = mainEntries.reduce((total: number, entry: any) => {
-  return total + (entry?.sets.filter((set: any) => hasSetData(set)).length || 0)
-}, 0)
-
-const hasAnyLoggedWork =
-  mainEntries.some((entry: any) => {
-    return (
-      entry?.sets.some((set: any) => hasSetData(set)) ||
-      entry?.notes.trim().length > 0 ||
-      Boolean(entry?.videos.length > 0)
-    )
-  }) || warmupCompletedCount > 0
-  || circuitAnyCompletedCount > 0
-  || stretchCompletedCount > 0
-
-    const totalProgressItems = mainExercises.length + circuitExercises.length
-    const completedProgressItems = completedExercises + circuitCompletedCount
-
-    const progress =
-      totalProgressItems > 0
-        ? Math.round((completedProgressItems / totalProgressItems) * 100)
-        : warmupAllComplete || stretchAllComplete
-          ? 100
-          : 0
-
-    return {
-      completedExercises,
-      totalCompletedSets,
-      totalLoggedSets,
-      hasAnyLoggedWork,
-      progress,
-    }
-  }, [
-    formData,
-    mainExercises,
-    warmupAllComplete,
-    warmupCompletedCount,
-    stretchCompletedCount,
-    stretchAllComplete,
-    circuitExercises,
-    circuitCompletedCount,
-    circuitAnyCompletedCount,
-  ])
-
   function handleInputFocus() {
     setKeyboardActive(true)
   }
@@ -534,49 +275,6 @@ const hasAnyLoggedWork =
     if (isEditMode) return "Save Changes"
     if (!sessionStats.hasAnyLoggedWork) return "Log your first set"
     return "Complete Workout"
-  }
-
-  function fillFromPreviousSession() {
-    setPrefillMode("previous")
-    setConfirmedSets({})
-    setSaveError("")
-
-    setFormData((current) =>
-      current.map((exerciseEntry, exerciseIndex) => {
-        const exercise = exercises[exerciseIndex]
-        const previousLog = getPreviousLogForExercise(previousLogs, exercise?.name)
-
-        if (!previousLog?.sets_completed) return exerciseEntry
-
-        return {
-          ...exerciseEntry,
-          sets: exerciseEntry.sets.map((set, setIndex) => {
-            const previousSet = previousLog.sets_completed?.[setIndex]
-            if (!previousSet) return set
-
-            return {
-              ...createBlankSet(exercise),
-              weight: previousSet.weight?.toString() || "",
-              bodyweight: previousSet.bodyweight?.toString() || "",
-              height: previousSet.height?.toString() || "",
-              speed: previousSet.speed?.toString() || "",
-              distance: previousSet.distance?.toString() || "",
-              reps: previousSet.reps?.toString() || "",
-              time: previousSet.time?.toString() || "",
-              calories: previousSet.calories?.toString() || "",
-              rounds: previousSet.rounds?.toString() || "",
-              rpe: previousSet.rpe?.toString() || "",
-            }
-          }),
-        }
-      })
-    )
-  }
-
-  function startBlankSession() {
-    setPrefillMode("blank")
-    setConfirmedSets({})
-    setSaveError("")
   }
 
   function toggleWarmupItem(exerciseIndex: number, exerciseName: string) {
@@ -625,153 +323,6 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
     }))
   }
 
-  function confirmSet(exerciseIndex: number, setIndex: number) {
-    setConfirmedSets((current) => ({
-      ...current,
-      [getSetKey(exerciseIndex, setIndex)]: true,
-    }))
-  }
-
-  function markSetActive(exerciseIndex: number, setIndex: number) {
-    setConfirmedSets((current) => ({
-      ...current,
-      [getSetKey(exerciseIndex, setIndex)]: true,
-    }))
-  }
-
-  function setInputRef(
-    exerciseIndex: number,
-    setIndex: number,
-    field: keyof SetEntry,
-    el: HTMLInputElement | null
-  ) {
-    if (!inputRefs.current[exerciseIndex]) inputRefs.current[exerciseIndex] = []
-    if (!inputRefs.current[exerciseIndex][setIndex]) {
-      inputRefs.current[exerciseIndex][setIndex] = {}
-    }
-
-    inputRefs.current[exerciseIndex][setIndex][field] = el
-  }
-
-  function focusInput(
-    exerciseIndex: number,
-    setIndex: number,
-    field: keyof SetEntry
-  ) {
-    setTimeout(() => {
-      inputRefs.current?.[exerciseIndex]?.[setIndex]?.[field]?.focus()
-    }, 80)
-  }
-
-  function updateSetField(
-    exerciseIndex: number,
-    setIndex: number,
-    field: keyof SetEntry,
-    value: string
-  ) {
-    markSetActive(exerciseIndex, setIndex)
-    setSaveError("")
-
-    setFormData((current) =>
-      current.map((exercise, i) => {
-        if (i !== exerciseIndex) return exercise
-
-        return {
-          ...exercise,
-          sets: exercise.sets.map((set, j) => {
-            if (j !== setIndex) return set
-            return { ...set, [field]: value }
-          }),
-        }
-      })
-    )
-  }
-
-  function addSet(exerciseIndex: number) {
-    const nextSetIndex = formData[exerciseIndex]?.sets.length || 0
-
-    setFormData((current) =>
-      current.map((exercise, i) => {
-        if (i !== exerciseIndex) return exercise
-        return {
-          ...exercise,
-          sets: [...exercise.sets, createBlankSet(exercises[exerciseIndex])],
-        }
-      })
-    )
-
-    const nextFocusField =
-      primaryFieldConfig[getExerciseLogType(exercises[exerciseIndex]).primary].key ||
-      "rpe"
-
-    focusInput(exerciseIndex, nextSetIndex, nextFocusField as keyof SetEntry)
-  }
-
-  function removeSet(exerciseIndex: number, setIndex: number) {
-    setFormData((current) =>
-      current.map((exercise, i) => {
-        if (i !== exerciseIndex) return exercise
-        if (exercise.sets.length === 1) return exercise
-
-        return {
-          ...exercise,
-          sets: exercise.sets.filter((_, j) => j !== setIndex),
-        }
-      })
-    )
-  }
-
-  function updateNotes(exerciseIndex: number, value: string) {
-    setSaveError("")
-
-    setFormData((current) =>
-      current.map((exercise, i) =>
-        i === exerciseIndex ? { ...exercise, notes: value } : exercise
-      )
-    )
-  }
-
-  function addUploadedVideo(exerciseIndex: number, video: UploadedVideo) {
-    setSaveError("")
-
-    setFormData((current) =>
-      current.map((exercise, i) =>
-        i === exerciseIndex
-          ? {
-              ...exercise,
-              videos: [...exercise.videos, video],
-            }
-          : exercise
-      )
-    )
-  }
-
-  function clearUploadedVideos(exerciseIndex: number) {
-    setFormData((current) =>
-      current.map((exercise, i) =>
-        i === exerciseIndex
-          ? {
-              ...exercise,
-              videos: [],
-            }
-          : exercise
-      )
-    )
-  }
-
-  function removeUploadedVideo(exerciseIndex: number, videoIndex: number) {
-    setFormData((current) =>
-      current.map((exercise, i) =>
-        i === exerciseIndex
-          ? {
-              ...exercise,
-              videos: exercise.videos.filter((_, j) => j !== videoIndex),
-            }
-          : exercise
-      )
-    )
-  }
-
   async function fetchHistoricalLogsByExercise() {
     const exerciseNames = exercises
       .filter((exercise: any) => isMainExercise(exercise))
@@ -795,32 +346,6 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
       acc[key].push(log)
       return acc
     }, {})
-  }
-
-  function checkForPBs(historicalLogsByExercise: Record<string, any[]>) {
-    const detectedPBs: PBResult[] = []
-
-    formData.forEach((entry, exerciseIndex) => {
-      const exercise = exercises[exerciseIndex]
-      if (!isMainExercise(exercise)) return
-
-      const exerciseName = exercise?.name
-if (!exerciseName) return
-if (!isMainLift(exerciseName)) return
-
-const key = String(exerciseName).toLowerCase().trim()
-      const previousExerciseLogs = historicalLogsByExercise[key] || []
-
-      detectedPBs.push(
-        ...detectPBs({
-          exerciseName,
-          currentSets: entry.sets,
-          previousLogs: previousExerciseLogs,
-        })
-      )
-    })
-
-    return detectedPBs
   }
 
   async function saveDetectedPBs(pbs: PBResult[]) {
@@ -926,7 +451,11 @@ const key = String(exerciseName).toLowerCase().trim()
 
       setMessage("Checking PBs...")
 
-      const detectedPBs = checkForPBs(historicalLogsByExercise)
+      const detectedPBs = checkForPBs(
+  exercises,
+  formData,
+  historicalLogsByExercise
+)
 
       const workoutAchievementResult = await checkWorkoutAchievements(
         supabase,
@@ -1075,348 +604,27 @@ const key = String(exerciseName).toLowerCase().trim()
         )}
 
         {warmupExercises.length > 0 && (
-          <details
-            open={!warmupAllComplete}
-            className={`${card} p-3 transition-all duration-300 ${
-              warmupAllComplete
-                ? "border-emerald-400/25 shadow-[0_0_28px_rgba(52,211,153,0.10)]"
-                : "border-smc-gold/20"
-            }`}
-          >
-            <summary className="cursor-pointer list-none">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/35 to-transparent" />
-
-              {warmupAllComplete && (
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.10),transparent_34%)]" />
-              )}
-
-              <div className="relative z-10 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/70">
-                    Warm-up / Mobility
-                  </p>
-
-                  <h3 className="mt-1 text-lg font-black text-white">
-                    Prep Work
-                  </h3>
-
-                  <p className="mt-1 text-xs text-white/45">
-                    {warmupCompletedCount}/{warmupExercises.length} complete ·
-                    Tap to expand
-                  </p>
-                </div>
-
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
-                    warmupAllComplete
-                      ? "bg-emerald-400 text-black"
-                      : "border border-smc-gold/25 bg-smc-gold/[0.08] text-smc-gold"
-                  }`}
-                >
-                  {warmupAllComplete ? "Done" : "Start"}
-                </span>
-              </div>
-            </summary>
-
-            <div className="relative z-10 mt-3 flex flex-col gap-2">
-              {warmupExercises.map((item: any) => {
-                const warmup = item.exercise
-                const exerciseIndex = item.originalIndex
-                const exerciseName =
-                  warmup?.name || `Warm-up ${exerciseIndex + 1}`
-                const demo = getDemoForExercise(exerciseDemos, exerciseName)
-                const warmupKey = getWarmupKey(exerciseIndex, exerciseName)
-                const itemComplete = Boolean(warmupComplete[warmupKey])
-
-                return (
-                  <div
-                    key={warmupKey}
-                    className={`rounded-2xl border p-3 transition ${
-                      itemComplete
-                        ? "border-emerald-400/25 bg-emerald-400/[0.07]"
-                        : "border-white/[0.06] bg-black/25"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="break-words text-sm font-black text-white">
-                          {exerciseName}
-                        </p>
-
-                        <p className="mt-1 break-words text-xs leading-5 text-white/45">
-                          {getExerciseDisplayLabel(warmup)}
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleWarmupItem(exerciseIndex, exerciseName)
-                        }
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-black transition active:scale-95 ${
-                          itemComplete
-                            ? "border-emerald-400/50 bg-emerald-400/20 text-emerald-300"
-                            : "border-white/10 bg-white/[0.035] text-white/35"
-                        }`}
-                        aria-label={`Mark ${exerciseName} complete`}
-                      >
-                        ✓
-                      </button>
-                    </div>
-
-                    {demo && (
-                      <button
-                        type="button"
-                        onClick={() => demo?.video_url && setActiveDemo(demo)}
-                        disabled={!demo?.video_url}
-                        className="group relative mt-2.5 h-[76px] w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left disabled:cursor-default"
-                      >
-                        {demo?.thumbnail_url ? (
-                          <img
-                            src={demo.thumbnail_url}
-                            alt={`${exerciseName} demo`}
-                            className="h-full w-full object-cover opacity-80 transition group-hover:scale-[1.03] group-hover:opacity-100"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.10),transparent_55%),#070707] px-4 text-center">
-                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-smc-gold/65">
-                              Demo coming soon
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
-
-                        <div className="absolute bottom-2 left-2">
-                          <span className="rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/70 backdrop-blur">
-                            Video Demo
-                          </span>
-                        </div>
-
-                        {demo?.video_url && (
-                          <div className="absolute bottom-2 right-2">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-smc-gold/60 bg-black/55 text-smc-gold shadow-[0_0_14px_rgba(212,175,55,0.20)] backdrop-blur">
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-3.5 w-3.5 fill-current"
-                                aria-hidden="true"
-                              >
-                                <path d="M8 5v14l11-7z" />
-                              </svg>
-                            </span>
-                          </div>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-
-              <button
-                type="button"
-                onClick={() => setWarmupSectionComplete(true)}
-                disabled={warmupCompletedCount < warmupExercises.length}
-                className="mt-1 min-h-11 w-full rounded-2xl bg-smc-gold px-4 py-2 text-xs font-black text-black transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
-              >
-                {warmupCompletedCount >= warmupExercises.length
-                  ? "Mark Warm-up Complete"
-                  : "Tick all warm-up items first"}
-              </button>
-            </div>
-          </details>
-        )}
+  <WorkoutWarmupSection
+    exercises={warmupExercises}
+    exerciseDemos={exerciseDemos}
+    completedItems={warmupComplete}
+    completedCount={warmupCompletedCount}
+    allComplete={warmupAllComplete}
+    onToggleItem={toggleWarmupItem}
+    onCompleteSection={() => setWarmupSectionComplete(true)}
+    onOpenDemo={setActiveDemo}
+  />
+)}
 
         {circuitExercises.length > 0 && (
-          <section className={`${card} p-3`}>
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/35 to-transparent" />
-
-            <div className="relative z-10">
-              <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/70">
-                Circuit Block
-              </p>
-
-              <h3 className="mt-1 text-lg font-black text-white">
-                Conditioning Work
-              </h3>
-
-              <p className="mt-1 text-xs text-white/45">
-                Complete each circuit as prescribed.
-              </p>
-
-              <div className="mt-3 space-y-2">
-                {circuitExercises.map((item: any) => {
-                  const circuit = item.exercise
-                  const exerciseIndex = item.originalIndex
-                  const circuitName =
-                    circuit?.name || `Circuit ${exerciseIndex + 1}`
-
-                  const circuitKey = getCircuitKey(exerciseIndex, circuitName)
-                  const nestedExercises = Array.isArray(circuit?.circuit?.exercises)
-                    ? circuit.circuit.exercises
-                    : []
-
-                  const nestedAllComplete =
-                    nestedExercises.length > 0 &&
-                    nestedExercises.every(
-                      (circuitExercise: any, circuitExerciseIndex: number) => {
-                        const circuitExerciseName =
-                          circuitExercise.name ||
-                          `Exercise ${circuitExerciseIndex + 1}`
-
-                        const circuitExerciseKey = getCircuitExerciseKey(
-                          exerciseIndex,
-                          circuitName,
-                          circuitExerciseIndex,
-                          circuitExerciseName
-                        )
-
-                        return Boolean(circuitExerciseComplete[circuitExerciseKey])
-                      }
-                    )
-
-                  const itemComplete =
-                    Boolean(circuitComplete[circuitKey]) || nestedAllComplete
-
-                  return (
-                    <div
-                      key={`${circuitName}-${exerciseIndex}`}
-                      className={`rounded-2xl border p-3 transition ${
-                        itemComplete
-                          ? "border-smc-gold/35 bg-smc-gold/[0.07]"
-                          : "border-white/[0.06] bg-black/25"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="break-words text-sm font-black text-white">
-                            {circuitName}
-                          </p>
-
-                          <p className="mt-1 break-words text-xs leading-5 text-white/45">
-                            {circuit?.prescription || "Complete as prescribed."}
-                          </p>
-
-                          {circuit?.circuit && (
-                            <div className="mt-3 space-y-3">
-                              <div className="flex flex-wrap gap-2">
-                                <span className="rounded-full border border-smc-gold/20 bg-smc-gold/[0.08] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
-                                  {circuit.circuit.rounds || 1} rounds
-                                </span>
-
-                                {circuit.circuit.workSeconds > 0 && (
-                                  <span className="rounded-full border border-white/[0.08] bg-white/[0.035] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/50">
-                                    {circuit.circuit.workSeconds}s work
-                                  </span>
-                                )}
-
-                                {circuit.circuit.restSeconds > 0 && (
-                                  <span className="rounded-full border border-white/[0.08] bg-white/[0.035] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/50">
-                                    {circuit.circuit.restSeconds}s rest
-                                  </span>
-                                )}
-                              </div>
-
-                              {nestedExercises.length > 0 && (
-                                <div className="space-y-2">
-                                  {nestedExercises.map(
-                                    (
-                                      circuitExercise: any,
-                                      circuitExerciseIndex: number
-                                    ) => {
-                                      const circuitExerciseName =
-                                        circuitExercise.name ||
-                                        `Exercise ${circuitExerciseIndex + 1}`
-
-                                      const circuitExerciseKey =
-                                        getCircuitExerciseKey(
-                                          exerciseIndex,
-                                          circuitName,
-                                          circuitExerciseIndex,
-                                          circuitExerciseName
-                                        )
-
-                                      const circuitExerciseDone = Boolean(
-                                        circuitExerciseComplete[
-                                          circuitExerciseKey
-                                        ]
-                                      )
-
-                                      return (
-                                        <div
-                                          key={circuitExerciseKey}
-                                          className={`rounded-xl border px-3 py-2 transition ${
-                                            circuitExerciseDone
-                                              ? "border-smc-gold/35 bg-smc-gold/[0.08]"
-                                              : "border-white/[0.055] bg-black/30"
-                                          }`}
-                                        >
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="min-w-0">
-                                              <p className="text-sm font-black text-white">
-                                                {circuitExerciseName}
-                                              </p>
-
-                                              {circuitExercise.prescription && (
-                                                <p className="mt-0.5 text-xs leading-5 text-white/45">
-                                                  {
-                                                    circuitExercise.prescription
-                                                  }
-                                                </p>
-                                              )}
-                                            </div>
-
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                toggleCircuitExerciseItem(
-                                                  exerciseIndex,
-                                                  circuitName,
-                                                  circuitExerciseIndex,
-                                                  circuitExerciseName
-                                                )
-                                              }
-                                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-black transition active:scale-95 ${
-                                                circuitExerciseDone
-                                                  ? "border-smc-gold/60 bg-smc-gold/25 text-smc-gold"
-                                                  : "border-white/10 bg-white/[0.035] text-white/35"
-                                              }`}
-                                              aria-label={`Mark ${circuitExerciseName} complete`}
-                                            >
-                                              ✓
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )
-                                    }
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            toggleCircuitItem(exerciseIndex, circuitName)
-                          }
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-black transition active:scale-95 ${
-                            itemComplete
-                              ? "border-smc-gold/50 bg-smc-gold/20 text-smc-gold"
-                              : "border-white/10 bg-white/[0.035] text-white/35"
-                          }`}
-                          aria-label={`Mark ${circuitName} complete`}
-                        >
-                          ✓
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </section>
-        )}
+  <WorkoutCircuitSection
+    exercises={circuitExercises}
+    completedItems={circuitComplete}
+    completedExerciseItems={circuitExerciseComplete}
+    onToggleItem={toggleCircuitItem}
+    onToggleExerciseItem={toggleCircuitExerciseItem}
+  />
+)}
 
         {supersetExercises.length > 0 && (
   <section className={`${card} p-3`}>
@@ -1476,13 +684,12 @@ const key = String(exerciseName).toLowerCase().trim()
           const previousCoachFeedback = getPreviousCoachFeedback(previousLog)
           const demo = getDemoForExercise(exerciseDemos, exerciseName)
           const entry = formData[exerciseIndex]
-          const completedSetCount = entry?.sets.filter((set: any) => isCompletedSet(set)).length || 0
-          const exerciseComplete =
-            completedSetCount >= Math.max(1, entry?.sets.length || 1)
+          const exerciseComplete = isCompletedExercise(entry?.sets ?? [])
 
           return (
-            <div
-              key={`${exerciseName}-${exerciseIndex}`}
+            <Fragment key={`${exerciseName}-${exerciseIndex}`}>
+
+              <div
               className={`${card} p-3 transition-all duration-300 ${
                 exerciseComplete
                   ? "border-smc-gold/25 shadow-[0_0_28px_rgba(212,175,55,0.10)]"
@@ -1496,22 +703,13 @@ const key = String(exerciseName).toLowerCase().trim()
               )}
 
               <div className="relative z-10">
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <p className="text-[9px] font-black uppercase tracking-[0.28em] text-smc-gold/70">
-                      Exercise {exerciseIndex + 1}
-                    </p>
-
-                    {exerciseComplete && (
-                      <span className="rounded-full border border-smc-gold/35 bg-smc-gold/[0.12] px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-smc-gold">
-                        ✓ Complete
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-  type="button"
-  onClick={() =>
+                <WorkoutExerciseCard
+  exerciseName={exerciseName}
+  exerciseIndex={exerciseIndex}
+  exerciseComplete={exerciseComplete}
+  prescription={ex?.prescription}
+  demo={demo}
+  onOpenDetails={() =>
     setActiveExerciseInfo({
       exercise: ex,
       exerciseName,
@@ -1520,62 +718,12 @@ const key = String(exerciseName).toLowerCase().trim()
       previousCoachFeedback,
     })
   }
-  className="mx-auto mt-1 block break-words text-xl font-black leading-tight text-white transition hover:text-smc-gold active:scale-[0.98]"
->
-  {exerciseName}
-</button>
-
-                  <div className="mt-2 flex justify-center">
-                    <span className="max-w-full break-words rounded-full border border-smc-gold/25 bg-smc-gold/[0.08] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-smc-gold">
-                      {ex?.prescription || "No prescription"}
-                    </span>
-                  </div>
-                </div>
-
-                {demo && (
-                  <button
-                    type="button"
-                    onClick={() => demo?.video_url && setActiveDemo(demo)}
-                    disabled={!demo?.video_url}
-                    className="group relative mt-2.5 h-[86px] w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left disabled:cursor-default"
-                  >
-                    {demo?.thumbnail_url ? (
-                      <img
-                        src={demo.thumbnail_url}
-                        alt={`${exerciseName} demo`}
-                        className="h-full w-full object-cover opacity-80 transition group-hover:scale-[1.03] group-hover:opacity-100"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.10),transparent_55%),#070707] px-4 text-center">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-smc-gold/65">
-                          Demo coming soon
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
-
-                    <div className="absolute bottom-2 left-2">
-                      <span className="rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/70 backdrop-blur">
-                        Video Demo
-                      </span>
-                    </div>
-
-                    {demo?.video_url && (
-                      <div className="absolute bottom-2 right-2">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full border border-smc-gold/60 bg-black/55 text-smc-gold shadow-[0_0_14px_rgba(212,175,55,0.20)] backdrop-blur">
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-3.5 w-3.5 fill-current"
-                            aria-hidden="true"
-                          >
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                )}
+  onOpenDemo={() => {
+    if (demo?.video_url) {
+      setActiveDemo(demo)
+    }
+  }}
+/>
 
                 {ex?.notes && (
                   <p className="mt-2 break-words text-xs leading-5 text-white/45">
@@ -1583,439 +731,79 @@ const key = String(exerciseName).toLowerCase().trim()
                   </p>
                 )}
 
-                {previousPerformance && (
-                  <div className="mt-3 rounded-2xl border border-smc-gold/15 bg-smc-gold/[0.045] p-3">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold/75">
-                        Previous Performance
-                      </p>
+                <WorkoutSetList
+  exercise={ex}
+  exerciseIndex={exerciseIndex}
+  sets={formData[exerciseIndex]?.sets || []}
+  previousLog={previousLog}
+  prefillMode={prefillMode}
+  confirmedSets={confirmedSets}
+  disabled={saving || complete}
+  onConfirmSet={(setIndex) =>
+    confirmSet(exerciseIndex, setIndex)
+  }
+  onRemoveSet={(setIndex) =>
+    removeSet(exerciseIndex, setIndex)
+  }
+  onAddSet={() => addSet(exerciseIndex)}
+  onFocus={handleInputFocus}
+  onBlur={handleInputBlur}
+  onChangeSet={(setIndex, field, value) =>
+    updateSetField(
+      exerciseIndex,
+      setIndex,
+      field,
+      value
+    )
+  }
+  setInputRef={(setIndex, field, element) =>
+    setInputRef(
+      exerciseIndex,
+      setIndex,
+      field,
+      element
+    )
+  }
+/>
 
-                      <p className="text-[10px] font-bold text-white/35">
-                        Last completed {previousPerformance.date}
-                      </p>
-                    </div>
+                <WorkoutNotes
+  value={formData[exerciseIndex]?.notes || ""}
+  disabled={saving || complete}
+  onFocus={handleInputFocus}
+  onBlur={handleInputBlur}
+  onChange={(value) => updateNotes(exerciseIndex, value)}
+/>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-white/[0.06] bg-black/25 p-2.5 text-center">
-                        <p className="text-base font-black text-white">
-                          {previousPerformance.bestSet.weight}kg ×{" "}
-                          {previousPerformance.bestSet.reps}
-                        </p>
-
-                        <p className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-white/35">
-                          Best Previous Set
-                        </p>
-                      </div>
-
-                      <div className="rounded-xl border border-white/[0.06] bg-black/25 p-2.5 text-center">
-                        <p className="text-base font-black text-white">
-                          {previousPerformance.setCount}
-                        </p>
-
-                        <p className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.14em] text-white/35">
-                          Sets Logged
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 rounded-xl border border-white/[0.05] bg-black/20 px-3 py-2">
-                      <p className="text-[10px] font-medium text-white/38">
-                        Last session: {previousPerformance.setCount}{" "}
-                        {previousPerformance.setCount === 1 ? "set" : "sets"}
-                        {previousPerformance.bestSet.rpe
-                          ? ` · Best set RPE ${previousPerformance.bestSet.rpe}`
-                          : ""}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {previousCoachFeedback && (
-  <div className="mt-3 rounded-2xl border border-smc-gold/20 bg-smc-gold/[0.05] p-3">
-    <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold/75">
-      Last Coach Note
-    </p>
-
-    <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-white/75">
-      {previousCoachFeedback}
-    </p>
-  </div>
-)}
-
-                <div className="mt-3 space-y-2">
-                  {formData[exerciseIndex]?.sets.map((set, setIndex) => {
-                    const logType = getExerciseLogType(ex)
-                    const primaryField = primaryFieldConfig[logType.primary]
-                    const secondaryField = secondaryFieldConfig[logType.secondary]
-                    const primaryKey = primaryField.key
-                    const secondaryKey = secondaryField.key
-                    const setHasData = hasSetData(set)
-                    const previousSet = previousLog?.sets_completed?.[setIndex]
-                    const setKey = getSetKey(exerciseIndex, setIndex)
-                    const isConfirmed = confirmedSets[setKey]
-                    const setComplete = isCompletedSet(set)
-                    const isPrefilledUnconfirmed =
-                      prefillMode === "previous" && setHasData && !isConfirmed
-
-                    return (
-                      <div
-                        key={setIndex}
-                        className={`rounded-2xl border px-2.5 py-2.5 transition ${
-                          setComplete
-                            ? "border-smc-gold/45 bg-smc-gold/[0.075] shadow-[0_0_16px_rgba(212,175,55,0.09)]"
-                            : isConfirmed
-                              ? "border-smc-gold/30 bg-smc-gold/[0.05]"
-                              : isPrefilledUnconfirmed
-                                ? "border-white/5 bg-white/[0.02] opacity-80"
-                                : setHasData
-                                  ? "border-smc-gold/22 bg-smc-gold/[0.04]"
-                                  : "border-white/[0.055] bg-black/20"
-                        }`}
-                      >
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">
-                                Set {setIndex + 1}
-                              </p>
-
-                              {previousSet && (
-                                <p className="text-[10px] font-semibold text-white/45">
-                                  Last: {formatFlexibleSet(previousSet, ex)}
-                                </p>
-                              )}
-
-                              {setComplete && (
-                                <p className="text-[10px] font-black text-smc-gold">
-                                  ✓ Logged
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => confirmSet(exerciseIndex, setIndex)}
-                              className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-black transition active:scale-95 ${
-                                isConfirmed || setComplete
-                                  ? "border-smc-gold/60 bg-smc-gold/25 text-smc-gold"
-                                  : "border-white/10 bg-white/[0.035] text-white/35"
-                              }`}
-                              aria-label={`Confirm set ${setIndex + 1}`}
-                            >
-                              ✓
-                            </button>
-
-                            {formData[exerciseIndex].sets.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeSet(exerciseIndex, setIndex)
-                                }
-                                className="min-h-8 rounded-full border border-red-500/15 bg-red-500/[0.07] px-2.5 py-1 text-[10px] font-bold text-red-300/80 transition active:scale-[0.98]"
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {primaryKey && (
-                            <input
-                              ref={(el) =>
-                                setInputRef(exerciseIndex, setIndex, primaryKey, el)
-                              }
-                              type={primaryField.type}
-                              inputMode={primaryField.inputMode}
-                              placeholder={primaryField.placeholder}
-                              value={getSetFieldValue(set, primaryKey)}
-                              onFocus={handleInputFocus}
-                              onBlur={handleInputBlur}
-                              onChange={(e) =>
-                                updateSetField(
-                                  exerciseIndex,
-                                  setIndex,
-                                  primaryKey,
-                                  e.target.value
-                                )
-                              }
-                              className={`${inputStyle} ${
-                                isPrefilledUnconfirmed
-                                  ? "text-white/45"
-                                  : "text-white"
-                              }`}
-                            />
-                          )}
-
-                          {secondaryKey && (
-                            <input
-                              ref={(el) =>
-                                setInputRef(exerciseIndex, setIndex, secondaryKey, el)
-                              }
-                              type={secondaryField.type}
-                              inputMode={secondaryField.inputMode}
-                              placeholder={secondaryField.placeholder}
-                              value={getSetFieldValue(set, secondaryKey)}
-                              onFocus={handleInputFocus}
-                              onBlur={handleInputBlur}
-                              onChange={(e) =>
-                                updateSetField(
-                                  exerciseIndex,
-                                  setIndex,
-                                  secondaryKey,
-                                  e.target.value
-                                )
-                              }
-                              className={`${inputStyle} ${
-                                isPrefilledUnconfirmed
-                                  ? "text-white/45"
-                                  : "text-white"
-                              }`}
-                            />
-                          )}
-
-                          <input
-                            ref={(el) =>
-                              setInputRef(exerciseIndex, setIndex, "rpe", el)
-                            }
-                            type="number"
-                            inputMode="decimal"
-                            placeholder="RPE"
-                            value={set.rpe}
-                            onFocus={handleInputFocus}
-                            onBlur={handleInputBlur}
-                            onChange={(e) =>
-                              updateSetField(
-                                exerciseIndex,
-                                setIndex,
-                                "rpe",
-                                e.target.value
-                              )
-                            }
-                            className={`${inputStyle} ${
-                              isPrefilledUnconfirmed
-                                ? "text-white/45"
-                                : "text-white"
-                            }`}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
-
-                  <button
-                    type="button"
-                    onClick={() => addSet(exerciseIndex)}
-                    className="min-h-11 w-full rounded-2xl border border-smc-gold/25 bg-smc-gold/[0.06] px-4 py-2 text-xs font-black text-smc-gold transition active:scale-[0.98]"
-                  >
-                    + Add Extra Set
-                  </button>
-                </div>
-
-                <textarea
-                  placeholder="Exercise notes..."
-                  value={formData[exerciseIndex]?.notes || ""}
-                  onFocus={handleInputFocus}
-                  onBlur={handleInputBlur}
-                  onChange={(e) => updateNotes(exerciseIndex, e.target.value)}
-                  className="mt-2.5 w-full rounded-2xl border border-white/5 bg-black/25 p-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/60"
-                  rows={2}
-                />
-
-                <div className="mt-2.5 space-y-2.5">
-                  <FileUploader
-                    bucket="exercise-videos"
-                    pathPrefix={`${userId}/${session.id}/${exerciseIndex}`}
-                    accept="video/*"
-                    label="Add training video"
-                    buttonLabel="Choose video"
-                    maxVideoMb={500}
-                    disabled={saving || complete}
-                    onUploaded={(video) => addUploadedVideo(exerciseIndex, video)}
-                    onClear={() => clearUploadedVideos(exerciseIndex)}
-                  />
-
-                  {formData[exerciseIndex]?.videos.length > 0 && (
-                    <div className="space-y-1.5">
-                      {formData[exerciseIndex].videos.map((video, videoIndex) => (
-                        <div
-                          key={`${video.path}-${videoIndex}`}
-                          className="flex items-center justify-between gap-2 rounded-xl border border-smc-gold/20 bg-smc-gold/[0.06] px-3 py-2"
-                        >
-                          <p className="min-w-0 truncate text-[10px] font-bold text-smc-gold/80">
-                            Video uploaded: {video.name}
-                          </p>
-
-                          <button
-                            type="button"
-                            onClick={() => removeUploadedVideo(exerciseIndex, videoIndex)}
-                            className="shrink-0 text-[10px] font-black text-red-300"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <WorkoutVideoUploader
+  userId={userId}
+  sessionId={session.id}
+  exerciseIndex={exerciseIndex}
+  videos={formData[exerciseIndex]?.videos || []}
+  disabled={saving || complete}
+  onUploaded={(video) => addUploadedVideo(exerciseIndex, video)}
+  onClear={() => clearUploadedVideos(exerciseIndex)}
+  onRemove={(videoIndex) =>
+    removeUploadedVideo(exerciseIndex, videoIndex)
+  }
+/>
               </div>
             </div>
+            </Fragment>
           )
         })}
 
       {stretchExercises.length > 0 && (
-          <details
-            open={!stretchAllComplete}
-            className={`${card} p-3 transition-all duration-300 ${
-              stretchAllComplete
-                ? "border-blue-400/25 shadow-[0_0_28px_rgba(96,165,250,0.10)]"
-                : "border-blue-400/20"
-            }`}
-          >
-            <summary className="cursor-pointer list-none">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/35 to-transparent" />
-
-              {stretchAllComplete && (
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(96,165,250,0.10),transparent_34%)]" />
-              )}
-
-              <div className="relative z-10 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.28em] text-blue-300/80">
-                    Post Session Stretch
-                  </p>
-
-                  <h3 className="mt-1 text-lg font-black text-white">
-                    Cool Down
-                  </h3>
-
-                  <p className="mt-1 text-xs text-white/45">
-                    {stretchCompletedCount}/{stretchExercises.length} complete ·
-                    Tap to expand
-                  </p>
-                </div>
-
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
-                    stretchAllComplete
-                      ? "bg-blue-400 text-black"
-                      : "border border-blue-400/25 bg-blue-400/[0.08] text-blue-300"
-                  }`}
-                >
-                  {stretchAllComplete ? "Done" : "Finish"}
-                </span>
-              </div>
-            </summary>
-
-            <div className="relative z-10 mt-3 flex flex-col gap-2">
-              {stretchExercises.map((item: any) => {
-                const stretch = item.exercise
-                const exerciseIndex = item.originalIndex
-                const exerciseName =
-                  stretch?.name || `Stretch ${exerciseIndex + 1}`
-                const demo = getDemoForExercise(exerciseDemos, exerciseName)
-                const stretchKey = getStretchKey(exerciseIndex, exerciseName)
-                const itemComplete = Boolean(stretchComplete[stretchKey])
-
-                return (
-                  <div
-                    key={stretchKey}
-                    className={`rounded-2xl border p-3 transition ${
-                      itemComplete
-                        ? "border-blue-400/25 bg-blue-400/[0.07]"
-                        : "border-white/[0.06] bg-black/25"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="break-words text-sm font-black text-white">
-                          {exerciseName}
-                        </p>
-
-                        <p className="mt-1 break-words text-xs leading-5 text-white/45">
-                          {getExerciseDisplayLabel(stretch)}
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleStretchItem(exerciseIndex, exerciseName)
-                        }
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-black transition active:scale-95 ${
-                          itemComplete
-                            ? "border-blue-400/50 bg-blue-400/20 text-blue-300"
-                            : "border-white/10 bg-white/[0.035] text-white/35"
-                        }`}
-                        aria-label={`Mark ${exerciseName} complete`}
-                      >
-                        ✓
-                      </button>
-                    </div>
-
-                    {demo && (
-                      <button
-                        type="button"
-                        onClick={() => demo?.video_url && setActiveDemo(demo)}
-                        disabled={!demo?.video_url}
-                        className="group relative mt-2.5 h-[76px] w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left disabled:cursor-default"
-                      >
-                        {demo?.thumbnail_url ? (
-                          <img
-                            src={demo.thumbnail_url}
-                            alt={`${exerciseName} demo`}
-                            className="h-full w-full object-cover opacity-80 transition group-hover:scale-[1.03] group-hover:opacity-100"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(96,165,250,0.10),transparent_55%),#070707] px-4 text-center">
-                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-300/65">
-                              Demo coming soon
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
-
-                        <div className="absolute bottom-2 left-2">
-                          <span className="rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/70 backdrop-blur">
-                            Video Demo
-                          </span>
-                        </div>
-
-                        {demo?.video_url && (
-                          <div className="absolute bottom-2 right-2">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-blue-400/60 bg-black/55 text-blue-300 shadow-[0_0_14px_rgba(96,165,250,0.20)] backdrop-blur">
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-3.5 w-3.5 fill-current"
-                                aria-hidden="true"
-                              >
-                                <path d="M8 5v14l11-7z" />
-                              </svg>
-                            </span>
-                          </div>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-
-              <button
-                type="button"
-                onClick={() => setStretchSectionComplete(true)}
-                disabled={stretchCompletedCount < stretchExercises.length}
-                className="mt-1 min-h-11 w-full rounded-2xl bg-blue-400 px-4 py-2 text-xs font-black text-black transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
-              >
-                {stretchCompletedCount >= stretchExercises.length
-                  ? "Mark Stretch Complete"
-                  : "Tick all stretch items first"}
-              </button>
-            </div>
-          </details>
-        )}
+  <WorkoutStretchSection
+    exercises={stretchExercises}
+    exerciseDemos={exerciseDemos}
+    completedItems={stretchComplete}
+    completedCount={stretchCompletedCount}
+    allComplete={stretchAllComplete}
+    onToggleItem={toggleStretchItem}
+    onCompleteSection={() => setStretchSectionComplete(true)}
+    onOpenDemo={setActiveDemo}
+  />
+)}
               </div>
 
      {!keyboardActive && (
@@ -2053,103 +841,11 @@ const key = String(exerciseName).toLowerCase().trim()
         </div>
       )}
 
-      {activeExerciseInfo && (
-  <div className="fixed inset-0 z-50 flex items-end bg-black/70 backdrop-blur-sm">
-    <button
-      type="button"
-      aria-label="Close exercise details"
-      onClick={() => setActiveExerciseInfo(null)}
-      className="absolute inset-0"
-    />
-
-    <section className="relative z-10 max-h-[82vh] w-full overflow-y-auto rounded-t-[2rem] border border-white/[0.08] bg-[#050505] p-4 shadow-[0_-20px_60px_rgba(0,0,0,0.85)]">
-      <div className="mx-auto h-1.5 w-12 rounded-full bg-white/18" />
-
-      <div className="mt-4 flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-smc-gold">
-            Exercise Details
-          </p>
-
-          <h2 className="mt-1 text-2xl font-black text-white">
-            {activeExerciseInfo.exerciseName}
-          </h2>
-
-          <p className="mt-1 text-xs leading-5 text-white/45">
-            {activeExerciseInfo.exercise?.prescription || "No prescription added"}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setActiveExerciseInfo(null)}
-          className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-black text-white/55"
-        >
-          Close
-        </button>
-      </div>
-
-      {activeExerciseInfo.demo?.video_url && (
-        <button
-          type="button"
-          onClick={() => setActiveDemo(activeExerciseInfo.demo)}
-          className="mt-4 w-full rounded-2xl border border-smc-gold/20 bg-smc-gold/[0.08] px-4 py-3 text-left text-sm font-black text-smc-gold"
-        >
-          ▶ Watch demo video
-        </button>
-      )}
-
-      {activeExerciseInfo.demo?.coach_notes && (
-        <div className="mt-3 rounded-2xl border border-white/[0.06] bg-white/[0.035] p-3">
-          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
-            Steve’s Cues
-          </p>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/72">
-            {activeExerciseInfo.demo.coach_notes}
-          </p>
-        </div>
-      )}
-
-      {activeExerciseInfo.previousPerformance && (
-        <div className="mt-3 rounded-2xl border border-white/[0.06] bg-white/[0.035] p-3">
-          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
-            Previous Performance
-          </p>
-
-          <p className="mt-2 text-lg font-black text-white">
-            {activeExerciseInfo.previousPerformance.bestSet.weight}kg ×{" "}
-            {activeExerciseInfo.previousPerformance.bestSet.reps}
-          </p>
-
-          <p className="mt-1 text-xs text-white/42">
-            Last completed {activeExerciseInfo.previousPerformance.date}
-          </p>
-        </div>
-      )}
-
-      {activeExerciseInfo.previousCoachFeedback && (
-        <div className="mt-3 rounded-2xl border border-smc-gold/20 bg-smc-gold/[0.06] p-3">
-          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold">
-            Last Coach Note
-          </p>
-
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/75">
-            {activeExerciseInfo.previousCoachFeedback}
-          </p>
-        </div>
-      )}
-
-      <Link
-        href={`/dashboard/history/${encodeURIComponent(
-          activeExerciseInfo.exerciseName
-        )}`}
-        className="mt-4 flex min-h-[46px] items-center justify-center rounded-2xl bg-smc-gold px-4 text-sm font-black text-black"
-      >
-        View Full History
-      </Link>
-    </section>
-  </div>
-)}
+      <ExerciseDetailsModal
+  exerciseInfo={activeExerciseInfo}
+  onClose={() => setActiveExerciseInfo(null)}
+  onOpenDemo={(demo) => setActiveDemo(demo)}
+/>
 
       {activeDemo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 px-3 backdrop-blur-xl">

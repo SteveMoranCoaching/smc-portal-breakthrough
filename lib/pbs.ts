@@ -1,3 +1,5 @@
+import { isMainExercise } from "@/lib/exerciseSections"
+
 export function isMainLift(exerciseName: string): boolean {
   const name = exerciseName.toLowerCase().trim()
 
@@ -191,6 +193,36 @@ export function detectPBs({
   )
 }
 
+export function checkForPBs(
+  exercises: any[],
+  formData: any[],
+  historicalLogsByExercise: Record<string, any[]>
+) {
+  const detectedPBs: PBResult[] = []
+
+  formData.forEach((entry, exerciseIndex) => {
+    const exercise = exercises[exerciseIndex]
+    if (!isMainExercise(exercise)) return
+
+    const exerciseName = exercise?.name
+    if (!exerciseName) return
+    if (!isMainLift(exerciseName)) return
+
+    const key = String(exerciseName).toLowerCase().trim()
+    const previousExerciseLogs = historicalLogsByExercise[key] || []
+
+    detectedPBs.push(
+      ...detectPBs({
+        exerciseName,
+        currentSets: entry.sets,
+        previousLogs: previousExerciseLogs,
+      })
+    )
+  })
+
+  return detectedPBs
+}
+
 export function formatLogDate(dateString?: string | null) {
   if (!dateString) return "No date"
 
@@ -231,3 +263,4 @@ export function getPreviousPerformance(previousLog: any) {
     bestSet,
   }
 }
+
