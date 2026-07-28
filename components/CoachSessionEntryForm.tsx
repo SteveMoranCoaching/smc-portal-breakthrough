@@ -23,6 +23,14 @@ type ExerciseLogType = {
   secondary: LogSecondaryField
 }
 
+type PrescriptionBlock = {
+  label?: string
+  sets?: string | number
+  reps?: string | number
+  load?: string
+  notes?: string
+}
+
 type ExerciseSection = "main" | "warmup" | "circuit" | "stretch"
 
 type CircuitExercise = {
@@ -33,6 +41,7 @@ type CircuitExercise = {
 type Exercise = {
   name?: string
   prescription?: string
+  prescriptions?: PrescriptionBlock[]
   sets?: string | number
   reps?: string | number
   section?: ExerciseSection | string
@@ -329,20 +338,32 @@ function getDayOrder(day?: string | null) {
 }
 
 function inferSetCount(exercise: Exercise) {
+  const prescriptionBlocks = Array.isArray(exercise.prescriptions)
+    ? exercise.prescriptions
+    : []
+
+  const blockSetCount = prescriptionBlocks.reduce((total, block) => {
+    const sets = Number(block.sets)
+
+    return Number.isFinite(sets) && sets > 0
+      ? total + sets
+      : total
+  }, 0)
+
+  if (blockSetCount > 0) {
+    return blockSetCount
+  }
+
   const directSets = Number(exercise.sets)
 
   if (Number.isFinite(directSets) && directSets > 0) {
-    return Math.min(directSets, 12)
+    return directSets
   }
 
   const prescription = String(exercise.prescription || "")
   const match = prescription.match(/(\d+)\s*x\s*\d+/i)
 
-  if (match?.[1]) {
-    return Math.min(Number(match[1]), 12)
-  }
-
-  return 1
+  return match?.[1] ? Number(match[1]) : 1
 }
 
 function inferReps(exercise: Exercise) {

@@ -1,24 +1,33 @@
 export function getPrescribedSetCount(exercise: any) {
-  const blocks = Array.isArray(exercise?.prescriptions)
+  const prescriptionBlocks = Array.isArray(exercise?.prescriptions)
     ? exercise.prescriptions
     : []
 
-  const blockSetTotal = blocks.reduce((total: number, block: any) => {
-    const sets = Number(block?.sets || 0)
-    return total + (Number.isFinite(sets) ? sets : 0)
-  }, 0)
+  const blockSetCount = prescriptionBlocks.reduce(
+    (total: number, block: any) => {
+      const sets = Number(block?.sets)
 
-  if (blockSetTotal > 0) return blockSetTotal
+      return Number.isFinite(sets) && sets > 0
+        ? total + sets
+        : total
+    },
+    0
+  )
+
+  if (blockSetCount > 0) {
+    return blockSetCount
+  }
+
+  const directSets = Number(exercise?.sets)
+
+  if (Number.isFinite(directSets) && directSets > 0) {
+    return directSets
+  }
 
   const prescription = String(exercise?.prescription || "")
+  const match = prescription.match(/(\d+)\s*x\s*\d+/i)
 
-  const match = prescription.match(/^(\d+)\s*x/i)
-  if (match) return Number(match[1])
-
-  const setsMatch = prescription.match(/(\d+)\s*sets?/i)
-  if (setsMatch) return Number(setsMatch[1])
-
-  return 1
+  return match?.[1] ? Number(match[1]) : 1
 }
 
 export function getPreviousLogForExercise(
