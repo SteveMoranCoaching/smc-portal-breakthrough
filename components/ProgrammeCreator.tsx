@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import ExerciseLibraryPanel, {
+  type LibraryExercise,
+} from "@/components/programmes/ExerciseLibraryPanel"
 
 type Client = {
   id: string
@@ -161,6 +164,8 @@ export default function ProgrammeCreator() {
   const [clients, setClients] = useState<Client[]>([])
   const [loadingClients, setLoadingClients] = useState(true)
   const [clientUserId, setClientUserId] = useState("")
+  const [exerciseLibrary, setExerciseLibrary] = useState<LibraryExercise[]>([])
+  const [loadingExerciseLibrary, setLoadingExerciseLibrary] = useState(true)
   const [title, setTitle] = useState("")
   const [programmeLength, setProgrammeLength] = useState("4")
   const [startDate, setStartDate] = useState("")
@@ -168,6 +173,8 @@ export default function ProgrammeCreator() {
   const [activeWeek, setActiveWeek] = useState(1)
   const [notes, setNotes] = useState("")
   const [openSessions, setOpenSessions] = useState<number[]>([0])
+  const [selectedSessionIndex, setSelectedSessionIndex] =
+  useState(0)
 
   const [sessionsByWeek, setSessionsByWeek] = useState<Record<number, Session[]>>(
     createSessionsByWeek(4)
@@ -265,6 +272,57 @@ export default function ProgrammeCreator() {
     loadClients()
   }, [])
 
+  useEffect(() => {
+  async function loadExerciseLibrary() {
+    setLoadingExerciseLibrary(true)
+
+    const { data, error } = await supabase
+      .from("exercise_demo_videos")
+      .select("id, exercise_name, coach_notes, thumbnail_path")
+      .order("exercise_name", { ascending: true })
+
+    if (error) {
+      showToast({
+        type: "error",
+        text: "Could not load exercise library.",
+      })
+
+      setLoadingExerciseLibrary(false)
+      return
+    }
+
+    const libraryItems = await Promise.all(
+      (data || []).map(async (exercise: any) => {
+        let thumbnailUrl: string | null = null
+
+        if (exercise.thumbnail_path) {
+          const { data: signedThumbnail } = await supabase.storage
+            .from("exercise-demo-videos")
+            .createSignedUrl(
+              exercise.thumbnail_path,
+              60 * 60
+            )
+
+          thumbnailUrl =
+            signedThumbnail?.signedUrl || null
+        }
+
+        return {
+          id: exercise.id,
+          exercise_name: exercise.exercise_name,
+          coach_notes: exercise.coach_notes,
+          thumbnail_url: thumbnailUrl,
+        }
+      })
+    )
+
+    setExerciseLibrary(libraryItems)
+    setLoadingExerciseLibrary(false)
+  }
+
+  loadExerciseLibrary()
+}, [])
+
   function showToast(nextToast: Toast) {
     setToast(nextToast)
 
@@ -312,12 +370,14 @@ export default function ProgrammeCreator() {
   }
 
   function toggleSession(index: number) {
-    setOpenSessions((current) =>
-      current.includes(index)
-        ? current.filter((item) => item !== index)
-        : [...current, index]
-    )
-  }
+  setSelectedSessionIndex(index)
+
+  setOpenSessions((current) =>
+    current.includes(index)
+      ? current.filter((item) => item !== index)
+      : [...current, index]
+  )
+}
 
   function updateSession(index: number, field: keyof Session, value: string) {
     const next = [...sessions]
@@ -679,6 +739,49 @@ function removeCircuitExercise(
     }
   }
 
+  function addExerciseFromLibrary(
+  sessionIndex: number,
+  libraryExercise: LibraryExercise
+) {
+  const next = [...sessions]
+
+  const newExercise: Exercise = {
+    name: libraryExercise.exercise_name,
+    prescription: "",
+    section: "main",
+    logType: defaultLogType,
+  }
+
+  const existingExercises =
+    next[sessionIndex].exercises || []
+
+  const onlyBlankExercise =
+    existingExercises.length === 1 &&
+    !existingExercises[0].name.trim() &&
+    !existingExercises[0].prescription.trim()
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises: onlyBlankExercise
+      ? [newExercise]
+      : [...existingExercises, newExercise],
+  }
+
+  updateActiveWeekSessions(next)
+
+  if (!openSessions.includes(sessionIndex)) {
+    setOpenSessions((current) => [
+      ...current,
+      sessionIndex,
+    ])
+  }
+
+  showToast({
+    type: "success",
+    text: `${libraryExercise.exercise_name} added.`,
+  })
+}
+
   function removeExercise(sessionIndex: number, exerciseIndex: number) {
     const next = [...sessions]
 
@@ -791,6 +894,8 @@ if (deactivateError) {
   return
 }
 
+const calculatedEndDate = calculateEndDate(startDate, programmeLength)
+
 const { data: programme, error: programmeError } = await supabase
   .from("programmes")
   .insert({
@@ -801,7 +906,7 @@ const { data: programme, error: programmeError } = await supabase
     notes: notes.trim(),
     is_active: true,
     start_date: startDate || null,
-    end_date: endDate || null,
+    end_date: calculatedEndDate || null,
   })
   .select()
   .single()
@@ -868,7 +973,7 @@ const { data: programme, error: programmeError } = await supabase
         </div>
       )}
 
-      <div className="mx-auto max-w-5xl space-y-4 px-4 py-5 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-7xl space-y-4 px-4 py-5 sm:px-6 sm:py-8">
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -1009,9 +1114,10 @@ const { data: programme, error: programmeError } = await supabase
                 key={week}
                 type="button"
                 onClick={() => {
-                  setActiveWeek(week)
-                  setOpenSessions([0])
-                }}
+  setActiveWeek(week)
+  setOpenSessions([0])
+  setSelectedSessionIndex(0)
+}}
                 className={`shrink-0 rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
                   activeWeek === week
                     ? "bg-smc-gold text-black"
@@ -1024,6 +1130,8 @@ const { data: programme, error: programmeError } = await supabase
           </div>
         </section>
 
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0">
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1172,7 +1280,7 @@ const { data: programme, error: programmeError } = await supabase
         onChange={(e) =>
           updateExercise(sessionIndex, exerciseIndex, "name", e.target.value)
         }
-        placeholder="Circuit name"
+        placeholder={exercise.section === "superset" ? "Superset name" : "Circuit name"}
         className={inputStyle}
       />
 
@@ -1186,7 +1294,11 @@ const { data: programme, error: programmeError } = await supabase
             e.target.value
           )
         }
-        placeholder="Circuit notes e.g. Rest 90s between rounds"
+        placeholder={
+  exercise.section === "superset"
+    ? "Superset notes e.g. 3 rounds, rest after both"
+    : "Circuit notes e.g. Rest 90s between rounds"
+}
         className={inputStyle}
       />
     </div>
@@ -1560,6 +1672,40 @@ const { data: programme, error: programmeError } = await supabase
             + Add session to Week {activeWeek}
           </button>
         </section>
+          </div>
+
+  <div className="hidden xl:block">
+    <div className="mb-2 px-1">
+      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/30">
+        Adding to
+      </p>
+
+      <p className="mt-1 truncate text-sm font-black text-smc-gold">
+        {sessions[selectedSessionIndex]?.title ||
+          sessions[selectedSessionIndex]?.day ||
+          `Session ${selectedSessionIndex + 1}`}
+      </p>
+    </div>
+
+    {loadingExerciseLibrary ? (
+      <div className={`${cardStyle} p-4`}>
+        <p className="text-sm font-bold text-white/35">
+          Loading exercise library...
+        </p>
+      </div>
+    ) : (
+      <ExerciseLibraryPanel
+        exercises={exerciseLibrary}
+        onAddExercise={(exercise) =>
+          addExerciseFromLibrary(
+            selectedSessionIndex,
+            exercise
+          )
+        }
+      />
+    )}
+  </div>
+</div>
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.08] bg-black/90 px-4 py-3 backdrop-blur-xl">
