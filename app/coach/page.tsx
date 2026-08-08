@@ -93,6 +93,22 @@ function formatWeekHeader(date: Date) {
   })
 }
 
+function getProgrammedSessionCountForWeek(
+  sessions: any[],
+  weekNumber: number
+) {
+  return (sessions || []).filter((session: any) => {
+    const matchesWeek =
+      Number(session?.week_number || 1) === Number(weekNumber)
+
+    const hasExercises =
+      Array.isArray(session?.exercises) &&
+      session.exercises.length > 0
+
+    return matchesWeek && hasExercises
+  }).length
+}
+
 function getProgrammeProgressCell(
   programme: any,
   currentWeek: number,
@@ -106,9 +122,10 @@ function getProgrammeProgressCell(
     }
   }
 
-  const uploadedWeeks = getUploadedProgrammeWeekCount(
-  programme.programme_sessions || []
-)
+  const sessions = programme.programme_sessions || []
+
+  const uploadedWeeks = getUploadedProgrammeWeekCount(sessions)
+
   const plannedWeeks = Number(
     programme.planned_weeks || uploadedWeeks || 4
   )
@@ -123,7 +140,13 @@ function getProgrammeProgressCell(
     }
   }
 
-  if (forecastWeek > uploadedWeeks) {
+  const programmedSessionCount =
+    getProgrammedSessionCountForWeek(
+      sessions,
+      forecastWeek
+    )
+
+  if (programmedSessionCount < 2) {
     return {
       label: `Week ${forecastWeek}`,
       tone: "yellow" as const,
@@ -181,11 +204,12 @@ export default async function CoachDashboard({
             planned_weeks,
             coach_current_week,
             programme_sessions (
-              id,
-              week_number,
-              day,
-              title
-            )
+  id,
+  week_number,
+  day,
+  title,
+  exercises
+)
           `)
           .in("user_id", clientUserIds)
           .order("is_active", { ascending: false })
@@ -412,9 +436,28 @@ const programmeForecastWeeks = [
         null
 
       const uploadedWeeks = activeProgramme
-  ? getUploadedProgrammeWeekCount(
-      activeProgramme.programme_sessions || []
-    )
+  ? Array.from(
+      new Set<number>(
+        (activeProgramme.programme_sessions || [])
+          .filter((session: any) => {
+            return (
+              Array.isArray(session?.exercises) &&
+              session.exercises.length > 0
+            )
+          })
+          .map((session: any) =>
+            Number(session.week_number || 1)
+          )
+      )
+    ).filter((weekNumber) => {
+      const programmedSessionCount =
+        getProgrammedSessionCountForWeek(
+          activeProgramme.programme_sessions || [],
+          weekNumber
+        )
+
+      return programmedSessionCount >= 2
+    }).length
   : 0
 
 const plannedWeeks = activeProgramme
