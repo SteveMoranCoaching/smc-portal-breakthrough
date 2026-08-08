@@ -26,6 +26,13 @@ function safeFileName(name: string) {
     .replace(/(^-|-$)/g, "")
 }
 
+function parseAliases(value: FormDataEntryValue | null) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 async function uploadFile({
   supabase,
   file,
@@ -63,6 +70,16 @@ async function uploadExerciseDemo(formData: FormData) {
 
   const exerciseName = String(formData.get("exerciseName") || "").trim()
   const coachNotes = String(formData.get("coachNotes") || "").trim()
+  const aliases = parseAliases(formData.get("aliases"))
+
+const defaultSection =
+  String(formData.get("defaultSection") || "main")
+
+const defaultPrimaryLog =
+  String(formData.get("defaultPrimaryLog") || "kg")
+
+const defaultSecondaryLog =
+  String(formData.get("defaultSecondaryLog") || "reps")
   const video = formData.get("video") as File | null
   const thumbnail = formData.get("thumbnail") as File | null
 
@@ -92,12 +109,16 @@ async function uploadExerciseDemo(formData: FormData) {
 
   const { error } = await supabase.from("exercise_demo_videos").upsert(
     {
-      exercise_name: exerciseName,
-      coach_notes: coachNotes,
-      video_path: videoPath || existing.data?.video_path || null,
-      thumbnail_path: thumbnailPath || existing.data?.thumbnail_path || null,
-      updated_at: new Date().toISOString(),
-    },
+  exercise_name: exerciseName,
+  coach_notes: coachNotes,
+  aliases,
+  default_section: defaultSection,
+  default_primary_log: defaultPrimaryLog,
+  default_secondary_log: defaultSecondaryLog,
+  video_path: videoPath || existing.data?.video_path || null,
+  thumbnail_path: thumbnailPath || existing.data?.thumbnail_path || null,
+  updated_at: new Date().toISOString(),
+},
     {
       onConflict: "exercise_name",
     }
@@ -117,6 +138,16 @@ async function updateExerciseDemo(formData: FormData) {
   const id = String(formData.get("id") || "").trim()
   const exerciseName = String(formData.get("exerciseName") || "").trim()
   const coachNotes = String(formData.get("coachNotes") || "").trim()
+  const aliases = parseAliases(formData.get("aliases"))
+
+const defaultSection =
+  String(formData.get("defaultSection") || "main")
+
+const defaultPrimaryLog =
+  String(formData.get("defaultPrimaryLog") || "kg")
+
+const defaultSecondaryLog =
+  String(formData.get("defaultSecondaryLog") || "reps")
   const video = formData.get("video") as File | null
   const thumbnail = formData.get("thumbnail") as File | null
 
@@ -147,12 +178,16 @@ async function updateExerciseDemo(formData: FormData) {
   const { error } = await supabase
     .from("exercise_demo_videos")
     .update({
-      exercise_name: exerciseName,
-      coach_notes: coachNotes,
-      video_path: videoPath || existing?.video_path || null,
-      thumbnail_path: thumbnailPath || existing?.thumbnail_path || null,
-      updated_at: new Date().toISOString(),
-    })
+  exercise_name: exerciseName,
+  coach_notes: coachNotes,
+  aliases,
+  default_section: defaultSection,
+  default_primary_log: defaultPrimaryLog,
+  default_secondary_log: defaultSecondaryLog,
+  video_path: videoPath || existing?.video_path || null,
+  thumbnail_path: thumbnailPath || existing?.thumbnail_path || null,
+  updated_at: new Date().toISOString(),
+})
     .eq("id", id)
 
   if (error) throw error
@@ -277,6 +312,22 @@ export default async function ExerciseDemosPage({
             </div>
 
             <div>
+  <label className="text-xs font-bold uppercase tracking-[0.22em] text-smc-gold/80">
+    Search aliases
+  </label>
+
+  <input
+    name="aliases"
+    placeholder="e.g. bench, comp bench, competition bench"
+    className={`mt-2 ${inputStyle}`}
+  />
+
+  <p className="mt-1.5 text-[10px] text-white/30">
+    Separate aliases with commas.
+  </p>
+</div>
+
+            <div>
               <label className="text-xs font-bold uppercase tracking-[0.22em] text-smc-gold/80">
                 Coaching notes
               </label>
@@ -287,6 +338,64 @@ export default async function ExerciseDemosPage({
                 className={`mt-2 ${textareaStyle}`}
               />
             </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+  <div>
+    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
+      Default section
+    </label>
+
+    <select
+      name="defaultSection"
+      defaultValue="main"
+      className={`mt-2 ${inputStyle}`}
+    >
+      <option value="main">Main Exercise</option>
+      <option value="warmup">Warm-up / Mobility</option>
+      <option value="superset">Superset</option>
+      <option value="circuit">Circuit</option>
+      <option value="stretch">Post Session Stretch</option>
+    </select>
+  </div>
+
+  <div>
+    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
+      Primary log
+    </label>
+
+    <select
+      name="defaultPrimaryLog"
+      defaultValue="kg"
+      className={`mt-2 ${inputStyle}`}
+    >
+      <option value="kg">Kg</option>
+      <option value="bodyweight">Bodyweight</option>
+      <option value="height">Height</option>
+      <option value="speed">Speed</option>
+      <option value="distance">Distance</option>
+      <option value="none">None</option>
+    </select>
+  </div>
+
+  <div>
+    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
+      Secondary log
+    </label>
+
+    <select
+      name="defaultSecondaryLog"
+      defaultValue="reps"
+      className={`mt-2 ${inputStyle}`}
+    >
+      <option value="reps">Reps</option>
+      <option value="time">Time</option>
+      <option value="distance">Distance</option>
+      <option value="calories">Calories</option>
+      <option value="rounds">Rounds</option>
+      <option value="none">None</option>
+    </select>
+  </div>
+</div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div
@@ -390,6 +499,19 @@ export default async function ExerciseDemosPage({
                       </div>
 
                       <div>
+  <label className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold/80">
+    Search aliases
+  </label>
+
+  <input
+    name="aliases"
+    defaultValue={(demo.aliases || []).join(", ")}
+    placeholder="bench, comp bench, competition bench"
+    className={`mt-1.5 ${inputStyle}`}
+  />
+</div>
+
+                      <div>
                         <label className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold/80">
                           Coach notes
                         </label>
@@ -400,6 +522,64 @@ export default async function ExerciseDemosPage({
                           className={`mt-1.5 ${textareaStyle}`}
                         />
                       </div>
+
+                      <div className="grid gap-2 sm:grid-cols-3">
+  <div>
+    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
+      Default section
+    </label>
+
+    <select
+      name="defaultSection"
+      defaultValue={demo.default_section || "main"}
+      className={`mt-1.5 ${inputStyle}`}
+    >
+      <option value="main">Main Exercise</option>
+      <option value="warmup">Warm-up / Mobility</option>
+      <option value="superset">Superset</option>
+      <option value="circuit">Circuit</option>
+      <option value="stretch">Post Session Stretch</option>
+    </select>
+  </div>
+
+  <div>
+    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
+      Primary log
+    </label>
+
+    <select
+      name="defaultPrimaryLog"
+      defaultValue={demo.default_primary_log || "kg"}
+      className={`mt-1.5 ${inputStyle}`}
+    >
+      <option value="kg">Kg</option>
+      <option value="bodyweight">Bodyweight</option>
+      <option value="height">Height</option>
+      <option value="speed">Speed</option>
+      <option value="distance">Distance</option>
+      <option value="none">None</option>
+    </select>
+  </div>
+
+  <div>
+    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
+      Secondary log
+    </label>
+
+    <select
+      name="defaultSecondaryLog"
+      defaultValue={demo.default_secondary_log || "reps"}
+      className={`mt-1.5 ${inputStyle}`}
+    >
+      <option value="reps">Reps</option>
+      <option value="time">Time</option>
+      <option value="distance">Distance</option>
+      <option value="calories">Calories</option>
+      <option value="rounds">Rounds</option>
+      <option value="none">None</option>
+    </select>
+  </div>
+</div>
 
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div
