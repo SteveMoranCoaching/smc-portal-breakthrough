@@ -2,7 +2,6 @@
 
 import Link from "next/link"
 import {
-  Fragment,
   useEffect,
   useMemo,
   useState,
@@ -687,109 +686,96 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
           const exerciseComplete = isCompletedExercise(entry?.sets ?? [])
 
           return (
-            <Fragment key={`${exerciseName}-${exerciseIndex}`}>
-
-              <div
-              className={`${card} p-3 transition-all duration-300 ${
-                exerciseComplete
-                  ? "border-smc-gold/25 shadow-[0_0_28px_rgba(212,175,55,0.10)]"
-                  : ""
-              }`}
-            >
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-smc-gold/35 to-transparent" />
-
-              {exerciseComplete && (
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(212,175,55,0.13),transparent_34%)]" />
-              )}
-
-              <div className="relative z-10">
-                <WorkoutExerciseCard
-  exerciseName={exerciseName}
-  exerciseIndex={exerciseIndex}
-  exerciseComplete={exerciseComplete}
-  prescription={ex?.prescription}
-  demo={demo}
-  onOpenDetails={() =>
-    setActiveExerciseInfo({
-      exercise: ex,
-      exerciseName,
-      demo,
-      previousPerformance,
-      previousCoachFeedback,
-    })
-  }
-  onOpenDemo={() => {
-    if (demo?.video_url) {
-      setActiveDemo(demo)
+  <WorkoutExerciseCard
+    key={`${exerciseName}-${exerciseIndex}`}
+    exerciseName={exerciseName}
+    exerciseIndex={exerciseIndex}
+    exerciseComplete={exerciseComplete}
+    prescription={ex?.prescription}
+    coachNotes={ex?.notes}
+    demo={demo}
+    onOpenDetails={() =>
+      setActiveExerciseInfo({
+        exercise: ex,
+        exerciseName,
+        demo,
+        previousPerformance,
+        previousCoachFeedback,
+      })
     }
-  }}
-/>
+    onOpenDemo={() => {
+      if (demo?.video_url) {
+        setActiveDemo(demo)
+      }
+    }}
+  >
+    <WorkoutSetList
+      exercise={ex}
+      exerciseIndex={exerciseIndex}
+      sets={formData[exerciseIndex]?.sets || []}
+      previousLog={previousLog}
+      prefillMode={prefillMode}
+      confirmedSets={confirmedSets}
+      disabled={saving || complete}
+      onConfirmSet={(setIndex) =>
+        confirmSet(exerciseIndex, setIndex)
+      }
+      onRemoveSet={(setIndex) =>
+        removeSet(exerciseIndex, setIndex)
+      }
+      onAddSet={() => addSet(exerciseIndex)}
+      onFocus={handleInputFocus}
+      onBlur={handleInputBlur}
+      onChangeSet={(setIndex, field, value) =>
+        updateSetField(
+          exerciseIndex,
+          setIndex,
+          field,
+          value
+        )
+      }
+      setInputRef={(setIndex, field, element) =>
+        setInputRef(
+          exerciseIndex,
+          setIndex,
+          field,
+          element
+        )
+      }
+    />
 
-                {ex?.notes && (
-                  <p className="mt-2 break-words text-xs leading-5 text-white/45">
-                    {ex.notes}
-                  </p>
-                )}
+    <WorkoutNotes
+      value={formData[exerciseIndex]?.notes || ""}
+      disabled={saving || complete}
+      onFocus={handleInputFocus}
+      onBlur={handleInputBlur}
+      onChange={(value) =>
+        updateNotes(exerciseIndex, value)
+      }
+    />
 
-                <WorkoutSetList
-  exercise={ex}
-  exerciseIndex={exerciseIndex}
-  sets={formData[exerciseIndex]?.sets || []}
-  previousLog={previousLog}
-  prefillMode={prefillMode}
-  confirmedSets={confirmedSets}
-  disabled={saving || complete}
-  onConfirmSet={(setIndex) =>
-    confirmSet(exerciseIndex, setIndex)
-  }
-  onRemoveSet={(setIndex) =>
-    removeSet(exerciseIndex, setIndex)
-  }
-  onAddSet={() => addSet(exerciseIndex)}
-  onFocus={handleInputFocus}
-  onBlur={handleInputBlur}
-  onChangeSet={(setIndex, field, value) =>
-    updateSetField(
-      exerciseIndex,
-      setIndex,
-      field,
-      value
-    )
-  }
-  setInputRef={(setIndex, field, element) =>
-    setInputRef(
-      exerciseIndex,
-      setIndex,
-      field,
-      element
-    )
-  }
-/>
-
-                <WorkoutNotes
-  value={formData[exerciseIndex]?.notes || ""}
-  disabled={saving || complete}
-  onFocus={handleInputFocus}
-  onBlur={handleInputBlur}
-  onChange={(value) => updateNotes(exerciseIndex, value)}
-/>
-
-                <WorkoutVideoUploader
-  userId={userId}
-  sessionId={session.id}
-  exerciseIndex={exerciseIndex}
-  videos={formData[exerciseIndex]?.videos || []}
-  disabled={saving || complete}
-  onUploaded={(video) => addUploadedVideo(exerciseIndex, video)}
-  onClear={() => clearUploadedVideos(exerciseIndex)}
-  onRemove={(videoIndex) =>
-    removeUploadedVideo(exerciseIndex, videoIndex)
-  }
-/>
-              </div>
-            </div>
-            </Fragment>
-          )
+    <WorkoutVideoUploader
+      userId={userId}
+      sessionId={session.id}
+      exerciseIndex={exerciseIndex}
+      videos={formData[exerciseIndex]?.videos || []}
+      disabled={saving || complete}
+      onUploaded={(video) =>
+        addUploadedVideo(exerciseIndex, video)
+      }
+      onClear={() =>
+        clearUploadedVideos(exerciseIndex)
+      }
+      onRemove={(videoIndex) =>
+        removeUploadedVideo(
+          exerciseIndex,
+          videoIndex
+        )
+      }
+    />
+  </WorkoutExerciseCard>
+)
+          
         })}
 
       {stretchExercises.length > 0 && (

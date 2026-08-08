@@ -76,6 +76,52 @@ function getSessionImage(sessionTitle?: string | null) {
   return "/images/dashboard-plates.jpeg"
 }
 
+function getEffectiveProgrammeEndDate({
+  startDate,
+  endDate,
+  coachCurrentWeek,
+}: {
+  startDate?: string | null
+  endDate?: string | null
+  coachCurrentWeek?: number | null
+}) {
+  if (!endDate) return null
+
+  if (!startDate || !coachCurrentWeek) {
+    return endDate
+  }
+
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  const today = new Date()
+
+  start.setHours(0, 0, 0, 0)
+  end.setHours(23, 59, 59, 999)
+  today.setHours(0, 0, 0, 0)
+
+  const millisecondsPerWeek =
+    7 * 24 * 60 * 60 * 1000
+
+  const calendarWeek =
+    Math.floor(
+      (today.getTime() - start.getTime()) /
+        millisecondsPerWeek
+    ) + 1
+
+  const weeksHeldBack = Math.max(
+    0,
+    calendarWeek - Number(coachCurrentWeek)
+  )
+
+  const effectiveEnd = new Date(end)
+
+  effectiveEnd.setDate(
+    effectiveEnd.getDate() + weeksHeldBack * 7
+  )
+
+  return effectiveEnd.toISOString()
+}
+
 export default async function WorkoutsPage() {
   const supabase = await createSupabaseServerClient()
 
@@ -188,8 +234,18 @@ const plannerWeekNumber = getEffectiveProgrammeWeek({
   completedSessionIds,
 })
 
+const effectiveProgrammeEndDate =
+  getEffectiveProgrammeEndDate({
+    startDate:
+      currentProgramme?.start_date ||
+      currentProgramme?.created_at,
+    endDate: currentProgramme?.end_date,
+    coachCurrentWeek:
+      currentProgramme?.coach_current_week,
+  })
+
 const programmeExpired = isProgrammeExpired({
-  endDate: currentProgramme?.end_date,
+  endDate: effectiveProgrammeEndDate,
 })
 
 const weeklySchedule = (existingWeeklySchedule || []).filter(
