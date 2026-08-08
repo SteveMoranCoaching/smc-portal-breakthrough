@@ -8,6 +8,7 @@ import {
   buildCoachAttentionItems,
   getFlagLabel,
 } from "@/lib/coachIntelligence"
+import ProgrammeWeekProgressCell from "@/components/ProgrammeWeekProgressCell"
 
 export const dynamic = "force-dynamic"
 
@@ -107,6 +108,45 @@ function getProgrammedSessionCountForWeek(
 
     return matchesWeek && hasExercises
   }).length
+}
+
+function getWeekSessionProgress(
+  sessions: any[],
+  weekNumber: number,
+  completedSessionIds: Set<string>
+) {
+  const programmedSessions = (sessions || []).filter(
+    (session: any) => {
+      const correctWeek =
+        Number(session?.week_number || 1) ===
+        Number(weekNumber)
+
+      const hasExercises =
+        Array.isArray(session?.exercises) &&
+        session.exercises.length > 0
+
+      return correctWeek && hasExercises
+    }
+  )
+
+  const sessionItems = programmedSessions.map(
+    (session: any) => ({
+      id: session.id,
+      title:
+        session.title ||
+        session.day ||
+        "Training Session",
+      completed: completedSessionIds.has(session.id),
+    })
+  )
+
+  return {
+    completed: sessionItems.filter(
+      (session) => session.completed
+    ).length,
+    total: sessionItems.length,
+    sessions: sessionItems,
+  }
 }
 
 function getProgrammeProgressCell(
@@ -215,6 +255,15 @@ export default async function CoachDashboard({
           .order("is_active", { ascending: false })
           .order("created_at", { ascending: false })
       : { data: [] }
+
+const { data: programmeSessionCompletions } =
+  clientUserIds.length > 0
+    ? await supabase
+        .from("session_completions")
+        .select("user_id, session_id, completed")
+        .in("user_id", clientUserIds)
+        .eq("completed", true)
+    : { data: [] }
 
   const { data: pendingPBs } = await supabase
     .from("exercise_pbs")
@@ -427,6 +476,24 @@ const programmeForecastWeeks = [
     ]
   })
 
+  const completedProgrammeSessionsByUser: Record<
+  string,
+  Set<string>
+> = {}
+
+;(programmeSessionCompletions || []).forEach(
+  (completion: any) => {
+    if (!completedProgrammeSessionsByUser[completion.user_id]) {
+      completedProgrammeSessionsByUser[completion.user_id] =
+        new Set<string>()
+    }
+
+    completedProgrammeSessionsByUser[
+      completion.user_id
+    ].add(completion.session_id)
+  }
+)
+
   const programmeProgressRows =
     clients?.map((client) => {
       const clientProgrammes = programmesByUserId[client.user_id] || []
@@ -474,6 +541,34 @@ const currentWeek = activeProgramme
     })
   : 0
 
+const completedSessionIds =
+  completedProgrammeSessionsByUser[client.user_id] ||
+  new Set<string>()
+
+const previousWeekProgress = activeProgramme
+  ? getWeekSessionProgress(
+      activeProgramme.programme_sessions || [],
+      currentWeek - 1,
+      completedSessionIds
+    )
+  : {
+      completed: 0,
+      total: 0,
+      sessions: [],
+    }
+
+const currentWeekProgress = activeProgramme
+  ? getWeekSessionProgress(
+      activeProgramme.programme_sessions || [],
+      currentWeek,
+      completedSessionIds
+    )
+  : {
+      completed: 0,
+      total: 0,
+      sessions: [],
+    }  
+
 const cells = programmeForecastWeeks.map((week) =>
   getProgrammeProgressCell(
     activeProgramme,
@@ -494,6 +589,8 @@ const cells = programmeForecastWeeks.map((week) =>
         plannedWeeks,
         currentWeek,
         cells,
+        previousWeekProgress,
+        currentWeekProgress,
         needsNumbers,
         needsProgramme,
       }
@@ -731,23 +828,34 @@ const cells = programmeForecastWeeks.map((week) =>
 
               <div className="divide-y divide-white/[0.05]">
                 {programmeProgressRows.map((row) => (
-                  <Link
-                    key={row.client.id}
-                    href={`/coach/${row.client.id}?tab=programme`}
-                    className="grid grid-cols-[1.25fr_repeat(4,0.8fr)_0.9fr] items-center transition hover:bg-white/[0.025]"
-                  >
-                    <div className="min-w-0 px-3 py-2">
-                      <p className="truncate text-[12px] font-black text-white">
-                        {row.client.name}
-                      </p>
+                  <div
+  key={row.client.id}
+  className="grid grid-cols-[1.25fr_repeat(4,0.8fr)_0.9fr] items-center transition hover:bg-white/[0.025]"
+>
+                    <Link
+  href={`/coach/${row.client.id}?tab=programme`}
+  className="min-w-0 px-3 py-2 transition hover:bg-white/[0.025]"
+>
+  <p className="truncate text-[12px] font-black text-white">
+    {row.client.name}
+  </p>
 
-                      <p className="mt-0.5 truncate text-[10px] text-white/32">
-                        {row.activeProgramme?.title || "No active programme"}
-                      </p>
-                    </div>
+  <p className="mt-0.5 truncate text-[10px] text-white/32">
+    {row.activeProgramme?.title || "No active programme"}
+  </p>
+</Link>
 
                     {row.cells.map((cell, index) => {
   const week = programmeForecastWeeks[index]
+
+  const isPreviousWeek = index === 0
+const isCurrentWeek = index === 1
+
+const progress = isPreviousWeek
+  ? row.previousWeekProgress
+  : isCurrentWeek
+    ? row.currentWeekProgress
+    : null
 
   return (
     <div
@@ -760,21 +868,34 @@ const cells = programmeForecastWeeks.map((week) =>
             : "opacity-80"
       }`}
     >
-      <div
-        className={`flex min-h-[30px] items-center justify-center rounded-[0.75rem] border px-2 text-center text-[10px] font-black ${
-          cell.tone === "red"
-            ? "border-red-500/25 bg-red-500/12 text-red-300"
-            : cell.tone === "yellow"
-              ? "border-amber-400/25 bg-amber-400/12 text-amber-200"
-              : week?.tone === "current"
-                ? "border-green-500/30 bg-green-500/12 text-green-300 shadow-[0_0_18px_rgba(34,197,94,0.08)]"
-                : "border-green-500/20 bg-green-500/10 text-green-300"
-        }`}
-      >
-        <span className="truncate">
-          {cell.label} {cell.icon}
-        </span>
-      </div>
+      {progress ? (
+  <ProgrammeWeekProgressCell
+    weekNumber={
+      isPreviousWeek
+        ? row.currentWeek - 1
+        : row.currentWeek
+    }
+    completed={progress.completed}
+    total={progress.total}
+    sessions={progress.sessions}
+    isPast={isPreviousWeek}
+    isCurrent={isCurrentWeek}
+  />
+) : (
+  <div
+    className={`flex min-h-[30px] items-center justify-center rounded-[0.75rem] border px-2 text-center text-[10px] font-black ${
+      cell.tone === "red"
+        ? "border-red-500/25 bg-red-500/12 text-red-300"
+        : cell.tone === "yellow"
+          ? "border-amber-400/25 bg-amber-400/12 text-amber-200"
+          : "border-green-500/20 bg-green-500/10 text-green-300"
+    }`}
+  >
+    <span className="truncate">
+      {cell.label} {cell.icon}
+    </span>
+  </div>
+)}
     </div>
   )
 })}
@@ -796,7 +917,7 @@ const cells = programmeForecastWeeks.map((week) =>
                         </p>
                       )}
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             </div>
