@@ -8,6 +8,10 @@ type LibraryExercise = {
   exercise_name: string
   coach_notes?: string | null
   thumbnail_url?: string | null
+  aliases?: string[]
+  default_section?: "main" | "warmup" | "stretch" | "circuit" | "superset"
+  default_primary_log?: "kg" | "bodyweight" | "height" | "speed" | "distance" | "none"
+  default_secondary_log?: "reps" | "time" | "distance" | "calories" | "rounds" | "none"
 }
 
 type ExerciseLibraryPanelProps = {
@@ -28,9 +32,17 @@ export default function ExerciseLibraryPanel({
 
     return exercises.filter((exercise) => {
       const name = exercise.exercise_name.toLowerCase()
-      const notes = String(exercise.coach_notes || "").toLowerCase()
+const notes = String(exercise.coach_notes || "").toLowerCase()
 
-      return name.includes(query) || notes.includes(query)
+const aliases = (exercise.aliases || [])
+  .join(" ")
+  .toLowerCase()
+
+return (
+  name.includes(query) ||
+  notes.includes(query) ||
+  aliases.includes(query)
+)
     })
   }, [exercises, search])
 

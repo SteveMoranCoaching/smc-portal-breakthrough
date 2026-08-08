@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"
 import ExerciseLibraryPanel, {
   type LibraryExercise,
 } from "@/components/programmes/ExerciseLibraryPanel"
+import ProgrammeExerciseTile from "@/components/programmes/ProgrammeExerciseTile"
 
 type Client = {
   id: string
@@ -175,6 +176,8 @@ export default function ProgrammeCreator() {
   const [openSessions, setOpenSessions] = useState<number[]>([0])
   const [selectedSessionIndex, setSelectedSessionIndex] =
   useState(0)
+  const [openExerciseKey, setOpenExerciseKey] =
+  useState<string | null>(null)
 
   const [sessionsByWeek, setSessionsByWeek] = useState<Record<number, Session[]>>(
     createSessionsByWeek(4)
@@ -278,7 +281,16 @@ export default function ProgrammeCreator() {
 
     const { data, error } = await supabase
       .from("exercise_demo_videos")
-      .select("id, exercise_name, coach_notes, thumbnail_path")
+      .select(`
+  id,
+  exercise_name,
+  coach_notes,
+  thumbnail_path,
+  aliases,
+  default_section,
+  default_primary_log,
+  default_secondary_log
+`)
       .order("exercise_name", { ascending: true })
 
     if (error) {
@@ -308,11 +320,18 @@ export default function ProgrammeCreator() {
         }
 
         return {
-          id: exercise.id,
-          exercise_name: exercise.exercise_name,
-          coach_notes: exercise.coach_notes,
-          thumbnail_url: thumbnailUrl,
-        }
+  id: exercise.id,
+  exercise_name: exercise.exercise_name,
+  coach_notes: exercise.coach_notes,
+  thumbnail_url: thumbnailUrl,
+  aliases: exercise.aliases || [],
+  default_section:
+    exercise.default_section || "main",
+  default_primary_log:
+    exercise.default_primary_log || "kg",
+  default_secondary_log:
+    exercise.default_secondary_log || "reps",
+}
       })
     )
 
@@ -376,6 +395,17 @@ export default function ProgrammeCreator() {
     current.includes(index)
       ? current.filter((item) => item !== index)
       : [...current, index]
+  )
+}
+
+function toggleExerciseEditor(
+  sessionIndex: number,
+  exerciseIndex: number
+) {
+  const key = `${activeWeek}-${sessionIndex}-${exerciseIndex}`
+
+  setOpenExerciseKey((current) =>
+    current === key ? null : key
   )
 }
 
@@ -746,11 +776,17 @@ function removeCircuitExercise(
   const next = [...sessions]
 
   const newExercise: Exercise = {
-    name: libraryExercise.exercise_name,
-    prescription: "",
-    section: "main",
-    logType: defaultLogType,
-  }
+  name: libraryExercise.exercise_name,
+  prescription: "",
+  section:
+    libraryExercise.default_section || "main",
+  logType: {
+    primary:
+      libraryExercise.default_primary_log || "kg",
+    secondary:
+      libraryExercise.default_secondary_log || "reps",
+  },
+}
 
   const existingExercises =
     next[sessionIndex].exercises || []
@@ -780,6 +816,45 @@ function removeCircuitExercise(
     type: "success",
     text: `${libraryExercise.exercise_name} added.`,
   })
+}
+
+function moveExercise(
+  sessionIndex: number,
+  exerciseIndex: number,
+  direction: "up" | "down"
+) {
+  const next = [...sessions]
+
+  const exercises = [
+    ...next[sessionIndex].exercises,
+  ]
+
+  const targetIndex =
+    direction === "up"
+      ? exerciseIndex - 1
+      : exerciseIndex + 1
+
+  if (
+    targetIndex < 0 ||
+    targetIndex >= exercises.length
+  ) {
+    return
+  }
+
+  const currentExercise = exercises[exerciseIndex]
+
+  exercises[exerciseIndex] =
+    exercises[targetIndex]
+
+  exercises[targetIndex] =
+    currentExercise
+
+  next[sessionIndex] = {
+    ...next[sessionIndex],
+    exercises,
+  }
+
+  updateActiveWeekSessions(next)
 }
 
   function removeExercise(sessionIndex: number, exerciseIndex: number) {
@@ -1216,47 +1291,53 @@ const { data: programme, error: programmeError } = await supabase
                     </div>
 
                     <div className="space-y-2.5">
-                      {session.exercises.map((exercise, exerciseIndex) => (
-                        <div
-                          key={exerciseIndex}
-                          className="rounded-[1rem] border border-white/[0.06] bg-black/35 p-3"
-                        >
-                          <div className="mb-2 flex items-center justify-between gap-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/30">
-                                Exercise {exerciseIndex + 1}
-                              </p>
+  {session.exercises.map((exercise, exerciseIndex) => {
+    const exerciseKey =
+      `${activeWeek}-${sessionIndex}-${exerciseIndex}`
 
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase ${
-                                  exercise.section === "warmup"
-                                    ? "border border-smc-gold/25 bg-smc-gold/10 text-smc-gold"
-                                    : "border border-white/[0.06] bg-white/[0.035] text-white/35"
-                                }`}
-                              >
-                                {exercise.section === "warmup"
-  ? "Warm-up"
-  : exercise.section === "stretch"
-    ? "Stretch"
-    : exercise.section === "circuit"
-  ? "Circuit"
-  : exercise.section === "superset"
-    ? "Superset"
-      : "Main"}
-                              </span>
-                            </div>
+    const exerciseEditorOpen =
+      openExerciseKey === exerciseKey
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                removeExercise(sessionIndex, exerciseIndex)
-                              }
-                              disabled={session.exercises.length === 1}
-                              className="text-xs font-bold text-white/30 transition hover:text-red-300 disabled:opacity-20"
-                            >
-                              Remove
-                            </button>
-                          </div>
+    return (
+      <ProgrammeExerciseTile
+        key={exerciseKey}
+        exerciseName={exercise.name}
+        exerciseIndex={exerciseIndex}
+        section={exercise.section}
+        prescription={exercise.prescription}
+        isOpen={exerciseEditorOpen}
+        canMoveUp={exerciseIndex > 0}
+        canMoveDown={
+          exerciseIndex < session.exercises.length - 1
+        }
+        onToggle={() =>
+          toggleExerciseEditor(
+            sessionIndex,
+            exerciseIndex
+          )
+        }
+        onMoveUp={() =>
+          moveExercise(
+            sessionIndex,
+            exerciseIndex,
+            "up"
+          )
+        }
+        onMoveDown={() =>
+          moveExercise(
+            sessionIndex,
+            exerciseIndex,
+            "down"
+          )
+        }
+        onRemove={() =>
+          removeExercise(
+            sessionIndex,
+            exerciseIndex
+          )
+        }
+      >
+                    
 
 {exercise.section === "circuit" || exercise.section === "superset" ? (
   <div className="space-y-3">
@@ -1632,37 +1713,40 @@ const { data: programme, error: programmeError } = await supabase
         >
           + Add another prescription
         </button>
-      </div>
+            </div>
     )}
   </div>
 )}
-                        </div>
-                      ))}
-                    </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => addExercise(sessionIndex)}
-                        className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-smc-gold transition hover:bg-smc-gold hover:text-black"
-                      >
-                        + Add exercise
-                      </button>
+      </ProgrammeExerciseTile>
+    )
+  })}
+</div>
 
-                      <button
-                        type="button"
-                        onClick={() => removeSession(sessionIndex)}
-                        disabled={sessions.length === 1}
-                        className="rounded-full border border-white/[0.07] bg-white/[0.03] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white/35 transition hover:border-red-400/30 hover:text-red-300 disabled:opacity-20"
-                      >
-                        Remove session
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+<div className="flex flex-wrap gap-2">
+  <button
+    type="button"
+    onClick={() => addExercise(sessionIndex)}
+    className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-smc-gold transition hover:bg-smc-gold hover:text-black"
+  >
+    + Add exercise
+  </button>
+
+  <button
+    type="button"
+    onClick={() => removeSession(sessionIndex)}
+    disabled={sessions.length === 1}
+    className="rounded-full border border-white/[0.07] bg-white/[0.03] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white/35 transition hover:border-red-400/30 hover:text-red-300 disabled:opacity-20"
+  >
+    Remove session
+  </button>
+</div>
+</div>
+)}
+
+</div>
+)
+})}
 
           <button
             type="button"
