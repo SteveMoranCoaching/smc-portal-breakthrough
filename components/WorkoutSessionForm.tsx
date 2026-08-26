@@ -50,6 +50,18 @@ import useWorkoutProgress from "@/hooks/useWorkoutProgress"
 import WorkoutWarmupSection from "@/components/workouts/WorkoutWarmupSection"
 import WorkoutCircuitSection from "@/components/workouts/WorkoutCircuitSection"
 import WorkoutStretchSection from "@/components/workouts/WorkoutStretchSection"
+import PlateStack from "@/components/PlateStack"
+
+import {
+  BAR_OPTIONS,
+  calculatePlates,
+  type BarType,
+  type PlateMode,
+} from "@/lib/plateCalculator"
+import {
+  generateWarmup,
+  type SMCBrainWarmupResponse,
+} from "@/lib/smcBrain"
 
 const card =
   "relative scroll-mt-24 overflow-hidden rounded-[1.35rem] border border-white/[0.055] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.014))] shadow-[0_12px_30px_rgba(0,0,0,0.55)]"
@@ -99,8 +111,68 @@ export default function WorkoutSessionForm({
 
   const [activeDemo, setActiveDemo] = useState<any | null>(null)
   const [activeExerciseInfo, setActiveExerciseInfo] = useState<any | null>(null)
+
+  const [
+  activePlateWeight,
+  setActivePlateWeight,
+  ] = useState<number | null>(null)
+
+  const [plateMode, setPlateMode] =
+  useState<PlateMode>("calibrated")
+
+  const [barType, setBarType] =
+  useState<BarType>("standard")
+
+  const [customBarWeight, setCustomBarWeight] =
+  useState("20")
+
+  const activePlateResult = useMemo(() => {
+  if (
+    activePlateWeight === null ||
+    activePlateWeight <= 0
+  ) {
+    return null
+  }
+
+  return calculatePlates({
+    targetWeight: activePlateWeight,
+    mode: plateMode,
+    barType,
+    customBarWeight:
+      barType === "custom"
+        ? Number(customBarWeight)
+        : undefined,
+  })
+}, [
+  activePlateWeight,
+  plateMode,
+  barType,
+  customBarWeight,
+])
+
   const [warmupComplete, setWarmupComplete] = useState<Record<string, boolean>>({})
   const [warmupSectionComplete, setWarmupSectionComplete] = useState(false)
+  
+  const [
+  generatedWarmupComplete,
+  setGeneratedWarmupComplete,
+] = useState<Record<string, boolean>>({})
+
+const [
+  expandedWarmups,
+  setExpandedWarmups,
+] = useState<Record<string, boolean>>({})
+
+const [
+  completingGeneratedWarmup,
+  setCompletingGeneratedWarmup,
+] = useState<string | null>(null)
+
+const [
+  warmupCompleteToast,
+  setWarmupCompleteToast,
+] = useState(false)
+
   const [stretchComplete, setStretchComplete] = useState<Record<string, boolean>>({})
   const [stretchSectionComplete, setStretchSectionComplete] = useState(false)
   const [circuitComplete, setCircuitComplete] = useState<Record<string, boolean>>({})
@@ -284,6 +356,85 @@ if (parsed?.circuitExerciseComplete) {
       [key]: !current[key],
     }))
   }
+
+  function toggleGeneratedWarmups(exerciseIndex: number) {
+  const key = `generated-warmups-${exerciseIndex}`
+
+  setExpandedWarmups((current) => ({
+    ...current,
+    [key]: !current[key],
+  }))
+}
+
+  function getGeneratedWarmupKey(
+  exerciseIndex: number,
+  warmupIndex: number
+) {
+  return `generated-warmup-${exerciseIndex}-${warmupIndex}`
+}
+
+function completeGeneratedWarmup(
+  exerciseIndex: number,
+  warmupIndex: number,
+  totalWarmups: number
+) {
+  const key = getGeneratedWarmupKey(
+    exerciseIndex,
+    warmupIndex
+  )
+
+  const isCompleting =
+  completingGeneratedWarmup === key
+
+  setCompletingGeneratedWarmup(key)
+
+  if (
+    typeof navigator !== "undefined" &&
+    "vibrate" in navigator
+  ) {
+    navigator.vibrate(20)
+  }
+
+  const completedForExercise =
+    Array.from(
+      { length: totalWarmups },
+      (_, index) =>
+        generatedWarmupComplete[
+          getGeneratedWarmupKey(
+            exerciseIndex,
+            index
+          )
+        ]
+    ).filter(Boolean).length
+
+  const isFinalWarmup =
+    completedForExercise ===
+    totalWarmups - 1
+
+  window.setTimeout(() => {
+    setGeneratedWarmupComplete((current) => ({
+      ...current,
+      [key]: true,
+    }))
+
+    setCompletingGeneratedWarmup(null)
+
+    if (isFinalWarmup) {
+      if (
+        typeof navigator !== "undefined" &&
+        "vibrate" in navigator
+      ) {
+        navigator.vibrate([25, 40, 25])
+      }
+
+      setWarmupCompleteToast(true)
+
+      window.setTimeout(() => {
+        setWarmupCompleteToast(false)
+      }, 1800)
+    }
+  }, 250)
+}
 
 function toggleCircuitExerciseItem(
   exerciseIndex: number,
@@ -681,9 +832,81 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
           const previousLog = getPreviousLogForExercise(previousLogs, exerciseName)
           const previousPerformance = getPreviousPerformance(previousLog)
           const previousCoachFeedback = getPreviousCoachFeedback(previousLog)
+          const previousSessions = previousLogs
+  .filter(
+    (log: any) =>
+      String(log?.exercise_name || "")
+        .toLowerCase()
+        .trim() ===
+      String(exerciseName)
+        .toLowerCase()
+        .trim()
+  )
+  .sort(
+    (a: any, b: any) =>
+      new Date(b?.created_at || 0).getTime() -
+      new Date(a?.created_at || 0).getTime()
+  )
+  .slice(0, 3)
           const demo = getDemoForExercise(exerciseDemos, exerciseName)
           const entry = formData[exerciseIndex]
           const exerciseComplete = isCompletedExercise(entry?.sets ?? [])
+
+const prescribedWeights =
+  String(ex.prescription || "")
+    .match(/\d+(?:\.\d+)?\s*kg/gi)
+    ?.map((value) =>
+      Number(
+        value
+          .toLowerCase()
+          .replace("kg", "")
+          .trim()
+      )
+    )
+    .filter((value) =>
+      Number.isFinite(value)
+    ) ?? []
+
+const workingWeight =
+  prescribedWeights.length > 0
+    ? Math.max(...prescribedWeights)
+    : Number(
+        entry?.sets?.find(
+          (set: any) =>
+            Number(set?.weight) > 0
+        )?.weight || 0
+      )
+
+const generatedWarmup =
+  workingWeight > 0
+    ? generateWarmup({
+        targetWeight: workingWeight,
+        profile: "competition",
+        barWeight: 20,
+      })
+    : null
+
+    const remainingGeneratedWarmups =
+  generatedWarmup?.sets.filter(
+    (_, warmupIndex) =>
+      !generatedWarmupComplete[
+        getGeneratedWarmupKey(
+          exerciseIndex,
+          warmupIndex
+        )
+      ]
+  ) ?? []
+
+  const generatedWarmupsKey =
+  `generated-warmups-${exerciseIndex}`
+
+const generatedWarmupsExpanded =
+  Boolean(expandedWarmups[generatedWarmupsKey])
+
+  const prescriptionBlocks =
+  Array.isArray(ex?.prescriptions)
+    ? ex.prescriptions
+    : []
 
           return (
   <WorkoutExerciseCard
@@ -692,8 +915,10 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
     exerciseIndex={exerciseIndex}
     exerciseComplete={exerciseComplete}
     prescription={ex?.prescription}
-    coachNotes={ex?.notes}
     demo={demo}
+    previousPerformance={previousPerformance}
+    previousCoachFeedback={previousCoachFeedback}
+    previousSessions={previousSessions}
     onOpenDetails={() =>
       setActiveExerciseInfo({
         exercise: ex,
@@ -708,9 +933,161 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
         setActiveDemo(demo)
       }
     }}
+
   >
+
+    {generatedWarmup &&
+  remainingGeneratedWarmups.length > 0 && (
+    <div className="mb-3 overflow-hidden rounded-2xl border border-smc-gold/15 bg-smc-gold/[0.025] shadow-[0_8px_22px_rgba(0,0,0,0.22)]">
+
+      <button
+        type="button"
+        onClick={() =>
+          toggleGeneratedWarmups(exerciseIndex)
+        }
+        className="flex w-full items-center justify-between gap-3 px-3.5 py-3.5 text-left transition active:scale-[0.99]"
+      >
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-smc-gold/80">
+            Top Set Warm Ups
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-white/30">
+            {remainingGeneratedWarmups.length} remaining
+          </span>
+
+          <span
+            className={`text-sm font-black text-smc-gold/70 transition-transform duration-200 ${
+              generatedWarmupsExpanded
+                ? "rotate-180"
+                : ""
+            }`}
+          >
+            ▾
+          </span>
+        </div>
+      </button>
+
+      {generatedWarmupsExpanded && (
+        <div className="border-t border-smc-gold/10 px-3 pb-2.5 pt-2 space-y-1">
+          {generatedWarmup.sets.map(
+            (warmupSet, warmupIndex) => {
+              const key =
+                getGeneratedWarmupKey(
+                  exerciseIndex,
+                  warmupIndex
+                )
+
+              const isCompleting =
+                completingGeneratedWarmup === key
+
+              if (generatedWarmupComplete[key]) {
+                return null
+              }
+
+              return (
+  <div
+    key={key}
+    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 transition-all duration-200 ${
+      isCompleting
+        ? "scale-[0.99] border-smc-gold/35 bg-smc-gold/[0.08]"
+        : "border-white/[0.07] bg-black/10"
+    }`}
+  >
+    {/* LEFT — PRESCRIPTION */}
+    <p className="min-w-0 flex-1 text-[11px] font-black text-white/50">
+      {warmupSet.weight}kg × {warmupSet.reps}
+    </p>
+
+    {/* CENTRE — BAR MATH */}
+    {warmupSet.weight > 0 ? (
+      <button
+        type="button"
+        onClick={() => setActivePlateWeight(warmupSet.weight)}
+        className="flex h-8 w-[124px] shrink-0 items-center justify-center gap-2 rounded-lg border border-smc-gold/15 bg-black/20 px-2.5 text-smc-gold transition active:scale-95"
+      >
+        <svg
+  viewBox="0 0 32 18"
+  aria-hidden="true"
+  className="h-[16px] w-[29px] shrink-0 text-smc-gold"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <path
+    d="M2 9H30"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+  />
+  <path
+    d="M6 5V13"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    strokeLinecap="round"
+  />
+  <path
+    d="M10 3V15"
+    stroke="currentColor"
+    strokeWidth="3"
+    strokeLinecap="round"
+  />
+  <path
+    d="M22 3V15"
+    stroke="currentColor"
+    strokeWidth="3"
+    strokeLinecap="round"
+  />
+  <path
+    d="M26 5V13"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    strokeLinecap="round"
+  />
+</svg>
+
+<span className="whitespace-nowrap text-[8px] font-black uppercase tracking-[0.08em]">
+  Bar Math
+</span>
+      </button>
+    ) : (
+      <div className="w-[124px] shrink-0" />
+    )}
+
+    {/* RIGHT — COMPLETE */}
+    <button
+      type="button"
+      onClick={() =>
+        completeGeneratedWarmup(
+          exerciseIndex,
+          warmupIndex,
+          generatedWarmup.sets.length
+        )
+      }
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-black transition-all ${
+        isCompleting
+          ? "scale-110 border-smc-gold bg-smc-gold text-black"
+          : "border-white/10 bg-white/[0.02] text-white/40"
+      }`}
+    >
+      ✓
+    </button>
+  </div>
+)
+            }
+          )}
+        </div>
+      )}
+    </div>
+  )}
+
     <WorkoutSetList
       exercise={ex}
+        onOpenBarMath={(weight) =>
+          setActivePlateWeight(weight)
+        }
+      prescriptionBlocks={prescriptionBlocks}
       exerciseIndex={exerciseIndex}
       sets={formData[exerciseIndex]?.sets || []}
       previousLog={previousLog}
@@ -827,7 +1204,155 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
         </div>
       )}
 
-      <ExerciseDetailsModal
+      {warmupCompleteToast && (
+  <div className="pointer-events-none fixed left-1/2 top-6 z-[100] -translate-x-1/2">
+    <div className="flex items-center gap-2 rounded-full border border-smc-gold/30 bg-[#111111]/95 px-4 py-2.5 shadow-2xl backdrop-blur-xl">
+      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-smc-gold text-[11px] font-black text-black">
+        ✓
+      </div>
+
+      <span className="whitespace-nowrap text-xs font-black text-white">
+        Warm-ups complete
+      </span>
+    </div>
+  </div>
+)}
+
+{activePlateWeight !== null && activePlateResult && (
+  <div
+    className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 px-5 backdrop-blur-[2px]"
+    onClick={() => setActivePlateWeight(null)}
+  >
+    <div
+      className="w-full max-w-[360px] rounded-[1.5rem] border border-white/[0.08] bg-[#080808] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.78)]"
+      onClick={(event) =>
+        event.stopPropagation()
+      }
+    >
+    
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold/70">
+            Bar Math
+          </p>
+
+          <h2 className="mt-0.5 text-xl font-black text-white">
+            {activePlateWeight}kg
+          </h2>
+        </div>
+
+        <button
+          type="button"
+          onClick={() =>
+            setActivePlateWeight(null)
+          }
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-lg font-black text-white/50"
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[8px] font-black uppercase tracking-[0.16em] text-white/30">
+            Plates
+          </label>
+
+          <select
+            value={plateMode}
+            onChange={(event) =>
+              setPlateMode(
+                event.target.value as PlateMode
+              )
+            }
+            className="mt-1 h-9 w-full rounded-lg border border-white/[0.08] bg-black/40 px-2.5 text-[11px] font-bold text-white outline-none"
+          >
+            <option value="calibrated">
+              Calibrated
+            </option>
+
+            <option value="gym">
+              Gym Plates
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label className="text-[8px] font-black uppercase tracking-[0.16em] text-white/30">
+            Bar
+          </label>
+
+          <select
+            value={barType}
+            onChange={(event) =>
+              setBarType(
+                event.target.value as BarType
+              )
+            }
+            className="mt-1 h-9 w-full rounded-lg border border-white/[0.08] bg-black/40 px-2.5 text-[11px] font-bold text-white outline-none"
+          >
+            {BAR_OPTIONS.map((bar) => (
+              <option
+                key={bar.id}
+                value={bar.id}
+              >
+                {bar.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {barType === "custom" && (
+        <div className="mt-3">
+          <label className="text-[8px] font-black uppercase tracking-[0.16em] text-white/30">
+            Custom Bar Weight
+          </label>
+
+          <div className="mt-1.5 flex items-center rounded-xl border border-white/[0.08] bg-black/40">
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.5"
+              value={customBarWeight}
+              onChange={(event) =>
+                setCustomBarWeight(
+                  event.target.value
+                )
+              }
+              className="h-10 min-w-0 flex-1 bg-transparent px-3 text-xs font-bold text-white outline-none"
+            />
+
+            <span className="pr-3 text-[10px] font-black text-white/30">
+              kg
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-2 [&>div]:mt-0 [&>div]:p-2.5">
+        <PlateStack
+          plates={activePlateResult.platesPerSide}
+          mode={activePlateResult.mode}
+          barWeight={activePlateResult.barWeight}
+          targetWeight={activePlateResult.targetWeight}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={() =>
+          setActivePlateWeight(null)
+        }
+        className="mt-2 w-full rounded-xl bg-smc-gold px-4 py-2 text-xs font-black text-black transition active:scale-[0.98]"
+      >
+        Done
+      </button>
+    </div>
+  </div>
+)}
+
+<ExerciseDetailsModal
   exerciseInfo={activeExerciseInfo}
   onClose={() => setActiveExerciseInfo(null)}
   onOpenDemo={(demo) => setActiveDemo(demo)}

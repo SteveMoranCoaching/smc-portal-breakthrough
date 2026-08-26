@@ -2,6 +2,8 @@ import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { requireCoach } from "@/lib/authGuards"
+import ExerciseLibraryManagerClientTile from "@/components/programmes/ExerciseLibraryManagerClientTile"
+import ExerciseMetadataFields from "@/components/programmes/ExerciseMetadataFields"
 
 export const dynamic = "force-dynamic"
 
@@ -83,6 +85,18 @@ const defaultSecondaryLog =
   const video = formData.get("video") as File | null
   const thumbnail = formData.get("thumbnail") as File | null
 
+const movement =
+  String(formData.get("movement") || "").trim()
+
+const equipment =
+  String(formData.get("equipment") || "").trim()
+
+const warmupProfile =
+  String(formData.get("warmupProfile") || "none").trim()  
+  
+const isFavourite =
+  formData.get("isFavourite") === "on"  
+
   if (!exerciseName) return
 
   const videoPath = await uploadFile({
@@ -115,6 +129,10 @@ const defaultSecondaryLog =
   default_section: defaultSection,
   default_primary_log: defaultPrimaryLog,
   default_secondary_log: defaultSecondaryLog,
+  movement: movement || null,
+  equipment: equipment || null,
+  warmup_profile: warmupProfile,
+  is_favourite: isFavourite,
   video_path: videoPath || existing.data?.video_path || null,
   thumbnail_path: thumbnailPath || existing.data?.thumbnail_path || null,
   updated_at: new Date().toISOString(),
@@ -151,6 +169,18 @@ const defaultSecondaryLog =
   const video = formData.get("video") as File | null
   const thumbnail = formData.get("thumbnail") as File | null
 
+const movement =
+  String(formData.get("movement") || "").trim()
+
+const equipment =
+  String(formData.get("equipment") || "").trim()
+
+const warmupProfile =
+  String(formData.get("warmupProfile") || "none").trim()  
+  
+const isFavourite =
+  formData.get("isFavourite") === "on"  
+
   if (!id || !exerciseName) return
 
   const { data: existing } = await supabase
@@ -184,6 +214,10 @@ const defaultSecondaryLog =
   default_section: defaultSection,
   default_primary_log: defaultPrimaryLog,
   default_secondary_log: defaultSecondaryLog,
+  movement: movement || null,
+  equipment: equipment || null,
+  warmup_profile: warmupProfile,
+  is_favourite: isFavourite,
   video_path: videoPath || existing?.video_path || null,
   thumbnail_path: thumbnailPath || existing?.thumbnail_path || null,
   updated_at: new Date().toISOString(),
@@ -253,6 +287,57 @@ export default async function ExerciseDemosPage({
     })
   )
 
+  const totalExercises = demosWithUrls.length
+
+const exercisesWithVideo = demosWithUrls.filter(
+  (demo) => Boolean(demo.videoUrl)
+).length
+
+const exercisesWithNotes = demosWithUrls.filter(
+  (demo) => Boolean(demo.coach_notes?.trim())
+).length
+
+const exercisesWithAliases = demosWithUrls.filter(
+  (demo) =>
+    Array.isArray(demo.aliases) &&
+    demo.aliases.length > 0
+).length
+
+const missingVideos =
+  totalExercises - exercisesWithVideo
+
+const videoCompletion =
+  totalExercises > 0
+    ? Math.round(
+        (exercisesWithVideo / totalExercises) * 100
+      )
+    : 0
+
+const notesCompletion =
+  totalExercises > 0
+    ? Math.round(
+        (exercisesWithNotes / totalExercises) * 100
+      )
+    : 0
+
+const aliasesCompletion =
+  totalExercises > 0
+    ? Math.round(
+        (exercisesWithAliases / totalExercises) * 100
+      )
+    : 0
+
+const overallCompletion =
+  totalExercises > 0
+    ? Math.round(
+        (
+          videoCompletion +
+          notesCompletion +
+          aliasesCompletion
+        ) / 3
+      )
+    : 0
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.10),transparent_32%),#050505] px-3 py-6 pb-32 text-white sm:px-4">
       <div className="pointer-events-none absolute inset-x-[-80px] top-[-160px] h-[360px] rounded-full bg-smc-gold/10 blur-[100px]" />
@@ -268,13 +353,154 @@ export default async function ExerciseDemosPage({
 
           <p className={labelStyle}>Coach Tools</p>
           <h1 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white">
-            Exercise Demos
-          </h1>
+  Exercise Library
+</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-white/52">
-            Create, edit and manage the demo videos that appear inside client
-            workout panels.
-          </p>
+  Create and manage exercises, coaching defaults, demo media and programme-builder settings.
+</p>
         </section>
+
+        <section className={`${glassCard} p-4 sm:p-5`}>
+  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),transparent_32%,rgba(212,175,55,0.045)_78%,transparent)]" />
+
+  <div className="relative z-10">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p className={labelStyle}>Library Health</p>
+
+        <h2 className="mt-1 text-xl font-black tracking-[-0.035em] text-white">
+          Exercise Library Progress
+        </h2>
+      </div>
+
+      <div className="text-right">
+        <p className="text-3xl font-black text-smc-gold">
+          {overallCompletion}%
+        </p>
+
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/30">
+          Overall completion
+        </p>
+      </div>
+    </div>
+
+    <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+      <div
+        className="h-full rounded-full bg-smc-gold transition-all duration-500"
+        style={{
+          width: `${overallCompletion}%`,
+        }}
+      />
+    </div>
+
+    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="rounded-[1rem] border border-white/[0.06] bg-black/35 p-3">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/30">
+          Exercises
+        </p>
+
+        <p className="mt-1 text-xl font-black text-white">
+          {totalExercises}
+        </p>
+      </div>
+
+      <div className="rounded-[1rem] border border-green-500/15 bg-green-500/[0.06] p-3">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-green-300/60">
+          Videos Ready
+        </p>
+
+        <p className="mt-1 text-xl font-black text-green-300">
+          {exercisesWithVideo}
+        </p>
+      </div>
+
+      <div className="rounded-[1rem] border border-blue-400/15 bg-blue-400/[0.06] p-3">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-blue-300/60">
+          Coach Notes
+        </p>
+
+        <p className="mt-1 text-xl font-black text-blue-300">
+          {exercisesWithNotes}
+        </p>
+      </div>
+
+      <div className="rounded-[1rem] border border-red-500/15 bg-red-500/[0.06] p-3">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-red-300/60">
+          Missing Videos
+        </p>
+
+        <p className="mt-1 text-xl font-black text-red-300">
+          {missingVideos}
+        </p>
+      </div>
+    </div>
+
+    <div className="mt-4 space-y-3">
+      <div>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <p className="text-[10px] font-bold text-white/45">
+            Demo Videos
+          </p>
+
+          <p className="text-[10px] font-black text-white/60">
+            {videoCompletion}%
+          </p>
+        </div>
+
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+          <div
+            className="h-full rounded-full bg-green-400"
+            style={{
+              width: `${videoCompletion}%`,
+            }}
+          />
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <p className="text-[10px] font-bold text-white/45">
+            Coach Notes
+          </p>
+
+          <p className="text-[10px] font-black text-white/60">
+            {notesCompletion}%
+          </p>
+        </div>
+
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+          <div
+            className="h-full rounded-full bg-blue-400"
+            style={{
+              width: `${notesCompletion}%`,
+            }}
+          />
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <p className="text-[10px] font-bold text-white/45">
+            Search Aliases
+          </p>
+
+          <p className="text-[10px] font-black text-white/60">
+            {aliasesCompletion}%
+          </p>
+        </div>
+
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+          <div
+            className="h-full rounded-full bg-smc-gold"
+            style={{
+              width: `${aliasesCompletion}%`,
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
         {resolvedSearchParams?.saved === "true" && (
           <div className="rounded-[1rem] border border-green-500/25 bg-green-500/10 px-3 py-2 text-sm text-green-300">
@@ -295,7 +521,7 @@ export default async function ExerciseDemosPage({
             <div>
               <p className={labelStyle}>Create New</p>
               <h2 className="mt-1 text-xl font-black tracking-[-0.035em] text-white">
-                Add Exercise Demo
+                Add Exercise
               </h2>
             </div>
 
@@ -339,63 +565,7 @@ export default async function ExerciseDemosPage({
               />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-  <div>
-    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-      Default section
-    </label>
-
-    <select
-      name="defaultSection"
-      defaultValue="main"
-      className={`mt-2 ${inputStyle}`}
-    >
-      <option value="main">Main Exercise</option>
-      <option value="warmup">Warm-up / Mobility</option>
-      <option value="superset">Superset</option>
-      <option value="circuit">Circuit</option>
-      <option value="stretch">Post Session Stretch</option>
-    </select>
-  </div>
-
-  <div>
-    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-      Primary log
-    </label>
-
-    <select
-      name="defaultPrimaryLog"
-      defaultValue="kg"
-      className={`mt-2 ${inputStyle}`}
-    >
-      <option value="kg">Kg</option>
-      <option value="bodyweight">Bodyweight</option>
-      <option value="height">Height</option>
-      <option value="speed">Speed</option>
-      <option value="distance">Distance</option>
-      <option value="none">None</option>
-    </select>
-  </div>
-
-  <div>
-    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-      Secondary log
-    </label>
-
-    <select
-      name="defaultSecondaryLog"
-      defaultValue="reps"
-      className={`mt-2 ${inputStyle}`}
-    >
-      <option value="reps">Reps</option>
-      <option value="time">Time</option>
-      <option value="distance">Distance</option>
-      <option value="calories">Calories</option>
-      <option value="rounds">Rounds</option>
-      <option value="none">None</option>
-    </select>
-  </div>
-</div>
+           <ExerciseMetadataFields />
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div
@@ -431,7 +601,7 @@ export default async function ExerciseDemosPage({
               type="submit"
               className="min-h-[44px] w-full rounded-2xl bg-smc-gold px-4 text-sm font-black text-black shadow-[0_0_22px_rgba(212,175,55,0.20)] transition hover:brightness-110 active:scale-[0.98]"
             >
-              Save New Exercise Demo
+              Save New Exercise
             </button>
           </form>
         </section>
@@ -441,22 +611,28 @@ export default async function ExerciseDemosPage({
             <div>
               <p className={labelStyle}>Library</p>
               <h2 className="mt-1.5 text-2xl font-black tracking-[-0.04em] text-white">
-                Uploaded Demos
+                Exercise Library
               </h2>
             </div>
 
             <span className="rounded-full border border-smc-gold/25 bg-smc-gold/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-smc-gold">
-              {demosWithUrls.length} demos
+              {demosWithUrls.length} exercises
             </span>
           </div>
 
           {demosWithUrls.length > 0 ? (
             <div className="grid gap-3">
               {demosWithUrls.map((demo) => (
-                <article key={demo.id} className={`${glassCard} p-3`}>
-                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.035),transparent_34%,rgba(212,175,55,0.035)_78%,transparent)]" />
-
-                  <div className="relative z-10 grid gap-4 lg:grid-cols-[220px_1fr]">
+                <ExerciseLibraryManagerClientTile
+  key={demo.id}
+  exerciseName={demo.exercise_name}
+  movement={demo.movement}
+  equipment={demo.equipment}
+  hasVideo={Boolean(demo.videoUrl)}
+  hasCoachNotes={Boolean(demo.coach_notes?.trim())}
+  favourite={Boolean((demo as any).is_favourite)}
+>
+  <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
                     <div className="relative min-h-[170px] overflow-hidden rounded-[1.2rem] border border-white/10 bg-black/45">
                       {demo.thumbnailUrl ? (
                         <img
@@ -523,63 +699,16 @@ export default async function ExerciseDemosPage({
                         />
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-3">
-  <div>
-    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-      Default section
-    </label>
-
-    <select
-      name="defaultSection"
-      defaultValue={demo.default_section || "main"}
-      className={`mt-1.5 ${inputStyle}`}
-    >
-      <option value="main">Main Exercise</option>
-      <option value="warmup">Warm-up / Mobility</option>
-      <option value="superset">Superset</option>
-      <option value="circuit">Circuit</option>
-      <option value="stretch">Post Session Stretch</option>
-    </select>
-  </div>
-
-  <div>
-    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-      Primary log
-    </label>
-
-    <select
-      name="defaultPrimaryLog"
-      defaultValue={demo.default_primary_log || "kg"}
-      className={`mt-1.5 ${inputStyle}`}
-    >
-      <option value="kg">Kg</option>
-      <option value="bodyweight">Bodyweight</option>
-      <option value="height">Height</option>
-      <option value="speed">Speed</option>
-      <option value="distance">Distance</option>
-      <option value="none">None</option>
-    </select>
-  </div>
-
-  <div>
-    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-      Secondary log
-    </label>
-
-    <select
-      name="defaultSecondaryLog"
-      defaultValue={demo.default_secondary_log || "reps"}
-      className={`mt-1.5 ${inputStyle}`}
-    >
-      <option value="reps">Reps</option>
-      <option value="time">Time</option>
-      <option value="distance">Distance</option>
-      <option value="calories">Calories</option>
-      <option value="rounds">Rounds</option>
-      <option value="none">None</option>
-    </select>
-  </div>
-</div>
+                     <ExerciseMetadataFields
+  defaultSection={demo.default_section}
+  defaultPrimaryLog={demo.default_primary_log}
+  defaultSecondaryLog={demo.default_secondary_log}
+  movement={demo.movement}
+  equipment={demo.equipment}
+  warmupProfile={(demo as any).warmup_profile}
+  isFavourite={Boolean((demo as any).is_favourite)}
+  compact
+/>
 
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div
@@ -631,7 +760,7 @@ export default async function ExerciseDemosPage({
                       </button>
                     </form>
                   </div>
-                </article>
+                </ExerciseLibraryManagerClientTile>
               ))}
             </div>
           ) : (

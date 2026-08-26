@@ -6,6 +6,7 @@ type ExerciseLibraryTileProps = {
     exercise_name: string
     coach_notes?: string | null
     thumbnail_url?: string | null
+    is_favourite?: boolean
   }
   onAdd: () => void
 }
@@ -35,9 +36,17 @@ export default function ExerciseLibraryTile({
       )}
 
       <div className="p-2.5">
-        <p className="line-clamp-2 text-xs font-black leading-4 text-white">
-          {exercise.exercise_name}
-        </p>
+        <div className="flex items-start gap-1.5">
+  {exercise.is_favourite && (
+    <span className="shrink-0 text-xs text-smc-gold">
+      ⭐
+    </span>
+  )}
+
+  <p className="line-clamp-2 text-xs font-black leading-4 text-white">
+    {exercise.exercise_name}
+  </p>
+</div>
 
         {exercise.coach_notes ? (
           <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-white/35">

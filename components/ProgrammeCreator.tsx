@@ -290,6 +290,7 @@ export default function ProgrammeCreator() {
   default_section,
   default_primary_log,
   default_secondary_log
+  is_favourite
 `)
       .order("exercise_name", { ascending: true })
 
@@ -331,6 +332,7 @@ export default function ProgrammeCreator() {
     exercise.default_primary_log || "kg",
   default_secondary_log:
     exercise.default_secondary_log || "reps",
+  is_favourite: Boolean(exercise.is_favourite),
 }
       })
     )
