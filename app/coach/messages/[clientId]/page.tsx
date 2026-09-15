@@ -82,15 +82,15 @@ export default async function CoachClientMessagesPage({
         <NotificationPermissionButton />
       </div>
 
-      <section className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-gray-800 bg-gray-950 p-4">
-        <RealtimeMessageThread
-          initialMessages={messages || []}
-          currentUserId={user.id}
-          clientUserId={clientUserId}
-          unreadMessageIds={unreadMessageIds}
-          otherUserName={clientName}
-        />
-      </section>
+      <section className="min-h-0 flex-1 overflow-hidden rounded-3xl border border-gray-800 bg-gray-950 p-4">
+  <RealtimeMessageThread
+    initialMessages={messages || []}
+    currentUserId={user.id}
+    clientUserId={clientUserId}
+    unreadMessageIds={unreadMessageIds}
+    otherUserName={clientName}
+  />
+</section>
 
       <MessageComposer
         currentUserId={user.id}

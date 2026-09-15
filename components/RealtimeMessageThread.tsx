@@ -113,7 +113,7 @@ export default function RealtimeMessageThread({
   null
 )
 
-  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastBrowserNotificationRef = useRef<string | null>(null)
@@ -129,12 +129,18 @@ export default function RealtimeMessageThread({
   }, [initialMessages])
 
   useEffect(() => {
+  const container = scrollContainerRef.current
+
+  if (!container) return
+
   const shouldUseSmoothScroll =
     messages.length > previousMessageCountRef.current
 
-  bottomRef.current?.scrollIntoView({
-    behavior: shouldUseSmoothScroll ? "smooth" : "auto",
-    block: "end",
+  requestAnimationFrame(() => {
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: shouldUseSmoothScroll ? "smooth" : "auto",
+    })
   })
 
   previousMessageCountRef.current = messages.length
@@ -347,7 +353,10 @@ function getAttachmentDownloadUrl(
 }
 
   return (
-    <>
+    <div
+  ref={scrollContainerRef}
+  className="h-full overflow-y-auto"
+>
       <MessageToast message={toastMessage} />
 
       {realtimeStatus === "disconnected" && (
@@ -484,7 +493,6 @@ function getAttachmentDownloadUrl(
         )}
       </div>
 
-      <div ref={bottomRef} />
-    </>
+      </div>
   )
 }
