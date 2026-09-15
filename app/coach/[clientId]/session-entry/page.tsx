@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { requireCoach } from "@/lib/authGuards"
 import CoachSessionEntryForm from "@/components/CoachSessionEntryForm"
-import { addCoachSession } from "./actions"
+import { saveCoachWorkout } from "./actions"
 
 export const dynamic = "force-dynamic"
 
@@ -111,11 +111,12 @@ export default async function CoachSessionEntryPage({
           </section>
         ) : (
           <CoachSessionEntryForm
-            clientId={client.id}
-            programmes={programmes}
-            previousLogs={previousLogs || []}
-            action={addCoachSession}
-          />
+  clientId={client.id}
+  userId={client.user_id}
+  programmes={programmes}
+  previousLogs={previousLogs || []}
+  onCoachSave={saveCoachWorkout}
+/>
         )}
       </div>
     </main>

@@ -206,3 +206,23 @@ export async function addCoachSession(formData: FormData) {
 
   redirect(`/coach/${clientId}?tab=overview&coachSessionAdded=true`)
 }
+
+export async function saveCoachWorkout(payload: {
+  clientId: string
+  programmeId: string
+  sessionId: string
+  entries: any[]
+  sessionRating?: string
+  sessionNotes?: string
+}) {
+  const formData = new FormData()
+
+  formData.set("clientId", payload.clientId)
+  formData.set("programmeId", payload.programmeId)
+  formData.set("sessionId", payload.sessionId)
+  formData.set("entriesJson", JSON.stringify(payload.entries || []))
+  formData.set("sessionRating", payload.sessionRating || "")
+  formData.set("sessionNotes", payload.sessionNotes || "")
+
+  return addCoachSession(formData)
+}

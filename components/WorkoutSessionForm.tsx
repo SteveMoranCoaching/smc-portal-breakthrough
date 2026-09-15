@@ -76,10 +76,17 @@ export default function WorkoutSessionForm({
   userId,
   previousLogs = [],
   exerciseDemos = [],
-   existingLogs = [],
+  existingLogs = [],
   isEditMode = false,
+
+  // Coach logging mode
+  mode = "client",
+  coachClientId = "",
+  onCoachSave,
 }: any) {
   const router = useRouter()
+  const isCoachMode = mode === "coach"
+
   const [saveError, setSaveError] = useState("")
   const exercises = useMemo(
     () => (Array.isArray(session?.exercises) ? session.exercises : []),
@@ -529,6 +536,64 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
 
   async function handleSave(completionConfirmed = false) {
     if (!sessionStats.hasAnyLoggedWork || saving) return
+
+    if (isCoachMode) {
+  if (!onCoachSave) {
+    setSaveError("Coach save handler is not available.")
+    return
+  }
+
+  setSaving(true)
+  setSaveError("")
+  setMessage("Saving coach session...")
+
+  try {
+    const entries = formData
+      .map((data: any, exerciseIndex: number) => {
+        const exercise = exercises[exerciseIndex]
+
+        if (!isMainExercise(exercise)) return null
+
+        const completedSets = Array.isArray(data?.sets)
+          ? data.sets.filter(hasSetData)
+          : []
+
+        return {
+          exerciseName:
+            exercise?.name || `Exercise ${exerciseIndex + 1}`,
+          notes: String(data?.notes || "").trim(),
+          sets: completedSets,
+        }
+      })
+      .filter(
+        (entry: any) =>
+          entry &&
+          (entry.sets.length > 0 || entry.notes)
+      )
+
+    await onCoachSave({
+      clientId: coachClientId,
+      programmeId,
+      sessionId: session.id,
+      entries,
+      sessionRating,
+      sessionNotes,
+    })
+
+    setComplete(true)
+    setMessage("")
+  } catch (err: any) {
+    setSaveError(
+      err?.message
+        ? `Couldn’t save this coach session: ${err.message}`
+        : "Couldn’t save this coach session."
+    )
+  } finally {
+    setSaving(false)
+  }
+
+  return
+}
 
     if (
       !isEditMode &&
