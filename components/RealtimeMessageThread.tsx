@@ -129,16 +129,16 @@ export default function RealtimeMessageThread({
   }, [initialMessages])
 
   useEffect(() => {
-    const shouldUseSmoothScroll =
-      messages.length > previousMessageCountRef.current
+  const shouldUseSmoothScroll =
+    messages.length > previousMessageCountRef.current
 
-    bottomRef.current?.scrollIntoView({
-      behavior: shouldUseSmoothScroll ? "smooth" : "auto",
-      block: "end",
-    })
+  bottomRef.current?.scrollIntoView({
+    behavior: shouldUseSmoothScroll ? "smooth" : "auto",
+    block: "end",
+  })
 
-    previousMessageCountRef.current = messages.length
-  }, [messages.length, isOtherUserTyping])
+  previousMessageCountRef.current = messages.length
+}, [messages.length])
 
   function getMessagePreview(message: Message) {
     if (message.body?.trim()) return message.body.trim()

@@ -65,7 +65,7 @@ export default async function CoachClientMessagesPage({
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-11rem)] max-w-2xl flex-col">
+  <div className="mx-auto flex h-[calc(100dvh-11rem)] max-w-2xl flex-col overflow-hidden">
       <header className="mb-5">
         <Link href="/coach/messages" className="text-sm text-yellow-400">
           ← Back to Messages
@@ -82,7 +82,7 @@ export default async function CoachClientMessagesPage({
         <NotificationPermissionButton />
       </div>
 
-      <section className="flex-1 space-y-3 rounded-3xl border border-gray-800 bg-gray-950 p-4">
+      <section className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-gray-800 bg-gray-950 p-4">
         <RealtimeMessageThread
           initialMessages={messages || []}
           currentUserId={user.id}
