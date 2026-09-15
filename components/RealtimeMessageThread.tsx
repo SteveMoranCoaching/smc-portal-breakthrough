@@ -129,21 +129,33 @@ export default function RealtimeMessageThread({
   }, [initialMessages])
 
   useEffect(() => {
-  const container = scrollContainerRef.current
+  const scrollContainer = scrollContainerRef.current
 
-  if (!container) return
+  if (!scrollContainer) return
 
   const shouldUseSmoothScroll =
     messages.length > previousMessageCountRef.current
 
   requestAnimationFrame(() => {
-    container.scrollTo({
-      top: container.scrollHeight,
+    scrollContainer.scrollTo({
+      top: scrollContainer.scrollHeight,
       behavior: shouldUseSmoothScroll ? "smooth" : "auto",
+    })
+
+    requestAnimationFrame(() => {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight
     })
   })
 
+  const settleTimer = window.setTimeout(() => {
+    scrollContainer.scrollTop = scrollContainer.scrollHeight
+  }, 300)
+
   previousMessageCountRef.current = messages.length
+
+  return () => {
+    window.clearTimeout(settleTimer)
+  }
 }, [messages.length])
 
   function getMessagePreview(message: Message) {
