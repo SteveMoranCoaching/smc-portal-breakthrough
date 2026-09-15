@@ -583,14 +583,21 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
     setComplete(true)
     setMessage("")
   } catch (err: any) {
-    setSaveError(
-      err?.message
-        ? `Couldn’t save this coach session: ${err.message}`
-        : "Couldn’t save this coach session."
-    )
-  } finally {
-    setSaving(false)
+  if (
+    err?.message === "NEXT_REDIRECT" ||
+    err?.digest?.startsWith?.("NEXT_REDIRECT")
+  ) {
+    throw err
   }
+
+  setSaveError(
+    err?.message
+      ? `Couldn’t save this coach session: ${err.message}`
+      : "Couldn’t save this coach session."
+  )
+} finally {
+  setSaving(false)
+}
 
   return
 }
