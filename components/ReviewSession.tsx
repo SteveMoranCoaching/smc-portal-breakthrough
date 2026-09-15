@@ -24,6 +24,12 @@ type LogItem = {
   coach_feedback: string
   sets_completed: SetEntry[] | null
   notes: string | null
+  previousPerformance?: {
+    id: string
+    created_at: string
+    session_id: string
+    sets_completed: SetEntry[] | null
+  } | null
 }
 
 
@@ -177,6 +183,35 @@ window.scrollTo(0, 0)
 
     return parts.length > 0 ? parts.join(" ") : "No data"
   }
+
+  function getWeightDelta(
+  currentSet: SetEntry,
+  previousSet?: SetEntry
+) {
+  if (!currentSet?.weight || !previousSet?.weight) return null
+
+  const currentWeight = Number(currentSet.weight)
+  const previousWeight = Number(previousSet.weight)
+
+  if (
+    !Number.isFinite(currentWeight) ||
+    !Number.isFinite(previousWeight)
+  ) {
+    return null
+  }
+
+  const difference = currentWeight - previousWeight
+
+  if (difference === 0) return null
+
+  return {
+    difference,
+    label:
+      difference > 0
+        ? `(+${difference}kg)`
+        : `(${difference}kg)`,
+  }
+}
 
   function formatFlag(flag: string) {
     return flag.replaceAll("_", " ")
@@ -816,16 +851,42 @@ return prescribedExercise?.prescription || ""
 
 
               <div className="mt-3 space-y-2">
-                {log.sets_completed?.map((set, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between rounded-lg bg-zinc-950 px-3 py-2 text-sm"
-                  >
-                    <span className="text-zinc-500">Set {index + 1}</span>
-                    <span className="font-semibold text-white">{formatSet(set, log.exercise_name)}</span>
-                  </div>
-                ))}
-              </div>
+  {log.sets_completed?.map((set, index) => {
+    const previousSet =
+      log.previousPerformance?.sets_completed?.[index]
+
+    const weightDelta = getWeightDelta(set, previousSet)
+
+    return (
+      <div
+        key={index}
+        className="flex items-center justify-between rounded-lg bg-zinc-950 px-3 py-2 text-sm"
+      >
+        <span className="text-zinc-500">
+          Set {index + 1}
+        </span>
+
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-white">
+            {formatSet(set, log.exercise_name)}
+          </span>
+
+          {weightDelta && (
+            <span
+              className={
+                weightDelta.difference > 0
+                  ? "text-xs font-bold text-green-400"
+                  : "text-xs font-bold text-zinc-500"
+              }
+            >
+              {weightDelta.label}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  })}
+</div>
 
               {log.notes && (
                 <div className="mt-3 rounded-lg bg-zinc-950 p-3">

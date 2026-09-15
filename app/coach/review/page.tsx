@@ -43,6 +43,35 @@ export default async function CoachReviewPage() {
     .order("created_at", { ascending: false })
     .limit(300)
 
+  const { data: historicalWorkoutLogs } = await supabase
+  .from("workout_logs")
+  .select(
+    "id, user_id, programme_id, session_id, exercise_name, sets_completed, created_at"
+  )
+  .order("created_at", { ascending: false })
+  .limit(1000)
+  
+  function normaliseExerciseName(value: string) {
+  return String(value || "").trim().toLowerCase()
+}
+
+function getPreviousExerciseLog(currentLog: any) {
+  const currentTime = new Date(currentLog.created_at).getTime()
+  const exerciseName = normaliseExerciseName(currentLog.exercise_name)
+
+  return (
+    (historicalWorkoutLogs || []).find((previousLog: any) => {
+      if (previousLog.id === currentLog.id) return false
+
+      return (
+        previousLog.user_id === currentLog.user_id &&
+        normaliseExerciseName(previousLog.exercise_name) === exerciseName &&
+        new Date(previousLog.created_at).getTime() < currentTime
+      )
+    }) || null
+  )
+}
+
   const { data: sessionCompletions } = await supabase
     .from("session_completions")
     .select(
@@ -160,7 +189,10 @@ function getPreviousCheckInFeedback(userId: string, currentCreatedAt: string) {
     })
   )
 
-  const logItems = (workoutLogs || []).map((log) => ({
+  const logItems = (workoutLogs || []).map((log) => {
+  const previousLog = getPreviousExerciseLog(log)
+
+  return {
     type: "log" as const,
     id: log.id,
     user_id: log.user_id,
@@ -173,7 +205,18 @@ function getPreviousCheckInFeedback(userId: string, currentCreatedAt: string) {
     coach_feedback: log.coach_feedback || "",
     sets_completed: log.sets_completed as SetEntry[] | null,
     notes: log.notes,
-  }))
+
+    previousPerformance: previousLog
+      ? {
+          id: previousLog.id,
+          created_at: previousLog.created_at,
+          session_id: previousLog.session_id,
+          sets_completed:
+            previousLog.sets_completed as SetEntry[] | null,
+        }
+      : null,
+  }
+})
 
   const checkInItems = (checkIns || []).map((checkIn) => ({
   type: "check-in" as const,
