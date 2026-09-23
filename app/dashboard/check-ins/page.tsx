@@ -1,8 +1,6 @@
-import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
-import SubmitButton from "@/components/SubmitButton"
-import { checkCheckInAchievements } from "@/lib/achievements"
+import WeeklyCheckInForm from "@/components/check-ins/WeeklyCheckInForm"
 
 export const dynamic = "force-dynamic"
 
@@ -45,73 +43,6 @@ function formatDate(dateString: string) {
     month: "short",
     year: "numeric",
   })
-}
-
-async function submitCheckIn(formData: FormData) {
-  "use server"
-
-  const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/dashboard/check-ins?error=not-logged-in")
-  }
-
-  if (!isCheckInWindowOpen()) {
-  redirect("/dashboard/check-ins?error=checkin-window-closed")
-}
-
-  const { weekStart, weekEnd } = getWeekWindow()
-
-  const { data: existingThisWeek } = await supabase
-    .from("check_ins")
-    .select("id")
-    .eq("user_id", user.id)
-    .gte("created_at", weekStart)
-    .lt("created_at", weekEnd)
-    .maybeSingle()
-
-  if (existingThisWeek) {
-    redirect("/dashboard/check-ins?alreadySubmitted=true")
-  }
-
-  const { error } = await supabase.from("check_ins").insert({
-  user_id: user.id,
-  bodyweight: Number(formData.get("bodyweight")) || null,
-  training_rating: Number(formData.get("training_rating")) || null,
-  recovery_rating: Number(formData.get("recovery_rating")) || null,
-  nutrition_rating: Number(formData.get("nutrition_rating")) || null,
-  cardio_steps: String(formData.get("cardio_steps") || "").trim(),
-  notes: String(formData.get("notes") || "").trim(),
-  reviewed: false,
-  feedback_seen: true,
-  manual_entry: false,
-  submitted_by: "client",
-  coach_id: null,
-})
-
-  if (error) {
-    console.error("Check-in submit error:", error)
-
-    const message = encodeURIComponent(
-      `${error.message}${error.details ? ` | Details: ${error.details}` : ""}${
-        error.hint ? ` | Hint: ${error.hint}` : ""
-      }${error.code ? ` | Code: ${error.code}` : ""}`
-    )
-
-    redirect(`/dashboard/check-ins?error=${message}`)
-  }
-
-  await checkCheckInAchievements(supabase, user.id)
-
-  revalidatePath("/dashboard")
-  revalidatePath("/dashboard/check-ins")
-  revalidatePath("/coach")
-
-  redirect("/dashboard/check-ins?submitted=true")
 }
 
 export default async function CheckInsPage({
@@ -163,7 +94,7 @@ const previousCoachFeedbackCheckIn =
       String(checkIn.coach_feedback).trim() !== ""
   ) || null
 
-  const checkInWindowOpen = isCheckInWindowOpen()
+ const checkInWindowOpen = isCheckInWindowOpen()
 
   const unseenFeedbackIds =
     checkIns
@@ -183,7 +114,7 @@ const previousCoachFeedbackCheckIn =
 
   return (
     <main className="min-h-screen bg-black px-4 pb-28 pt-5 text-white">
-      <section className="mx-auto max-w-2xl space-y-5">
+      <section className="mx-auto max-w-5xl space-y-5">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-yellow-500">
             SMC Check-In
@@ -249,117 +180,17 @@ const previousCoachFeedbackCheckIn =
         )}
 
         {!hasSubmittedThisWeek && checkInWindowOpen ? (
-          <form action={submitCheckIn} className={`${premiumCard} p-5`}>
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <label className="space-y-2">
-                  <span className="text-sm font-bold text-yellow-500">
-                    Bodyweight
-                  </span>
-                  <input
-                    name="bodyweight"
-                    type="number"
-                    step="0.01"
-                    placeholder="e.g. 89.55"
-                    className={inputClass}
-                  />
-                </label>
-
-                <label className="space-y-2">
-                  <span className="text-sm font-bold text-yellow-500">
-                    Steps / Cardio
-                  </span>
-                  <input
-                    name="cardio_steps"
-                    type="text"
-                    placeholder="e.g. 8k steps daily"
-                    className={inputClass}
-                  />
-                </label>
-              </div>
-
-              <div className={`${innerPanel} p-4`}>
-                <p className="mb-4 text-sm font-bold text-zinc-300">
-                  Rate your week
-                </p>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <label className="space-y-2">
-                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
-                      Training
-                    </span>
-                    <input
-                      name="training_rating"
-                      type="number"
-                      min="1"
-                      max="10"
-                      placeholder="/10"
-                      className={inputClass}
-                    />
-                  </label>
-
-                  <label className="space-y-2">
-                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
-                      Recovery
-                    </span>
-                    <input
-                      name="recovery_rating"
-                      type="number"
-                      min="1"
-                      max="10"
-                      placeholder="/10"
-                      className={inputClass}
-                    />
-                  </label>
-
-                  <label className="space-y-2">
-                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-500">
-                      Nutrition
-                    </span>
-                    <input
-                      name="nutrition_rating"
-                      type="number"
-                      min="1"
-                      max="10"
-                      placeholder="/10"
-                      className={inputClass}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {previousCoachFeedbackCheckIn?.coach_feedback && (
-  <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4">
-    <p className="text-xs font-black uppercase tracking-wide text-yellow-500">
-      Last Week’s Coach Feedback
-    </p>
-
-    <p className="mt-1 text-xs text-zinc-500">
-      From {formatDate(previousCoachFeedbackCheckIn.created_at)}
-    </p>
-
-    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-      {previousCoachFeedbackCheckIn.coach_feedback}
-    </p>
-  </div>
-)}
-
-              <label className="block space-y-2">
-                <span className="text-sm font-bold text-yellow-500">
-                  Notes / anything to highlight?
-                </span>
-                <textarea
-                  name="notes"
-                  rows={5}
-                  placeholder="Wins, struggles, missed sessions, sleep, stress, niggles, anything useful..."
-                  className={inputClass}
-                />
-              </label>
-
-              <SubmitButton />
-            </div>
-          </form>
-        ) : !checkInWindowOpen ? (
+  <WeeklyCheckInForm
+    previousCoachFeedback={
+      previousCoachFeedbackCheckIn?.coach_feedback || null
+    }
+    previousCoachFeedbackDate={
+      previousCoachFeedbackCheckIn?.created_at
+        ? formatDate(previousCoachFeedbackCheckIn.created_at)
+        : null
+    }
+  />
+) : !checkInWindowOpen ? (
   <div className={`${premiumCard} p-5`}>
     <div className="relative z-10">
       <p className="text-sm font-black text-yellow-500">

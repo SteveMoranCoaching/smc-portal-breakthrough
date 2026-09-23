@@ -111,6 +111,20 @@ videos: VideoItem[]
 }
 
 
+type DailyMetric = {
+  id: string
+  user_id: string
+  check_in_id: string | null
+  metric_date: string
+  bodyweight: number | null
+  calories: number | null
+  protein: number | null
+  carbs: number | null
+  fat: number | null
+  steps: number | null
+  cardio_minutes: number | null
+}
+
 type CheckInReviewItem = {
   type: "check-in"
   id: string
@@ -118,23 +132,78 @@ type CheckInReviewItem = {
   clientId: string
   clientName: string
   created_at: string
+
   bodyweight?: number | null
+
   training_rating?: number | null
+  training_enjoyment?: number | null
+  pain_niggles?: boolean | null
+  pain_notes?: string | null
+
   recovery_rating?: number | null
+  sleep_hours?: number | null
+  sleep_quality?: number | null
+  stress_rating?: number | null
+  fatigue_rating?: number | null
+
   nutrition_rating?: number | null
+
   cardio_steps?: string | null
   notes?: string | null
+
+  weekly_win?: string | null
+  weekly_challenge?: string | null
+  support_needed?: string | null
+
+  dailyMetrics: DailyMetric[]
+
   coach_feedback?: string | null
   feedback_seen?: boolean | null
+
   previousCheckInFeedback?: {
-  id: string
-  created_at: string
-  coach_feedback: string
-} | null
+    id: string
+    created_at: string
+    coach_feedback: string
+  } | null
+
   attention?: any
 }
 
 type ReviewItem = SessionReviewItem | CheckInReviewItem
+
+function averageNumbers(values: Array<number | null | undefined>) {
+  const validValues = values.filter(
+    (value): value is number =>
+      typeof value === "number" && Number.isFinite(value)
+  )
+
+  if (validValues.length === 0) return null
+
+  return (
+    validValues.reduce((total, value) => total + value, 0) /
+    validValues.length
+  )
+}
+
+function totalNumbers(values: Array<number | null | undefined>) {
+  const validValues = values.filter(
+    (value): value is number =>
+      typeof value === "number" && Number.isFinite(value)
+  )
+
+  if (validValues.length === 0) return null
+
+  return validValues.reduce((total, value) => total + value, 0)
+}
+
+function formatAverage(
+  value: number | null,
+  decimals = 0
+) {
+  if (value === null) return "-"
+
+  return value.toFixed(decimals)
+}
 
 export default function ReviewSession({
   items,
@@ -507,132 +576,356 @@ return prescribedExercise?.prescription || ""
       scrollReviewToTop()
     }
 
+    const averageCalories = averageNumbers(
+  current.dailyMetrics.map((day) => day.calories)
+)
+
+const averageProtein = averageNumbers(
+  current.dailyMetrics.map((day) => day.protein)
+)
+
+const averageCarbs = averageNumbers(
+  current.dailyMetrics.map((day) => day.carbs)
+)
+
+const averageFat = averageNumbers(
+  current.dailyMetrics.map((day) => day.fat)
+)
+
+const averageBodyweight = averageNumbers(
+  current.dailyMetrics.map((day) => day.bodyweight)
+)
+
+const averageSteps = averageNumbers(
+  current.dailyMetrics.map((day) => day.steps)
+)
+
+const totalCardio = totalNumbers(
+  current.dailyMetrics.map((day) => day.cardio_minutes)
+)
+
     return (
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
-        <p className="text-sm text-zinc-400">Check-In Review</p>
-
-        <h2 className="mt-1 text-2xl font-bold">{current.clientName}</h2>
-
-        <p className="mt-1 text-sm text-zinc-400">
-          Check-in · {formatDateTime(current.created_at)}
+  <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p className="text-sm font-semibold text-yellow-400">
+          Weekly Check-In
         </p>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
-          <div className="rounded-xl border border-zinc-800 bg-black p-3">
-            <p className="text-xs uppercase text-zinc-500">Bodyweight</p>
-            <p className="mt-1 text-xl font-bold text-white">
-              {current.bodyweight ?? "-"}
-            </p>
-          </div>
+        <h2 className="mt-1 text-2xl font-bold">
+          {current.clientName}
+        </h2>
 
-          <div className="rounded-xl border border-zinc-800 bg-black p-3">
-            <p className="text-xs uppercase text-zinc-500">Recovery</p>
-            <p className="mt-1 text-xl font-bold text-white">
-              {current.recovery_rating ?? "-"} / 10
-            </p>
-          </div>
+        <p className="mt-1 text-sm text-zinc-400">
+          {formatDateTime(current.created_at)}
+        </p>
+      </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-black p-3">
-            <p className="text-xs uppercase text-zinc-500">Training</p>
-            <p className="mt-1 text-xl font-bold text-white">
-              {current.training_rating ?? "-"} / 10
-            </p>
-          </div>
+      <span className="w-fit rounded-full bg-yellow-500 px-3 py-1 text-xs font-bold uppercase text-black">
+        Needs Review
+      </span>
+    </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-black p-3">
-            <p className="text-xs uppercase text-zinc-500">Nutrition</p>
-            <p className="mt-1 text-xl font-bold text-white">
-              {current.nutrition_rating ?? "-"} / 10
-            </p>
-          </div>
+    <div className="mt-6 space-y-5">
+      {/* Training */}
+      <div className="rounded-2xl border border-zinc-800 bg-black p-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-yellow-400">
+          Training
+        </p>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <MetricCard
+            label="Performance"
+            value={
+              current.training_rating != null
+                ? `${current.training_rating}/10`
+                : "-"
+            }
+          />
+
+          <MetricCard
+            label="Enjoyment"
+            value={
+              current.training_enjoyment != null
+                ? `${current.training_enjoyment}/10`
+                : "-"
+            }
+          />
         </div>
 
-        {current.cardio_steps && (
-          <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
-              Steps / Cardio
+        <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+            Pain / Niggles
+          </p>
+
+          <p
+            className={`mt-1 text-sm font-bold ${
+              current.pain_niggles
+                ? "text-red-400"
+                : "text-green-400"
+            }`}
+          >
+            {current.pain_niggles ? "Yes" : "No"}
+          </p>
+
+          {current.pain_niggles && current.pain_notes && (
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">
+              {current.pain_notes}
             </p>
-
-            <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-300">
-              {current.cardio_steps}
-            </p>
-          </div>
-        )}
-
-        {current.previousCheckInFeedback?.coach_feedback && (
-  <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4">
-    <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
-      Previous Check-In Feedback
-    </p>
-
-    <p className="mt-1 text-xs text-zinc-500">
-      Given after {formatDateTime(current.previousCheckInFeedback.created_at)}
-    </p>
-
-    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-      {current.previousCheckInFeedback.coach_feedback}
-    </p>
-  </div>
-)}
+          )}
+        </div>
 
         {current.notes && (
-          <div className="mt-4 rounded-xl border border-zinc-800 bg-black p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
-              Check-in Notes
+          <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+              Training Comments
             </p>
 
-            <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">
               {current.notes}
             </p>
           </div>
         )}
+      </div>
 
-        <div className="mt-4">
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-yellow-400">
-            Coach Feedback
-          </p>
+      {/* Recovery */}
+      <div className="rounded-2xl border border-zinc-800 bg-black p-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-yellow-400">
+          Recovery
+        </p>
 
-          <textarea
-            value={checkInFeedback}
-            onChange={(event) => setCheckInFeedback(event.target.value)}
-            rows={4}
-            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-yellow-500"
-            placeholder="Feedback for this check-in..."
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <MetricCard
+            label="Overall"
+            value={
+              current.recovery_rating != null
+                ? `${current.recovery_rating}/10`
+                : "-"
+            }
+          />
+
+          <MetricCard
+            label="Avg Sleep"
+            value={
+              current.sleep_hours != null
+                ? `${current.sleep_hours}h`
+                : "-"
+            }
+          />
+
+          <MetricCard
+            label="Sleep Quality"
+            value={
+              current.sleep_quality != null
+                ? `${current.sleep_quality}/10`
+                : "-"
+            }
+          />
+
+          <MetricCard
+            label="Stress"
+            value={
+              current.stress_rating != null
+                ? `${current.stress_rating}/10`
+                : "-"
+            }
+          />
+
+          <MetricCard
+            label="Fatigue"
+            value={
+              current.fatigue_rating != null
+                ? `${current.fatigue_rating}/10`
+                : "-"
+            }
           />
         </div>
+      </div>
 
-        {message && <p className="mt-4 text-sm text-zinc-400">{message}</p>}
+      {/* Nutrition */}
+      <div className="rounded-2xl border border-zinc-800 bg-black p-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-bold uppercase tracking-widest text-yellow-400">
+            Nutrition
+          </p>
 
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Link
-            href={`/coach/${current.clientId}?tab=check-ins`}
-            className="rounded-xl border border-zinc-700 px-4 py-2 text-center text-sm text-zinc-300 transition hover:border-yellow-500 hover:text-white"
-          >
-            Open client check-ins
-          </Link>
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              onClick={skipSession}
-              disabled={savingId !== ""}
-              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 disabled:opacity-50"
-            >
-              Skip →
-            </button>
-
-            <button
-              onClick={markCheckInReviewed}
-              disabled={savingId !== ""}
-              className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
-            >
-              {savingId === `check-in-${current.id}`
-                ? "Saving..."
-                : "Review Complete"}
-            </button>
-          </div>
+          <span className="text-sm font-bold text-white">
+            {current.nutrition_rating != null
+              ? `${current.nutrition_rating}/10 adherence`
+              : "-"}
+          </span>
         </div>
-      </section>
-    )
+
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <MetricCard
+            label="Avg Calories"
+            value={formatAverage(averageCalories)}
+          />
+
+          <MetricCard
+            label="Avg Protein"
+            value={
+              averageProtein !== null
+                ? `${formatAverage(averageProtein)}g`
+                : "-"
+            }
+          />
+
+          <MetricCard
+            label="Avg Carbs"
+            value={
+              averageCarbs !== null
+                ? `${formatAverage(averageCarbs)}g`
+                : "-"
+            }
+          />
+
+          <MetricCard
+            label="Avg Fat"
+            value={
+              averageFat !== null
+                ? `${formatAverage(averageFat)}g`
+                : "-"
+            }
+          />
+        </div>
+      </div>
+
+      {/* Body & Activity */}
+      <div className="rounded-2xl border border-zinc-800 bg-black p-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-yellow-400">
+          Body & Activity
+        </p>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricCard
+            label="Avg Bodyweight"
+            value={
+              averageBodyweight !== null
+                ? `${formatAverage(averageBodyweight, 1)}kg`
+                : current.bodyweight != null
+                  ? `${current.bodyweight}kg`
+                  : "-"
+            }
+          />
+
+          <MetricCard
+            label="Avg Steps"
+            value={
+              averageSteps !== null
+                ? Math.round(averageSteps).toLocaleString("en-GB")
+                : "-"
+            }
+          />
+
+          <MetricCard
+            label="Total Cardio"
+            value={
+              totalCardio !== null
+                ? `${Math.round(totalCardio)} min`
+                : "-"
+            }
+          />
+        </div>
+      </div>
+
+      {/* Weekly Reflection */}
+      <div className="rounded-2xl border border-zinc-800 bg-black p-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-yellow-400">
+          Weekly Reflection
+        </p>
+
+        <div className="mt-3 space-y-3">
+          <ReflectionCard
+            label="What went well?"
+            value={current.weekly_win}
+          />
+
+          <ReflectionCard
+            label="Biggest challenge"
+            value={current.weekly_challenge}
+          />
+
+          <ReflectionCard
+            label="What do they need from Steve?"
+            value={current.support_needed}
+            highlight
+          />
+        </div>
+      </div>
+
+      {/* Previous Feedback */}
+      {current.previousCheckInFeedback?.coach_feedback && (
+        <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-yellow-400">
+            Previous Check-In Feedback
+          </p>
+
+          <p className="mt-1 text-xs text-zinc-500">
+            Given after{" "}
+            {formatDateTime(
+              current.previousCheckInFeedback.created_at
+            )}
+          </p>
+
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+            {current.previousCheckInFeedback.coach_feedback}
+          </p>
+        </div>
+      )}
+
+      {/* Coach Feedback */}
+      <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/[0.06] p-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-yellow-400">
+          Coach Feedback
+        </p>
+
+        <textarea
+          value={checkInFeedback}
+          onChange={(event) =>
+            setCheckInFeedback(event.target.value)
+          }
+          rows={6}
+          className="mt-3 w-full rounded-xl border border-zinc-800 bg-black p-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-yellow-500"
+          placeholder="Feedback for this check-in..."
+        />
+      </div>
+    </div>
+
+    {message && (
+      <p className="mt-4 text-sm text-zinc-400">{message}</p>
+    )}
+
+    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <Link
+        href={`/coach/${current.clientId}?tab=check-ins`}
+        className="rounded-xl border border-zinc-700 px-4 py-2 text-center text-sm text-zinc-300 transition hover:border-yellow-500 hover:text-white"
+      >
+        Open Full Check-In
+      </Link>
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          onClick={skipSession}
+          disabled={savingId !== ""}
+          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 disabled:opacity-50"
+        >
+          Skip →
+        </button>
+
+        <button
+          onClick={markCheckInReviewed}
+          disabled={savingId !== ""}
+          className="rounded-xl bg-yellow-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+        >
+          {savingId === `check-in-${current.id}`
+            ? "Saving..."
+            : "Review Complete"}
+        </button>
+      </div>
+    </div>
+  </section>
+)
   }
 
   const session = current as SessionReviewItem
@@ -960,5 +1253,57 @@ return prescribedExercise?.prescription || ""
         </div>
       </div>
     </section>
+  )
+}
+
+function MetricCard({
+  label,
+  value,
+}: {
+  label: string
+  value: string | number
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+        {label}
+      </p>
+
+      <p className="mt-1 text-lg font-bold text-white">
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function ReflectionCard({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string
+  value?: string | null
+  highlight?: boolean
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        highlight
+          ? "border-yellow-500/20 bg-yellow-500/[0.06]"
+          : "border-zinc-800 bg-zinc-950"
+      }`}
+    >
+      <p
+        className={`text-xs font-bold uppercase tracking-wide ${
+          highlight ? "text-yellow-400" : "text-zinc-500"
+        }`}
+      >
+        {label}
+      </p>
+
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">
+        {value || "Nothing added."}
+      </p>
+    </div>
   )
 }

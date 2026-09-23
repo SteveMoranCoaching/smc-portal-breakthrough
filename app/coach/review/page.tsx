@@ -102,12 +102,71 @@ function getPreviousExerciseLog(currentLog: any) {
 
   const { data: checkIns } = await supabase
   .from("check_ins")
-  .select(
-  "id, user_id, created_at, bodyweight, training_rating, recovery_rating, nutrition_rating, cardio_steps, notes, reviewed, coach_feedback, feedback_seen"
-)
+  .select(`
+    id,
+    user_id,
+    created_at,
+    bodyweight,
+    training_rating,
+    training_enjoyment,
+    pain_niggles,
+    pain_notes,
+    recovery_rating,
+    sleep_hours,
+    sleep_quality,
+    stress_rating,
+    fatigue_rating,
+    nutrition_rating,
+    cardio_steps,
+    notes,
+    weekly_win,
+    weekly_challenge,
+    support_needed,
+    reviewed,
+    coach_feedback,
+    feedback_seen
+  `)
   .eq("reviewed", false)
   .order("created_at", { ascending: false })
   .limit(300)
+
+  const checkInIds = (checkIns || []).map((checkIn) => checkIn.id)
+
+const { data: dailyMetrics } =
+  checkInIds.length > 0
+    ? await supabase
+        .from("client_daily_metrics")
+        .select(`
+          id,
+          user_id,
+          check_in_id,
+          metric_date,
+          bodyweight,
+          calories,
+          protein,
+          carbs,
+          fat,
+          steps,
+          cardio_minutes
+        `)
+        .in("check_in_id", checkInIds)
+        .order("metric_date", { ascending: true })
+    : { data: [] }
+
+    const dailyMetricsByCheckInId = (dailyMetrics || []).reduce(
+  (acc: Record<string, any[]>, metric: any) => {
+    if (!metric.check_in_id) return acc
+
+    if (!acc[metric.check_in_id]) {
+      acc[metric.check_in_id] = []
+    }
+
+    acc[metric.check_in_id].push(metric)
+
+    return acc
+  },
+  {}
+)
 
   const { data: previousCheckInsWithFeedback } = await supabase
   .from("check_ins")
@@ -225,14 +284,34 @@ function getPreviousCheckInFeedback(userId: string, currentCreatedAt: string) {
   clientId: clientMap[checkIn.user_id]?.id,
   clientName: clientMap[checkIn.user_id]?.name || "Unknown client",
   created_at: checkIn.created_at,
+
   bodyweight: checkIn.bodyweight,
+
   training_rating: checkIn.training_rating,
+  training_enjoyment: checkIn.training_enjoyment,
+  pain_niggles: checkIn.pain_niggles,
+  pain_notes: checkIn.pain_notes,
+
   recovery_rating: checkIn.recovery_rating,
+  sleep_hours: checkIn.sleep_hours,
+  sleep_quality: checkIn.sleep_quality,
+  stress_rating: checkIn.stress_rating,
+  fatigue_rating: checkIn.fatigue_rating,
+
   nutrition_rating: checkIn.nutrition_rating,
+
   cardio_steps: checkIn.cardio_steps,
   notes: checkIn.notes,
+
+  weekly_win: checkIn.weekly_win,
+  weekly_challenge: checkIn.weekly_challenge,
+  support_needed: checkIn.support_needed,
+
+  dailyMetrics: dailyMetricsByCheckInId[checkIn.id] || [],
+
   coach_feedback: checkIn.coach_feedback || "",
   feedback_seen: checkIn.feedback_seen,
+
   previousCheckInFeedback: getPreviousCheckInFeedback(
     checkIn.user_id,
     checkIn.created_at
