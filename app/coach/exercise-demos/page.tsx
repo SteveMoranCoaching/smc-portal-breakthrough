@@ -97,6 +97,20 @@ const warmupProfile =
 const isFavourite =
   formData.get("isFavourite") === "on"  
 
+  const warmupEnabled =
+  formData.get("warmupEnabled") === "on"
+
+const barMathEnabled =
+  formData.get("barMathEnabled") === "on"
+
+const primaryMuscle =
+  String(formData.get("primaryMuscle") || "").trim()
+
+const secondaryMuscles = formData
+  .getAll("secondaryMuscles")
+  .map((value) => String(value).trim())
+  .filter(Boolean)
+
   if (!exerciseName) return
 
   const videoPath = await uploadFile({
@@ -133,6 +147,10 @@ const isFavourite =
   equipment: equipment || null,
   warmup_profile: warmupProfile,
   is_favourite: isFavourite,
+  warmup_enabled: warmupEnabled,
+bar_math_enabled: barMathEnabled,
+primary_muscle: primaryMuscle || null,
+secondary_muscles: secondaryMuscles,
   video_path: videoPath || existing.data?.video_path || null,
   thumbnail_path: thumbnailPath || existing.data?.thumbnail_path || null,
   updated_at: new Date().toISOString(),
@@ -181,6 +199,20 @@ const warmupProfile =
 const isFavourite =
   formData.get("isFavourite") === "on"  
 
+  const warmupEnabled =
+  formData.get("warmupEnabled") === "on"
+
+const barMathEnabled =
+  formData.get("barMathEnabled") === "on"
+
+const primaryMuscle =
+  String(formData.get("primaryMuscle") || "").trim()
+
+const secondaryMuscles = formData
+  .getAll("secondaryMuscles")
+  .map((value) => String(value).trim())
+  .filter(Boolean)
+
   if (!id || !exerciseName) return
 
   const { data: existing } = await supabase
@@ -218,6 +250,10 @@ const isFavourite =
   equipment: equipment || null,
   warmup_profile: warmupProfile,
   is_favourite: isFavourite,
+  warmup_enabled: warmupEnabled,
+bar_math_enabled: barMathEnabled,
+primary_muscle: primaryMuscle || null,
+secondary_muscles: secondaryMuscles,
   video_path: videoPath || existing?.video_path || null,
   thumbnail_path: thumbnailPath || existing?.thumbnail_path || null,
   updated_at: new Date().toISOString(),
@@ -705,8 +741,12 @@ const overallCompletion =
   defaultSecondaryLog={demo.default_secondary_log}
   movement={demo.movement}
   equipment={demo.equipment}
-  warmupProfile={(demo as any).warmup_profile}
-  isFavourite={Boolean((demo as any).is_favourite)}
+  warmupProfile={demo.warmup_profile}
+  isFavourite={Boolean(demo.is_favourite)}
+  warmupEnabled={Boolean(demo.warmup_enabled)}
+  barMathEnabled={Boolean(demo.bar_math_enabled)}
+  primaryMuscle={demo.primary_muscle}
+  secondaryMuscles={demo.secondary_muscles || []}
   compact
 />
 

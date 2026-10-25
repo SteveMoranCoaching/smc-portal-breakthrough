@@ -921,6 +921,8 @@ function toggleCircuitItem(exerciseIndex: number, circuitName: string) {
   )
   .slice(0, 3)
           const demo = getDemoForExercise(exerciseDemos, exerciseName)
+          const warmupEnabled = demo?.warmup_enabled === true
+const barMathEnabled = demo?.bar_math_enabled === true
           const entry = formData[exerciseIndex]
           const exerciseComplete = isCompletedExercise(entry?.sets ?? [])
 
@@ -939,18 +941,36 @@ const prescribedWeights =
       Number.isFinite(value)
     ) ?? []
 
+    const prescriptionBlocks =
+  Array.isArray(ex?.prescriptions)
+    ? ex.prescriptions
+    : []
+
+const blockWeights = prescriptionBlocks
+  .map((block: any) => {
+    const load = String(block?.load || "").trim()
+
+    const match = load.match(
+      /^(\d+(?:\.\d+)?)\s*kg$/i
+    )
+
+    return match ? Number(match[1]) : 0
+  })
+  .filter((weight: number) => weight > 0)
+
 const workingWeight =
-  prescribedWeights.length > 0
-    ? Math.max(...prescribedWeights)
-    : Number(
-        entry?.sets?.find(
-          (set: any) =>
-            Number(set?.weight) > 0
-        )?.weight || 0
-      )
+  blockWeights.length > 0
+    ? Math.max(...blockWeights)
+    : prescribedWeights.length > 0
+      ? Math.max(...prescribedWeights)
+      : Number(
+          entry?.sets?.find(
+            (set: any) => Number(set?.weight) > 0
+          )?.weight || 0
+        )
 
 const generatedWarmup =
-  workingWeight > 0
+  warmupEnabled && workingWeight > 0
     ? generateWarmup({
         targetWeight: workingWeight,
         profile: "competition",
@@ -974,11 +994,6 @@ const generatedWarmup =
 
 const generatedWarmupsExpanded =
   Boolean(expandedWarmups[generatedWarmupsKey])
-
-  const prescriptionBlocks =
-  Array.isArray(ex?.prescriptions)
-    ? ex.prescriptions
-    : []
 
           return (
   <WorkoutExerciseCard
@@ -1156,9 +1171,11 @@ const generatedWarmupsExpanded =
 
     <WorkoutSetList
       exercise={ex}
-        onOpenBarMath={(weight) =>
-          setActivePlateWeight(weight)
-        }
+        onOpenBarMath={
+  barMathEnabled
+    ? (weight) => setActivePlateWeight(weight)
+    : undefined
+}
       prescriptionBlocks={prescriptionBlocks}
       exerciseIndex={exerciseIndex}
       sets={formData[exerciseIndex]?.sets || []}

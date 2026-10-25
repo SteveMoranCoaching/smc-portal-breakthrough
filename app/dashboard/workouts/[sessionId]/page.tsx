@@ -87,12 +87,13 @@ export default async function SessionPage({
   }
 
   const { data: demoRows, error: demoRowsError } =
-    exerciseNames.length > 0
-      ? await supabase
-          .from("exercise_demo_videos")
-          .select("id, exercise_name, video_path, thumbnail_path, coach_notes")
-          .in("exercise_name", exerciseNames)
-      : { data: [], error: null }
+  exerciseNames.length > 0
+    ? await supabase
+        .from("exercise_demo_videos")
+        .select(
+          "id, exercise_name, aliases, video_path, thumbnail_path, coach_notes, warmup_enabled, bar_math_enabled, warmup_profile, equipment, movement, primary_muscle, secondary_muscles"
+        )
+    : { data: [], error: null }
 
   if (demoRowsError) {
     throw new Error("Exercise demo videos failed to load")
@@ -113,12 +114,20 @@ export default async function SessionPage({
         : null
 
       return {
-        id: demo.id,
-        exercise_name: demo.exercise_name,
-        coach_notes: demo.coach_notes,
-        video_url: videoUrl?.data?.signedUrl || null,
-        thumbnail_url: thumbnailUrl?.data?.signedUrl || null,
-      }
+  id: demo.id,
+  exercise_name: demo.exercise_name,
+  aliases: demo.aliases || [],
+  coach_notes: demo.coach_notes,
+  video_url: videoUrl?.data?.signedUrl || null,
+  thumbnail_url: thumbnailUrl?.data?.signedUrl || null,
+  warmup_enabled: demo.warmup_enabled,
+  bar_math_enabled: demo.bar_math_enabled,
+  warmup_profile: demo.warmup_profile,
+  equipment: demo.equipment,
+  movement: demo.movement,
+  primary_muscle: demo.primary_muscle,
+  secondary_muscles: demo.secondary_muscles,
+}
     })
   )
 

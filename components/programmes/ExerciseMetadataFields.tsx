@@ -6,6 +6,10 @@ type ExerciseMetadataFieldsProps = {
   equipment?: string | null
   warmupProfile?: string | null
   isFavourite?: boolean
+  warmupEnabled?: boolean
+  barMathEnabled?: boolean
+  primaryMuscle?: string | null
+  secondaryMuscles?: string[]
   compact?: boolean
 }
 
@@ -19,8 +23,10 @@ const movementOptions = [
   "Quads",
   "Hamstrings",
   "Glutes",
+  "Calves",
   "Biceps",
   "Triceps",
+  "Adductors",
   "Core",
   "Conditioning",
   "Warm Up",
@@ -33,6 +39,7 @@ const equipmentOptions = [
   "Dumbbell",
   "Cable",
   "Machine",
+  "Smith",
   "Bodyweight",
   "Band",
   "Kettlebell",
@@ -55,6 +62,10 @@ export default function ExerciseMetadataFields({
   equipment = "",
   warmupProfile = "none",
   isFavourite = false,
+  warmupEnabled = false,
+  barMathEnabled = false,
+  primaryMuscle = "",
+  secondaryMuscles = [],
   compact = false,
 }: ExerciseMetadataFieldsProps) {
   return (
@@ -196,6 +207,101 @@ export default function ExerciseMetadataFields({
     <option value="conditioning">Conditioning</option>
   </select>
 </div>
+
+      <div className="space-y-3 rounded-[1rem] border border-white/[0.08] bg-black/20 p-3">
+        <p className={labelStyle}>
+          Exercise Features
+        </p>
+
+        <label className="flex items-center gap-3 text-sm text-white/75">
+          <input
+            type="checkbox"
+            name="warmupEnabled"
+            defaultChecked={warmupEnabled}
+            className="h-5 w-5 accent-[#d4af37]"
+          />
+          Generate automatic warm-up sets
+        </label>
+
+        <label className="flex items-center gap-3 text-sm text-white/75">
+          <input
+            type="checkbox"
+            name="barMathEnabled"
+            defaultChecked={barMathEnabled}
+            className="h-5 w-5 accent-[#d4af37]"
+          />
+          Enable bar maths
+        </label>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className={labelStyle}>
+            Primary Muscle
+          </label>
+
+          <select
+            name="primaryMuscle"
+            defaultValue={primaryMuscle || ""}
+            className={`mt-1.5 ${inputStyle}`}
+          >
+            <option value="">Select muscle</option>
+            {[
+              "Quads",
+              "Hamstrings",
+              "Glutes",
+              "Chest",
+              "Back",
+              "Shoulders",
+              "Biceps",
+              "Triceps",
+              "Core",
+              "Calves",
+              "Full Body",
+              "Adductors",
+            ].map((muscle) => (
+              <option key={muscle} value={muscle}>
+                {muscle}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className={labelStyle}>
+            Secondary Muscles
+          </label>
+
+          <div className="mt-1.5 grid grid-cols-2 gap-2 rounded-[1rem] border border-white/[0.08] bg-black/30 p-3">
+            {[
+              "Quads",
+              "Hamstrings",
+              "Glutes",
+              "Chest",
+              "Back",
+              "Shoulders",
+              "Biceps",
+              "Triceps",
+              "Core",
+              "Calves",
+            ].map((muscle) => (
+              <label
+                key={muscle}
+                className="flex items-center gap-2 text-xs text-white/65"
+              >
+                <input
+                  type="checkbox"
+                  name="secondaryMuscles"
+                  value={muscle}
+                  defaultChecked={secondaryMuscles.includes(muscle)}
+                  className="h-4 w-4 accent-[#d4af37]"
+                />
+                {muscle}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <label className="flex cursor-pointer items-center justify-between gap-3 rounded-[1rem] border border-white/[0.08] bg-black/30 px-4 py-3">
         <div>

@@ -53,11 +53,25 @@ export function getDemoForExercise(
   exerciseDemos: any[],
   exerciseName: string
 ) {
-  return exerciseDemos.find(
-    (demo) =>
-      String(demo.exercise_name || "").toLowerCase().trim() ===
-      String(exerciseName || "").toLowerCase().trim()
-  )
+  const normalise = (value: unknown) =>
+    String(value || "").trim().toLowerCase()
+
+  const targetName = normalise(exerciseName)
+
+  return exerciseDemos.find((demo) => {
+    const mainName = normalise(demo.exercise_name)
+
+    const aliases = Array.isArray(demo.aliases)
+      ? demo.aliases
+      : []
+
+    return (
+      mainName === targetName ||
+      aliases.some(
+        (alias: string) => normalise(alias) === targetName
+      )
+    )
+  })
 }
 
 export function getExerciseDisplayLabel(exercise: any) {
