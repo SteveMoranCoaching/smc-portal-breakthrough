@@ -289,7 +289,7 @@ export default function ProgrammeCreator() {
   aliases,
   default_section,
   default_primary_log,
-  default_secondary_log
+  default_secondary_log,
   is_favourite
 `)
       .order("exercise_name", { ascending: true })
