@@ -408,16 +408,20 @@ equipment: exercise.equipment || null,
   )
 }
 
+
 function toggleExerciseEditor(
   sessionIndex: number,
   exerciseIndex: number
 ) {
+  setSelectedSessionIndex(sessionIndex)
+
   const key = `${activeWeek}-${sessionIndex}-${exerciseIndex}`
 
   setOpenExerciseKey((current) =>
     current === key ? null : key
   )
 }
+
 
   function updateSession(index: number, field: keyof Session, value: string) {
     const next = [...sessions]
@@ -734,6 +738,7 @@ function removeCircuitExercise(
     ])
 
     setOpenSessions((current) => [...current, nextIndex])
+    setSelectedSessionIndex(nextIndex)
   }
 
   function removeSession(sessionIndex: number) {
@@ -761,8 +766,12 @@ function removeCircuitExercise(
     })
   }
 
-  function addExercise(sessionIndex: number) {
-    const next = [...sessions]
+  
+function addExercise(sessionIndex: number) {
+  setSelectedSessionIndex(sessionIndex)
+
+  const next = [...sessions]
+
 
     next[sessionIndex] = {
       ...next[sessionIndex],
@@ -774,16 +783,24 @@ function removeCircuitExercise(
 
     updateActiveWeekSessions(next)
 
+    setOpenExerciseKey(
+  `${activeWeek}-${sessionIndex}-${next[sessionIndex].exercises.length - 1}`
+)
+
     if (!openSessions.includes(sessionIndex)) {
       setOpenSessions((current) => [...current, sessionIndex])
     }
   }
 
-  function addExerciseFromLibrary(
+  
+function addExerciseFromLibrary(
   sessionIndex: number,
   libraryExercise: LibraryExercise
 ) {
+  setSelectedSessionIndex(sessionIndex)
+
   const next = [...sessions]
+
 
   const newExercise: Exercise = {
   name: libraryExercise.exercise_name,
@@ -814,6 +831,14 @@ function removeCircuitExercise(
   }
 
   updateActiveWeekSessions(next)
+
+  const newExerciseIndex = onlyBlankExercise
+  ? 0
+  : existingExercises.length
+
+setOpenExerciseKey(
+  `${activeWeek}-${sessionIndex}-${newExerciseIndex}`
+)
 
   if (!openSessions.includes(sessionIndex)) {
     setOpenSessions((current) => [
@@ -1769,17 +1794,32 @@ const { data: programme, error: programmeError } = await supabase
           </div>
 
   <div className="hidden xl:block">
-    <div className="mb-2 px-1">
-      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/30">
-        Adding to
-      </p>
+    
+<div className="mb-3 px-1">
+  <label
+    htmlFor="library-session-target"
+    className="text-[9px] font-black uppercase tracking-[0.18em] text-white/30"
+  >
+    Adding to
+  </label>
 
-      <p className="mt-1 truncate text-sm font-black text-smc-gold">
-        {sessions[selectedSessionIndex]?.title ||
-          sessions[selectedSessionIndex]?.day ||
-          `Session ${selectedSessionIndex + 1}`}
-      </p>
-    </div>
+  <select
+    id="library-session-target"
+    value={Math.min(selectedSessionIndex, sessions.length - 1)}
+    onChange={(event) =>
+      setSelectedSessionIndex(Number(event.target.value))
+    }
+    className="mt-2 w-full rounded-[0.85rem] border border-smc-gold/25 bg-black/70 px-3 py-2.5 text-xs font-black text-smc-gold outline-none focus:border-smc-gold"
+  >
+    {sessions.map((session, index) => (
+      <option key={index} value={index}>
+        {session.day}
+        {session.title ? ` — ${session.title}` : ""}
+      </option>
+    ))}
+  </select>
+</div>
+
 
     {loadingExerciseLibrary ? (
       <div className={`${cardStyle} p-4`}>
