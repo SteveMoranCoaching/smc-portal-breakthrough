@@ -136,7 +136,7 @@ function getWeekSessionProgress(
         session.title ||
         session.day ||
         "Training Session",
-      completed: completedSessionIds.has(session.id),
+      completed: completedSessionIds.has(String(session.id)),
     })
   )
 
@@ -256,14 +256,41 @@ export default async function CoachDashboard({
           .order("created_at", { ascending: false })
       : { data: [] }
 
-const { data: programmeSessionCompletions } =
-  clientUserIds.length > 0
-    ? await supabase
-        .from("session_completions")
-        .select("user_id, session_id, completed")
-        .in("user_id", clientUserIds)
-        .eq("completed", true)
-    : { data: [] }
+
+
+const programmeSessionCompletions: {
+  user_id: string
+  session_id: string
+  completed: boolean
+}[] = []
+
+if (clientUserIds.length > 0) {
+  const batchSize = 1000
+  let offset = 0
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("session_completions")
+      .select("user_id, session_id, completed")
+      .in("user_id", clientUserIds)
+      .eq("completed", true)
+      .order("id", { ascending: true })
+      .range(offset, offset + batchSize - 1)
+
+    if (error) {
+      console.error("Programme completions query failed:", error)
+      throw new Error("Failed to load programme session completions")
+    }
+
+    programmeSessionCompletions.push(...(data || []))
+
+    if (!data || data.length < batchSize) {
+      break
+    }
+
+    offset += batchSize
+  }
+}
 
   const { data: pendingPBs } = await supabase
     .from("exercise_pbs")
@@ -489,8 +516,8 @@ const programmeForecastWeeks = [
     }
 
     completedProgrammeSessionsByUser[
-      completion.user_id
-    ].add(completion.session_id)
+  completion.user_id
+].add(String(completion.session_id))
   }
 )
 
@@ -531,19 +558,20 @@ const plannedWeeks = activeProgramme
   ? Number(activeProgramme.planned_weeks || uploadedWeeks || 4)
   : 0
 
+
+const completedSessionIds =
+  completedProgrammeSessionsByUser[client.user_id] ||
+  new Set<string>()
+
 const currentWeek = activeProgramme
   ? getEffectiveProgrammeWeek({
       programmeStartDate:
         activeProgramme.start_date || activeProgramme.created_at,
       coachCurrentWeek: activeProgramme.coach_current_week,
       sessions: activeProgramme.programme_sessions || [],
-      completedSessionIds: new Set<string>(),
+      completedSessionIds,
     })
   : 0
-
-const completedSessionIds =
-  completedProgrammeSessionsByUser[client.user_id] ||
-  new Set<string>()
 
 const previousWeekProgress = activeProgramme
   ? getWeekSessionProgress(
