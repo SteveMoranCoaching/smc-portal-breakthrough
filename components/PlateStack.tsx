@@ -191,7 +191,7 @@ export default function PlateStack({
             return (
               <div
                 key={plate.key}
-                className="flex shrink-0 items-center justify-center border"
+                className="relative flex shrink-0 items-center justify-center border"
                 style={{
                   height: `${getPlateHeight(
   plate.weight,
@@ -208,9 +208,22 @@ width: `${getPlateWidth(
                   color: colours.text,
                 }}
               >
-                <span className="whitespace-nowrap text-[8px] font-black">
-                    {plate.weight}
-                </span>
+                
+
+<span
+  className="block shrink-0 whitespace-nowrap font-black leading-none"
+  style={{
+    fontSize: `${Math.min(
+      10,
+      Math.max(6, getPlateWidth(plate.weight, mode) - 4)
+    )}px`,
+    transform: "rotate(-90deg)",
+  }}
+>
+  {plate.weight}
+</span>
+
+
               </div>
             )
           })
