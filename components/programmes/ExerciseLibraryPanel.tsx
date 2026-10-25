@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useMemo, useState } from "react"
@@ -22,6 +23,8 @@ type ExerciseLibraryPanelProps = {
   onAddExercise: (exercise: LibraryExercise) => void
 }
 
+type ExerciseLayer = "warmup" | "main"
+
 const movementFilters = [
   "All",
   "Favourites",
@@ -34,6 +37,7 @@ const movementFilters = [
   "Quads",
   "Hamstrings",
   "Glutes",
+  "Calves",
   "Biceps",
   "Triceps",
   "Core",
@@ -48,46 +52,54 @@ export default function ExerciseLibraryPanel({
   onAddExercise,
 }: ExerciseLibraryPanelProps) {
   const [search, setSearch] = useState("")
-
+  const [activeLayer, setActiveLayer] = useState<ExerciseLayer>("main")
   const [activeMovement, setActiveMovement] = useState("All")
 
   const filteredExercises = useMemo(() => {
-  const query = search.trim().toLowerCase()
+    const query = search.trim().toLowerCase()
 
-  const matchedExercises = exercises.filter((exercise) => {
-    const name = exercise.exercise_name.toLowerCase()
-    const notes = String(exercise.coach_notes || "").toLowerCase()
+    const matchedExercises = exercises.filter((exercise) => {
+      const name = exercise.exercise_name.toLowerCase()
+      const notes = String(exercise.coach_notes || "").toLowerCase()
+      const aliases = (exercise.aliases || []).join(" ").toLowerCase()
 
-    const aliases = (exercise.aliases || [])
-      .join(" ")
-      .toLowerCase()
+      const section = exercise.default_section || "main"
 
-    const matchesSearch =
-      !query ||
-      name.includes(query) ||
-      notes.includes(query) ||
-      aliases.includes(query)
+      const matchesLayer =
+        activeLayer === "warmup"
+          ? section === "warmup" || section === "stretch"
+          : section !== "warmup" && section !== "stretch"
 
-    const matchesMovement =
-      activeMovement === "All"
-        ? true
-        : activeMovement === "Favourites"
-          ? Boolean(exercise.is_favourite)
-          : exercise.movement === activeMovement
+      const matchesSearch =
+        !query ||
+        name.includes(query) ||
+        notes.includes(query) ||
+        aliases.includes(query)
 
-    return matchesSearch && matchesMovement
-  })
+      const matchesMovement =
+        activeMovement === "All"
+          ? true
+          : activeMovement === "Favourites"
+            ? Boolean(exercise.is_favourite)
+            : String(exercise.movement || "").toLowerCase() ===
+              activeMovement.toLowerCase()
 
-  return [...matchedExercises].sort((a, b) => {
-    if (Boolean(a.is_favourite) !== Boolean(b.is_favourite)) {
-      return a.is_favourite ? -1 : 1
-    }
+      return matchesLayer && matchesSearch && matchesMovement
+    })
 
-    return a.exercise_name.localeCompare(
-      b.exercise_name
-    )
-  })
-}, [exercises, search, activeMovement])
+    return [...matchedExercises].sort((a, b) => {
+      if (Boolean(a.is_favourite) !== Boolean(b.is_favourite)) {
+        return a.is_favourite ? -1 : 1
+      }
+
+      return a.exercise_name.localeCompare(b.exercise_name)
+    })
+  }, [exercises, search, activeLayer, activeMovement])
+
+  function selectLayer(layer: ExerciseLayer) {
+    setActiveLayer(layer)
+    setActiveMovement("All")
+  }
 
   return (
     <aside className="sticky top-4 overflow-hidden rounded-[1.35rem] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))] shadow-[0_16px_38px_rgba(0,0,0,0.62)]">
@@ -103,30 +115,62 @@ export default function ExerciseLibraryPanel({
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search bench, squat, deadlift..."
+          placeholder="Search exercises..."
           className="mt-3 w-full rounded-[0.9rem] border border-white/[0.08] bg-black/45 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/45"
         />
 
-        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
-  {movementFilters.map((movement) => {
-    const active = activeMovement === movement
+        {/* Layer 1: Exercise type */}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {([
+            { value: "warmup", label: "Warm-up / Mobility" },
+            { value: "main", label: "Main Exercises" },
+          ] as const).map((layer) => {
+            const active = activeLayer === layer.value
 
-    return (
-      <button
-        key={movement}
-        type="button"
-        onClick={() => setActiveMovement(movement)}
-        className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.1em] transition ${
-          active
-            ? "border-smc-gold bg-smc-gold text-black"
-            : "border-white/[0.07] bg-white/[0.03] text-white/40 hover:border-smc-gold/30 hover:text-smc-gold"
-        }`}
-      >
-        {movement === "Favourites" ? "⭐ Favourites" : movement}
-      </button>
-    )
-  })}
-</div>
+            return (
+              <button
+                key={layer.value}
+                type="button"
+                onClick={() => selectLayer(layer.value)}
+                aria-pressed={active}
+                className={`rounded-[0.85rem] border px-2 py-3 text-[10px] font-black uppercase tracking-[0.08em] transition ${
+                  active
+                    ? "border-smc-gold bg-smc-gold text-black"
+                    : "border-white/[0.08] bg-white/[0.03] text-white/50 hover:border-smc-gold/30 hover:text-smc-gold"
+                }`}
+              >
+                {layer.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Layer 2: Movement pattern */}
+        <p className="mt-4 text-[9px] font-black uppercase tracking-[0.16em] text-white/35">
+          Movement Pattern
+        </p>
+
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+          {movementFilters.map((movement) => {
+            const active = activeMovement === movement
+
+            return (
+              <button
+                key={movement}
+                type="button"
+                onClick={() => setActiveMovement(movement)}
+                aria-pressed={active}
+                className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.1em] transition ${
+                  active
+                    ? "border-smc-gold bg-smc-gold text-black"
+                    : "border-white/[0.07] bg-white/[0.03] text-white/40 hover:border-smc-gold/30 hover:text-smc-gold"
+                }`}
+              >
+                {movement === "Favourites" ? "⭐ Favourites" : movement}
+              </button>
+            )
+          })}
+        </div>
 
         <p className="mt-2 text-[10px] text-white/30">
           {filteredExercises.length} exercise

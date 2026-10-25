@@ -281,7 +281,8 @@ export default function ProgrammeCreator() {
 
     const { data, error } = await supabase
       .from("exercise_demo_videos")
-      .select(`
+      
+.select(`
   id,
   exercise_name,
   coach_notes,
@@ -290,8 +291,11 @@ export default function ProgrammeCreator() {
   default_section,
   default_primary_log,
   default_secondary_log,
-  is_favourite
+  is_favourite,
+  movement,
+  equipment
 `)
+
       .order("exercise_name", { ascending: true })
 
     if (error) {
@@ -332,7 +336,11 @@ export default function ProgrammeCreator() {
     exercise.default_primary_log || "kg",
   default_secondary_log:
     exercise.default_secondary_log || "reps",
-  is_favourite: Boolean(exercise.is_favourite),
+  
+is_favourite: Boolean(exercise.is_favourite),
+movement: exercise.movement || null,
+equipment: exercise.equipment || null,
+
 }
       })
     )
