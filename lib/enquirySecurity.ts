@@ -1,23 +1,56 @@
-
 import "server-only"
 
 import { Redis } from "@upstash/redis"
 import { Ratelimit } from "@upstash/ratelimit"
 
-const redisUrl = process.env.UPSTASH_REDIS_REST_URL
-const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN
+let cachedRateLimit: Ratelimit | null = null
 
-export const enquiryRateLimit =
-  redisUrl && redisToken
-    ? new Ratelimit({
-        redis: new Redis({
-          url: redisUrl,
-          token: redisToken,
-        }),
-        limiter: Ratelimit.slidingWindow(5, "1 h"),
-        prefix: "smc:coaching-enquiries",
-      })
-    : null
+export function getEnquiryRateLimit(): Ratelimit {
+  if (cachedRateLimit) {
+    return cachedRateLimit
+  }
+
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim()
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
+
+  if (!redisUrl || !redisToken) {
+    throw new Error(
+      "Enquiry rate limiting is not configured. Check the Upstash environment variables."
+    )
+  }
+
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(redisUrl)
+  } catch {
+    throw new Error(
+      "Invalid Upstash REST URL. Check UPSTASH_REDIS_REST_URL."
+    )
+  }
+
+  if (
+    parsedUrl.protocol !== "https:" ||
+    !parsedUrl.hostname ||
+    parsedUrl.username ||
+    parsedUrl.password
+  ) {
+    throw new Error(
+      "UPSTASH_REDIS_REST_URL must be a valid HTTPS REST endpoint."
+    )
+  }
+
+  cachedRateLimit = new Ratelimit({
+    redis: new Redis({
+      url: parsedUrl.toString(),
+      token: redisToken,
+    }),
+    limiter: Ratelimit.slidingWindow(5, "1 h"),
+    prefix: "smc:coaching-enquiries",
+  })
+
+  return cachedRateLimit
+}
 
 export async function verifyTurnstile(
   token: string,

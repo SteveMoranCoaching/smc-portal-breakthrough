@@ -2,10 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
-import {
-  enquiryRateLimit,
-  verifyTurnstile,
-} from "@/lib/enquirySecurity"
+import { getEnquiryRateLimit, verifyTurnstile } from "@/lib/enquirySecurity"
 
 export const runtime = "nodejs"
 
@@ -97,16 +94,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
-
-if (!enquiryRateLimit) {
-  console.error("Enquiry rate limiting is not configured")
-
-  return NextResponse.json(
-    { error: "Enquiries are temporarily unavailable." },
-    { status: 503 }
-  )
-}
-
 // Use the visitor IP supplied by Vercel's trusted proxy.
 // Do not trust arbitrary forwarded headers on an exposed origin.
 const ip =
@@ -114,6 +101,7 @@ const ip =
   "unknown"
 
 try {
+  const enquiryRateLimit = getEnquiryRateLimit()
   const result = await enquiryRateLimit.limit(ip)
 
   if (!result.success) {
