@@ -257,7 +257,7 @@ export default function CoachingEnquirePage() {
               className="object-cover object-center"
             />
 
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-[#050505]/35" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/15 via-45% to-[#050505]/20" />
 
             <div className="pointer-events-none absolute inset-y-0 left-0 w-20 bg-gradient-to-r from-[#050505] to-transparent" />
 
