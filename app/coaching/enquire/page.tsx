@@ -88,7 +88,7 @@ export default function CoachingEnquirePage() {
             href="#enquire"
             className="rounded-full border border-smc-gold/40 px-4 py-2 text-xs font-bold text-smc-gold transition hover:bg-smc-gold/10"
           >
-            Get in touch ↗
+            Get in touch
           </a>
         </nav>
 
@@ -140,7 +140,7 @@ export default function CoachingEnquirePage() {
                 href="#enquire"
                 className="inline-flex min-h-12 items-center justify-center rounded-xl bg-smc-gold px-7 text-sm font-black text-black transition hover:brightness-110"
               >
-                Start your journey ↗
+                Jump to enquiry form
               </a>
 
               <a
