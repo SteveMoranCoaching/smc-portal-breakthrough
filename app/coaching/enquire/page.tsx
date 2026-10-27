@@ -369,15 +369,6 @@ export default function CoachingEnquirePage() {
             Online, hybrid and programme-only coaching are
             charged per calendar month.
           </p>
-
-          <div className="mt-7 text-center">
-            <a
-              href="#enquire"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-smc-gold px-8 text-sm font-black text-black sm:w-auto"
-            >
-              Start your enquiry ↗
-            </a>
-          </div>
         </section>
 
         {/* SMC Community */}
