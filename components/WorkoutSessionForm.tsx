@@ -51,6 +51,7 @@ import WorkoutWarmupSection from "@/components/workouts/WorkoutWarmupSection"
 import WorkoutCircuitSection from "@/components/workouts/WorkoutCircuitSection"
 import WorkoutStretchSection from "@/components/workouts/WorkoutStretchSection"
 import PlateStack from "@/components/PlateStack"
+import BarMathCalculator from "@/components/BarMathCalculator"
 
 import {
   BAR_OPTIONS,
@@ -1307,136 +1308,20 @@ const generatedWarmupsExpanded =
   </div>
 )}
 
-{activePlateWeight !== null && activePlateResult && (
+
+{activePlateWeight !== null && (
   <div
     className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 px-5 backdrop-blur-[2px]"
     onClick={() => setActivePlateWeight(null)}
   >
     <div
-      className="w-full max-w-[360px] rounded-[1.5rem] border border-white/[0.08] bg-[#080808] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.78)]"
-      onClick={(event) =>
-        event.stopPropagation()
-      }
+      className="w-full max-w-[360px]"
+      onClick={(event) => event.stopPropagation()}
     >
-    
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-smc-gold/70">
-            Bar Math
-          </p>
-
-          <h2 className="mt-0.5 text-xl font-black text-white">
-            {activePlateWeight}kg
-          </h2>
-        </div>
-
-        <button
-          type="button"
-          onClick={() =>
-            setActivePlateWeight(null)
-          }
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-lg font-black text-white/50"
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="mt-2.5 grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-[8px] font-black uppercase tracking-[0.16em] text-white/30">
-            Plates
-          </label>
-
-          <select
-            value={plateMode}
-            onChange={(event) =>
-              setPlateMode(
-                event.target.value as PlateMode
-              )
-            }
-            className="mt-1 h-9 w-full rounded-lg border border-white/[0.08] bg-black/40 px-2.5 text-[11px] font-bold text-white outline-none"
-          >
-            <option value="calibrated">
-              Calibrated
-            </option>
-
-            <option value="gym">
-              Gym Plates
-            </option>
-          </select>
-        </div>
-
-        <div>
-          <label className="text-[8px] font-black uppercase tracking-[0.16em] text-white/30">
-            Bar
-          </label>
-
-          <select
-            value={barType}
-            onChange={(event) =>
-              setBarType(
-                event.target.value as BarType
-              )
-            }
-            className="mt-1 h-9 w-full rounded-lg border border-white/[0.08] bg-black/40 px-2.5 text-[11px] font-bold text-white outline-none"
-          >
-            {BAR_OPTIONS.map((bar) => (
-              <option
-                key={bar.id}
-                value={bar.id}
-              >
-                {bar.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {barType === "custom" && (
-        <div className="mt-3">
-          <label className="text-[8px] font-black uppercase tracking-[0.16em] text-white/30">
-            Custom Bar Weight
-          </label>
-
-          <div className="mt-1.5 flex items-center rounded-xl border border-white/[0.08] bg-black/40">
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.5"
-              value={customBarWeight}
-              onChange={(event) =>
-                setCustomBarWeight(
-                  event.target.value
-                )
-              }
-              className="h-10 min-w-0 flex-1 bg-transparent px-3 text-xs font-bold text-white outline-none"
-            />
-
-            <span className="pr-3 text-[10px] font-black text-white/30">
-              kg
-            </span>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-2 [&>div]:mt-0 [&>div]:p-2.5">
-        <PlateStack
-          plates={activePlateResult.platesPerSide}
-          mode={activePlateResult.mode}
-          barWeight={activePlateResult.barWeight}
-          targetWeight={activePlateResult.targetWeight}
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={() =>
-          setActivePlateWeight(null)
-        }
-        className="mt-2 w-full rounded-xl bg-smc-gold px-4 py-2 text-xs font-black text-black transition active:scale-[0.98]"
-      >
-        Done
-      </button>
+      <BarMathCalculator
+        targetWeight={activePlateWeight}
+        onClose={() => setActivePlateWeight(null)}
+      />
     </div>
   </div>
 )}

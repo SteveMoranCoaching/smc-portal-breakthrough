@@ -3,6 +3,7 @@ import { ReactNode } from "react"
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabaseServer"
 import GlobalMessageNotifications from "@/components/GlobalMessageNotifications"
+import CoachMobileNav from "@/components/CoachMobileNav"
 
 export const dynamic = "force-dynamic"
 
@@ -106,6 +107,11 @@ const sessionReviewCount = unreviewedSessionKeys.size
   const reviewQueueCount =
   sessionReviewCount + (checkInCount || 0)
 
+  const { count: newEnquiryCount } = await supabase
+  .from("coaching_enquiries")
+  .select("*", { count: "exact", head: true })
+  .eq("status", "new")
+
   const navItems = [
     { label: "Dashboard", href: "/coach", icon: "⌂" },
     {
@@ -126,18 +132,24 @@ const sessionReviewCount = unreviewedSessionKeys.size
       badge: pendingPBCount || 0,
     },
     {
-      label: "Messages",
-      href: "/coach/messages",
-      icon: "✉",
-      badge: unreadMessages || 0,
-    },
-    {
-      label: "Clients",
-      href: "/coach/clients",
-      icon: "◉",
-      badge: clientCount || 0,
-      mutedBadge: true,
-    },
+  label: "Messages",
+  href: "/coach/messages",
+  icon: "✉",
+  badge: unreadMessages || 0,
+},
+{
+  label: "Enquiries",
+  href: "/coach/enquiries",
+  icon: "✎",
+  badge: newEnquiryCount || 0,
+},
+{
+  label: "Clients",
+  href: "/coach/clients",
+  icon: "◉",
+  badge: clientCount || 0,
+  mutedBadge: true,
+},
     { label: "Programming", href: "/coach/programmes", icon: "▦" },
     { label: "Calendar", href: "/coach/calendar", icon: "◷" },
     { label: "Exercise Demos", href: "/coach/exercise-demos", icon: "▶" },
@@ -198,41 +210,7 @@ const sessionReviewCount = unreviewedSessionKeys.size
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col px-4 py-5 pb-28 sm:px-6 lg:px-7 lg:pb-8">
-          <header className="mb-5 rounded-[1.5rem] border border-smc-gold/18 bg-black/78 p-4 shadow-[0_18px_44px_rgba(0,0,0,0.62)] backdrop-blur-xl lg:hidden">
-            <div className="flex items-start justify-between gap-3">
-  <div>
-    <p className="text-[10px] font-black uppercase tracking-[0.32em] text-smc-gold">
-      SMC Coach
-    </p>
-
-    <h1 className="mt-1 text-2xl font-black tracking-tight text-white">
-      Coach Portal
-    </h1>
-  </div>
-
-  <form action="/auth/sign-out" method="post">
-    <button
-      type="submit"
-      className="rounded-full border border-white/[0.08] bg-black/25 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-white/60 transition hover:border-smc-gold/25 hover:text-smc-gold"
-    >
-      Log Out
-    </button>
-  </form>
-</div>
-
-            <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {navItems.slice(0, 5).map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="shrink-0 rounded-full border border-white/[0.08] bg-black/38 px-4 py-2 text-xs font-black text-white/70 backdrop-blur-md"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          </header>
-
+          <CoachMobileNav items={navItems} />
           <div className="w-full">{children}</div>
         </section>
       </div>
