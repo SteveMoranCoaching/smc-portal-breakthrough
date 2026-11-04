@@ -60,6 +60,50 @@ export default async function CoachSessionEntryPage({
     .eq("user_id", client.user_id)
     .order("created_at", { ascending: false })
 
+    const { data: demoRows, error: demoError } = await supabase
+  .from("exercise_demo_videos")
+  .select(`
+    id,
+    exercise_name,
+    aliases,
+    video_path,
+    thumbnail_path,
+    coach_notes,
+    warmup_enabled,
+    bar_math_enabled
+  `)
+
+if (demoError) {
+  console.error("Failed to load coach exercise library:", demoError)
+}
+
+const exerciseDemos = await Promise.all(
+  (demoRows || []).map(async (demo: any) => {
+    const videoUrl = demo.video_path
+      ? await supabase.storage
+          .from("exercise-demo-videos")
+          .createSignedUrl(demo.video_path, 60 * 60)
+      : null
+
+    const thumbnailUrl = demo.thumbnail_path
+      ? await supabase.storage
+          .from("exercise-demo-videos")
+          .createSignedUrl(demo.thumbnail_path, 60 * 60)
+      : null
+
+    return {
+      id: demo.id,
+      exercise_name: demo.exercise_name,
+      aliases: demo.aliases || [],
+      coach_notes: demo.coach_notes,
+      warmup_enabled: demo.warmup_enabled === true,
+      bar_math_enabled: demo.bar_math_enabled === true,
+      video_url: videoUrl?.data?.signedUrl || null,
+      thumbnail_url: thumbnailUrl?.data?.signedUrl || null,
+    }
+  })
+)
+
   return (
     <main className="min-h-screen bg-black px-4 py-5 text-white sm:px-6 sm:py-8">
       <div className="mx-auto max-w-4xl space-y-5">
@@ -115,6 +159,7 @@ export default async function CoachSessionEntryPage({
   userId={client.user_id}
   programmes={programmes}
   previousLogs={previousLogs || []}
+  exerciseDemos={exerciseDemos}
   onCoachSave={saveCoachWorkout}
 />
         )}
