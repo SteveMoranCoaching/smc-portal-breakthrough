@@ -103,13 +103,25 @@ export default async function SessionPage({
     .in("exercise_name", exerciseNames)
     .order("created_at", { ascending: false })
 
-  const { data: demoRows } =
-    exerciseNames.length > 0
-      ? await supabase
-          .from("exercise_demo_videos")
-          .select("id, exercise_name, video_path, thumbnail_path, coach_notes")
-          .in("exercise_name", exerciseNames)
-      : { data: [] }
+  const { data: demoRows, error: demoError } =
+  exerciseNames.length > 0
+    ? await supabase
+        .from("exercise_demo_videos")
+        .select(`
+          id,
+          exercise_name,
+          aliases,
+          video_path,
+          thumbnail_path,
+          coach_notes,
+          warmup_enabled,
+          bar_math_enabled
+        `)
+    : { data: [], error: null }
+
+if (demoError) {
+  console.error("Failed to load exercise library:", demoError)
+}
 
   const exerciseDemos = await Promise.all(
     (demoRows || []).map(async (demo: any) => {
@@ -126,12 +138,15 @@ export default async function SessionPage({
         : null
 
       return {
-        id: demo.id,
-        exercise_name: demo.exercise_name,
-        coach_notes: demo.coach_notes,
-        video_url: videoUrl?.data?.signedUrl || null,
-        thumbnail_url: thumbnailUrl?.data?.signedUrl || null,
-      }
+  id: demo.id,
+  exercise_name: demo.exercise_name,
+  aliases: demo.aliases || [],
+  coach_notes: demo.coach_notes,
+  warmup_enabled: demo.warmup_enabled === true,
+  bar_math_enabled: demo.bar_math_enabled === true,
+  video_url: videoUrl?.data?.signedUrl || null,
+  thumbnail_url: thumbnailUrl?.data?.signedUrl || null,
+}
     })
   )
 
