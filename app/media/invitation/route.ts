@@ -69,15 +69,28 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const now = new Date().toISOString()
+  
+const now = new Date().toISOString()
 
-  const { count, error: countError } = await admin
+const { count: completedCount, error: completedError } =
+  await admin
     .from("media_files")
     .select("id", { count: "exact", head: true })
     .eq("upload_link_id", invitation.id)
-    .or(
-      `status.in.(pending,approved,rejected),and(status.eq.uploading,reservation_expires_at.gt.${now})`
-    )
+    .in("status", ["pending", "approved", "rejected"])
+
+const { count: uploadingCount, error: uploadingError } =
+  await admin
+    .from("media_files")
+    .select("id", { count: "exact", head: true })
+    .eq("upload_link_id", invitation.id)
+    .eq("status", "uploading")
+    .gt("reservation_expires_at", now)
+
+const countError = completedError || uploadingError
+
+const count = (completedCount ?? 0) + (uploadingCount ?? 0)
+
 
   if (countError) {
     console.error("Media invitation capacity lookup failed:", countError)
