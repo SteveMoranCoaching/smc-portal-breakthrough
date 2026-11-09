@@ -153,6 +153,7 @@ const sessionReviewCount = unreviewedSessionKeys.size
     { label: "Programming", href: "/coach/programmes", icon: "▦" },
     { label: "Calendar", href: "/coach/calendar", icon: "◷" },
     { label: "Exercise Demos", href: "/coach/exercise-demos", icon: "▶" },
+    { label: "Media Manager", href: "/coach/media", icon: "▧" },
   ]
 
   return (
