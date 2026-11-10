@@ -1,0 +1,129 @@
+
+import { NextRequest, NextResponse } from "next/server"
+import { createSupabaseServerClient } from "@/lib/supabaseServer"
+import { createSupabaseMediaAdmin } from "@/lib/supabaseMediaAdmin"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function respond(error: string, status: number) {
+  return NextResponse.json(
+    { error },
+    {
+      status,
+      headers: { "Cache-Control": "no-store" },
+    }
+  )
+}
+
+export async function POST(request: NextRequest) {
+  const origin = request.headers.get("origin")
+
+  if (origin !== new URL(request.url).origin) {
+    return respond("Request origin not allowed.", 403)
+  }
+
+  const supabase = await createSupabaseServerClient()
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    return respond("Authentication required.", 401)
+  }
+
+  const { data: profile, error: profileError } =
+    await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+  if (profileError || profile?.role !== "coach") {
+    return respond("Coach access required.", 403)
+  }
+
+  let body: unknown
+
+  try {
+    body = await request.json()
+  } catch {
+    return respond("Invalid request.", 400)
+  }
+
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    !("fileId" in body) ||
+    typeof body.fileId !== "string" ||
+    !UUID_PATTERN.test(body.fileId)
+  ) {
+    return respond("Invalid file identifier.", 400)
+  }
+
+  const admin = createSupabaseMediaAdmin()
+
+  const { data: file, error: fileError } =
+    await admin
+      .from("media_files")
+      .select(
+        "id, storage_bucket, storage_path, original_filename, status"
+      )
+      .eq("id", body.fileId)
+      .single()
+
+  if (fileError || !file) {
+    return respond("Media file not found.", 404)
+  }
+
+  if (file.status !== "approved") {
+    return respond("Only approved media can be downloaded.", 403)
+  }
+
+  const uploadId = file.storage_path?.split("/")[0]
+
+  if (
+    file.storage_bucket !== "smc-media" ||
+    typeof file.storage_path !== "string" ||
+    !UUID_PATTERN.test(uploadId || "") ||
+    file.storage_path !== `${uploadId}/${file.id}`
+  ) {
+    return respond("Invalid media storage location.", 500)
+  }
+
+  const { data: signed, error: signingError } =
+    await admin.storage
+      .from("smc-media")
+      .createSignedUrl(file.storage_path, 60, {
+        download: file.original_filename,
+      })
+
+  if (signingError || !signed?.signedUrl) {
+    console.error(
+      "SMC media download signing failed:",
+      signingError?.message
+    )
+
+    return respond("Unable to prepare download.", 500)
+  }
+
+  return NextResponse.json(
+    {
+      success: true,
+      url: signed.signedUrl,
+      filename: file.original_filename,
+      expiresIn: 60,
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
+  )
+}

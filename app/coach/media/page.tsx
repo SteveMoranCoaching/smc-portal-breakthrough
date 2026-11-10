@@ -1,11 +1,14 @@
 
 import Link from "next/link"
 import { requireCoach } from "@/lib/authGuards"
+import MediaReviewInbox from "@/components/MediaReviewInbox"
+import MediaFolderLibrary from "@/components/MediaFolderLibrary"
 
 export const dynamic = "force-dynamic"
 
 type MediaFile = {
   id: string
+  folder_id: string | null
   original_filename: string
   display_name: string | null
   uploader_name: string | null
@@ -17,53 +20,75 @@ type MediaFile = {
   created_at: string
 }
 
-function formatFileSize(bytes: number) {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return `${(bytes / 1024 ** 3).toFixed(2)} GB`
-  }
-
-  return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  })
-}
+const MEDIA_COLUMNS =
+  "id, folder_id, original_filename, display_name, uploader_name, athlete_name, event_name, media_type, file_size_bytes, status, created_at"
 
 export default async function CoachMediaPage() {
   const { supabase } = await requireCoach()
 
   const [
-    { data: files, error: filesError },
-    { count: invitationCount, error: invitationsError },
-    { count: folderCount, error: foldersError },
-  ] = await Promise.all([
-    supabase
-      .from("media_files")
-      .select(
-        "id, original_filename, display_name, uploader_name, athlete_name, event_name, media_type, file_size_bytes, status, created_at"
-      )
-      .order("created_at", { ascending: false })
-      .limit(100),
-
+  { count: invitationCount, error: invitationsError },
+  { data: folders, error: foldersError },
+  { count: pendingCount, error: pendingCountError },
+  { count: approvedCount, error: approvedCountError },
+  { data: history, error: historyError },
+  { data: unsorted, error: unsortedError },
+  { data: folderCounts, error: folderCountsError },
+] = await Promise.all([
     supabase
       .from("media_upload_links")
       .select("id", { count: "exact", head: true }),
 
     supabase
       .from("media_folders")
-      .select("id", { count: "exact", head: true }),
-  ])
+      .select("id, name, parent_id")
+      .order("name", { ascending: true }),
 
-  if (filesError || invitationsError || foldersError) {
+    supabase
+      .from("media_files")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending"),
+
+    supabase
+      .from("media_files")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "approved"),
+
+    supabase
+      .from("media_files")
+      .select(MEDIA_COLUMNS)
+      .in("status", ["uploading", "approved", "rejected"])
+      .order("created_at", { ascending: false })
+      .limit(50),
+
+    supabase
+  .from("media_files")
+  .select(MEDIA_COLUMNS)
+  .eq("status", "approved")
+  .is("folder_id", null)
+  .limit(1),
+
+supabase.rpc("smc_media_folder_counts"),
+])
+
+  if (
+  invitationsError ||
+  foldersError ||
+  pendingCountError ||
+  approvedCountError ||
+  historyError ||
+  unsortedError ||
+  folderCountsError
+) {
     console.error("SMC Media Manager query error:", {
-      filesError,
-      invitationsError,
-      foldersError,
-    })
+  invitationsError,
+  foldersError,
+  pendingCountError,
+  approvedCountError,
+  historyError,
+  unsortedError,
+  folderCountsError,
+})
 
     return (
       <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-300">
@@ -72,34 +97,74 @@ export default async function CoachMediaPage() {
     )
   }
 
-  const mediaFiles = (files || []) as MediaFile[]
+  // Load pending uploads independently of approved media.
+  // Fetch in batches to avoid Supabase's per-request row limit.
+  const pendingFiles: MediaFile[] = []
+  const batchSize = 500
+  const totalPending = pendingCount ?? 0
 
-  const pending = mediaFiles.filter((file) => file.status === "pending")
-  const approved = mediaFiles.filter((file) => file.status === "approved")
-  const rejected = mediaFiles.filter((file) => file.status === "rejected")
+  for (let offset = 0; offset < totalPending; offset += batchSize) {
+    const { data, error } = await supabase
+      .from("media_files")
+      .select(MEDIA_COLUMNS)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + batchSize - 1)
+
+    if (error) {
+      console.error("SMC pending media query error:", error)
+
+      return (
+        <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-5 text-red-300">
+          Unable to load pending media. Check the server logs.
+        </div>
+      )
+    }
+
+    pendingFiles.push(...((data || []) as MediaFile[]))
+  }
+
+  const historyFiles = (history || []) as MediaFile[]
+  const mediaFiles = [...pendingFiles, ...historyFiles]
+
+  // Temporary compatibility prop for the existing gallery component.
+  // The actual folder contents load through folder-files/route.ts.
+  const unsortedFiles = ((unsorted || []) as MediaFile[]).map(
+    (file) => ({
+      id: file.id,
+      folder_id: file.folder_id,
+      original_filename: file.original_filename,
+      display_name: file.display_name,
+      media_type: file.media_type,
+      athlete_name: file.athlete_name,
+      event_name: file.event_name,
+      file_size_bytes: file.file_size_bytes,
+    })
+  )
 
   const cards = [
     {
       label: "Pending Review",
-      value: pending.length,
+      value: totalPending,
       description: "Uploads waiting for approval",
       accent: "text-smc-gold",
     },
     {
       label: "Approved Media",
-      value: approved.length,
+      value: approvedCount ?? 0,
       description: "Ready for your media library",
       accent: "text-green-300",
     },
     {
       label: "Invitations",
-      value: invitationCount || 0,
+      value: invitationCount ?? 0,
       description: "Created upload invitations",
       accent: "text-white",
     },
     {
       label: "Folders",
-      value: folderCount || 0,
+      value: folders?.length ?? 0,
       description: "Organised media collections",
       accent: "text-white",
     },
@@ -109,6 +174,7 @@ export default async function CoachMediaPage() {
     <div className="relative space-y-5 pb-10">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-56 rounded-full bg-smc-gold/[0.07] blur-[90px]" />
 
+      {/* MEDIA MANAGER HEADER */}
       <header className="relative overflow-hidden rounded-[1.5rem] border border-smc-gold/25 bg-black p-5 shadow-[0_20px_50px_rgba(0,0,0,0.7)] sm:p-7">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(212,175,55,0.18),transparent_40%)]" />
 
@@ -137,6 +203,7 @@ export default async function CoachMediaPage() {
         </div>
       </header>
 
+      {/* DASHBOARD STATISTICS */}
       <section className="relative grid grid-cols-2 gap-3 xl:grid-cols-4">
         {cards.map((card) => (
           <div
@@ -158,6 +225,26 @@ export default async function CoachMediaPage() {
         ))}
       </section>
 
+      {/* PRIMARY MEDIA LIBRARY */}
+      <section className="relative">
+        <div className="rounded-[1.25rem] border border-white/[0.07] bg-black p-4 shadow-[0_16px_38px_rgba(0,0,0,0.6)] sm:p-5">
+          <MediaFolderLibrary
+  folders={folders || []}
+  files={unsortedFiles}
+  folderCounts={(
+    (folderCounts || []) as {
+      folder_id: string | null
+      file_count: number
+    }[]
+  ).map((row) => ({
+    folder_id: row.folder_id,
+    file_count: Number(row.file_count),
+  }))}
+/>
+        </div>
+      </section>
+
+      {/* INCOMING MEDIA REVIEW INBOX */}
       <section className="relative overflow-hidden rounded-[1.25rem] border border-white/[0.07] bg-black p-4 shadow-[0_16px_38px_rgba(0,0,0,0.6)] sm:p-5">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -170,13 +257,12 @@ export default async function CoachMediaPage() {
             </h2>
 
             <p className="mt-1 text-xs text-white/40">
-              {pending.length} pending · {approved.length} approved ·{" "}
-              {rejected.length} rejected
+              {totalPending} pending · Recent review history
             </p>
           </div>
 
           <span className="rounded-full border border-smc-gold/20 bg-smc-gold/10 px-3 py-1.5 text-[10px] font-black text-smc-gold">
-            {mediaFiles.length} files loaded
+            {mediaFiles.length} inbox records loaded
           </span>
         </div>
 
@@ -201,87 +287,24 @@ export default async function CoachMediaPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {mediaFiles.map((file) => (
-              <div
-                key={file.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-smc-gold/15 bg-smc-gold/[0.06] text-xl">
-                    {file.media_type === "video" ? "🎥" : "📷"}
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="break-all text-sm font-bold text-white">
-                      {file.display_name || file.original_filename}
-                    </p>
-
-                    <p className="mt-1 text-[11px] text-white/40">
-                      {file.uploader_name || "Unknown uploader"} ·{" "}
-                      {formatFileSize(file.file_size_bytes)} ·{" "}
-                      {formatDate(file.created_at)}
-                    </p>
-
-                    {(file.athlete_name || file.event_name) && (
-                      <p className="mt-1 text-[10px] text-smc-gold/65">
-                        {[file.event_name, file.athlete_name]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <span
-                  className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase ${
-                    file.status === "pending"
-                      ? "border-amber-400/25 bg-amber-400/10 text-amber-200"
-                      : file.status === "approved"
-                        ? "border-green-500/25 bg-green-500/10 text-green-300"
-                        : file.status === "rejected"
-                          ? "border-red-500/25 bg-red-500/10 text-red-300"
-                          : "border-white/10 bg-white/5 text-white/45"
-                  }`}
-                >
-                  {file.status}
-                </span>
-              </div>
-            ))}
-          </div>
+          <MediaReviewInbox files={mediaFiles} />
         )}
       </section>
 
-      <section className="relative grid gap-3 md:grid-cols-2">
-        <div className="rounded-[1.2rem] border border-white/[0.07] bg-black p-5">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-smc-gold">
-            Media Organisation
-          </p>
+      {/* GUEST UPLOAD LINKS */}
+      <section className="relative rounded-[1.2rem] border border-white/[0.07] bg-black p-5">
+        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-smc-gold">
+          Share & Collect
+        </p>
 
-          <h2 className="mt-2 text-lg font-black text-white">
-            Collections & Folders
-          </h2>
+        <h2 className="mt-2 text-lg font-black text-white">
+          Guest Upload Links
+        </h2>
 
-          <p className="mt-2 text-sm leading-6 text-white/45">
-            Organise footage by competition, athlete or content project.
-            Your folders will appear here once created.
-          </p>
-        </div>
-
-        <div className="rounded-[1.2rem] border border-white/[0.07] bg-black p-5">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-smc-gold">
-            Share & Collect
-          </p>
-
-          <h2 className="mt-2 text-lg font-black text-white">
-            Guest Upload Links
-          </h2>
-
-          <p className="mt-2 text-sm leading-6 text-white/45">
-            Give friends, family and athletes a private upload link.
-            No account required, and no access to your coaching portal.
-          </p>
-        </div>
+        <p className="mt-2 text-sm leading-6 text-white/45">
+          Give friends, family and athletes a private upload link.
+          No account required, and no access to your coaching portal.
+        </p>
       </section>
     </div>
   )

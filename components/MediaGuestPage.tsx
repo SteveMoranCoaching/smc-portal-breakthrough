@@ -1,7 +1,8 @@
 
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import * as tus from "tus-js-client"
 
 type InvitationDetails = {
   title: string
@@ -10,6 +11,56 @@ type InvitationDetails = {
   expiresAt: string | null
   maxFileSizeBytes: number
   remainingFiles: number
+}
+
+type UploadStatus =
+  | "ready"
+  | "reserving"
+  | "uploading"
+  | "verifying"
+  | "complete"
+  | "failed"
+
+type UploadItem = {
+  id: string
+  file: File
+  status: UploadStatus
+  progress: number
+  error?: string
+}
+
+const MAX_FILE_SIZE = 1073741824
+const BUCKET = "smc-media"
+const TUS_ENDPOINT =
+  "https://kxnjumpwcnktpqtunndh.storage.supabase.co/storage/v1/upload/resumable/sign"
+
+function formatSize(bytes: number) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+async function postJSON(
+  endpoint: string,
+  body: Record<string, unknown>
+) {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+    credentials: "same-origin",
+  })
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    throw new Error(
+      typeof result.error === "string"
+        ? result.error
+        : "Request failed."
+    )
+  }
+
+  return result
 }
 
 export default function MediaGuestPage({
@@ -22,30 +73,24 @@ export default function MediaGuestPage({
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-
   const [uploaderName, setUploaderName] = useState("")
   const [athleteName, setAthleteName] = useState("")
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [items, setItems] = useState<UploadItem[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [finished, setFinished] = useState(false)
+
+  const activeUpload = useRef<tus.Upload | null>(null)
+  const running = useRef(false)
 
   useEffect(() => {
     let cancelled = false
 
     async function loadInvitation() {
       try {
-        const response = await fetch("/api/media/invitation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-          cache: "no-store",
-        })
-
-        const result = await response.json()
-
-        if (!response.ok) {
-          throw new Error(
-            result.error || "Unable to load invitation."
-          )
-        }
+        const result = await postJSON(
+          "/api/media/invitation",
+          { token }
+        )
 
         if (!cancelled) {
           setInvitation(result.invitation)
@@ -59,9 +104,7 @@ export default function MediaGuestPage({
           )
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+        if (!cancelled) setLoading(false)
       }
     }
 
@@ -69,57 +112,252 @@ export default function MediaGuestPage({
 
     return () => {
       cancelled = true
+      activeUpload.current?.abort()
     }
   }, [token])
 
-  const maxFileBytes =
-    invitation?.maxFileSizeBytes || 1073741824
+  function updateItem(
+    id: string,
+    changes: Partial<UploadItem>
+  ) {
+    setItems((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, ...changes } : item
+      )
+    )
+  }
 
   function handleFiles(files: FileList | null) {
-    if (!files) return
+    if (!files || uploading) return
 
     setError("")
 
     const incoming = Array.from(files)
-
-    const invalidFile = incoming.find(
-      (file) =>
-        (!file.type.startsWith("image/") &&
-          !file.type.startsWith("video/")) ||
-        file.size > maxFileBytes ||
-        file.size === 0
+    const limit = Math.min(
+      invitation?.maxFileSizeBytes ?? MAX_FILE_SIZE,
+      MAX_FILE_SIZE
     )
 
-    if (invalidFile) {
+    const invalid = incoming.find(
+      (file) =>
+        file.size === 0 ||
+        file.size > limit ||
+        (!file.type.startsWith("image/") &&
+          !file.type.startsWith("video/"))
+    )
+
+    if (invalid) {
       setError(
-        `${invalidFile.name} isn't a supported image/video or exceeds the 1 GB limit.`
+        `${invalid.name} is unsupported, empty or exceeds the ${formatSize(limit)} file limit.`
       )
       return
     }
-
-    const combined = [...selectedFiles, ...incoming]
 
     if (
       invitation &&
-      combined.length > invitation.remainingFiles
+      items.length + incoming.length >
+        invitation.remainingFiles
     ) {
       setError(
-        `This invitation has space for ${invitation.remainingFiles} more files.`
+        `This invitation has space for ${invitation.remainingFiles} files.`
       )
       return
     }
 
-    setSelectedFiles(combined)
+    setItems((current) => [
+      ...current,
+      ...incoming.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        status: "ready" as const,
+        progress: 0,
+      })),
+    ])
   }
 
-  function removeFile(index: number) {
-    setSelectedFiles((current) =>
-      current.filter((_, i) => i !== index)
+  function removeFile(id: string) {
+    if (uploading) return
+
+    setItems((current) =>
+      current.filter((item) => item.id !== id)
     )
   }
 
-  function formatSize(bytes: number) {
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  function uploadWithTus(
+    file: File,
+    storagePath: string,
+    uploadToken: string,
+    itemId: string
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const upload = new tus.Upload(file, {
+        endpoint: TUS_ENDPOINT,
+        headers: {
+          "x-signature": uploadToken,
+        },
+        metadata: {
+          bucketName: BUCKET,
+          objectName: storagePath,
+          contentType: file.type,
+          cacheControl: "3600",
+        },
+        chunkSize: 6 * 1024 * 1024,
+        retryDelays: [0, 3000, 5000, 10000, 20000],
+        uploadDataDuringCreation: true,
+        removeFingerprintOnSuccess: true,
+        storeFingerprintForResuming: false,
+        onProgress(bytesUploaded, bytesTotal) {
+          const progress =
+            bytesTotal > 0
+              ? Math.round(
+                  (bytesUploaded / bytesTotal) * 100
+                )
+              : 0
+
+          updateItem(itemId, { progress })
+        },
+        onError(uploadError) {
+          activeUpload.current = null
+          reject(uploadError)
+        },
+        onSuccess() {
+          activeUpload.current = null
+          resolve()
+        },
+      })
+
+      activeUpload.current = upload
+      upload.start()
+    })
+  }
+
+  async function uploadOne(item: UploadItem) {
+    updateItem(item.id, {
+      status: "reserving",
+      progress: 0,
+      error: undefined,
+    })
+
+    const reservation = await postJSON(
+      "/api/media/reserve",
+      {
+        token,
+        filename: item.file.name,
+        mimeType: item.file.type,
+        fileSize: item.file.size,
+        uploaderName: uploaderName.trim(),
+        athleteName: athleteName.trim() || null,
+      }
+    )
+
+    if (
+      typeof reservation.fileId !== "string" ||
+      reservation.bucket !== BUCKET ||
+      typeof reservation.storagePath !== "string" ||
+      typeof reservation.uploadToken !== "string"
+    ) {
+      throw new Error("Invalid upload reservation.")
+    }
+
+    updateItem(item.id, { status: "uploading" })
+
+    await uploadWithTus(
+      item.file,
+      reservation.storagePath,
+      reservation.uploadToken,
+      item.id
+    )
+
+    updateItem(item.id, {
+      status: "verifying",
+      progress: 100,
+    })
+
+    const result = await postJSON(
+      "/api/media/complete",
+      {
+        token,
+        fileId: reservation.fileId,
+      }
+    )
+
+    if (
+      result.success !== true ||
+      result.status !== "pending"
+    ) {
+      throw new Error("Upload verification failed.")
+    }
+
+    updateItem(item.id, {
+      status: "complete",
+      progress: 100,
+    })
+  }
+
+  async function handleUpload() {
+    if (running.current || !invitation) return
+
+    if (!uploaderName.trim()) {
+      setError("Please enter your name.")
+      return
+    }
+
+    const queue = items.filter(
+      (item) => item.status === "ready"
+    )
+
+    if (queue.length === 0) {
+      setError("Please select at least one file.")
+      return
+    }
+
+    running.current = true
+    setUploading(true)
+    setFinished(false)
+    setError("")
+
+    let failures = 0
+
+    try {
+      for (const item of queue) {
+        try {
+          await uploadOne(item)
+        } catch (err) {
+          failures++
+
+          updateItem(item.id, {
+            status: "failed",
+            error:
+              err instanceof Error
+                ? err.message
+                : "Upload failed.",
+          })
+        }
+      }
+
+      setFinished(failures === 0)
+      if (failures > 0) {
+        setError(
+          `${failures} file(s) could not be completed. Failed reservations may require a fresh invitation or cleanup before retrying.`
+        )
+      }
+    } finally {
+      running.current = false
+      setUploading(false)
+    }
+  }
+
+  const completedCount = items.filter(
+    (item) => item.status === "complete"
+  ).length
+
+  const statusLabel: Record<UploadStatus, string> = {
+    ready: "Ready",
+    reserving: "Preparing secure upload...",
+    uploading: "Uploading...",
+    verifying: "Verifying upload...",
+    complete: "Submitted for review",
+    failed: "Upload failed",
   }
 
   return (
@@ -153,7 +391,7 @@ export default function MediaGuestPage({
           </div>
         ) : !invitation ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-500/[0.06] p-6 text-center">
-            <h2 className="text-xl font-black text-white">
+            <h2 className="text-xl font-black">
               Invitation Unavailable
             </h2>
             <p className="mt-3 text-sm text-red-300">
@@ -164,7 +402,7 @@ export default function MediaGuestPage({
           <>
             <section className="rounded-[1.25rem] border border-white/[0.08] bg-[#080808] p-5 sm:p-7">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-smc-gold">
-                You're Invited
+                You&apos;re Invited
               </p>
 
               <h2 className="mt-2 text-2xl font-black">
@@ -178,8 +416,8 @@ export default function MediaGuestPage({
               )}
 
               <p className="mt-4 text-xs text-white/40">
-                Share your photos and videos in their original quality.
-                No account required.
+                Share your photos and videos in their original
+                quality. No account required.
               </p>
             </section>
 
@@ -205,9 +443,12 @@ export default function MediaGuestPage({
                   <input
                     id="media-uploader"
                     value={uploaderName}
-                    onChange={(e) => setUploaderName(e.target.value)}
-                    placeholder="Who's uploading?"
+                    onChange={(e) =>
+                      setUploaderName(e.target.value)
+                    }
+                    disabled={uploading}
                     maxLength={120}
+                    placeholder="Who's uploading?"
                     className="min-h-12 w-full rounded-xl border border-white/10 bg-black px-4 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/50"
                   />
                 </div>
@@ -223,29 +464,46 @@ export default function MediaGuestPage({
                   <input
                     id="media-athlete"
                     value={athleteName}
-                    onChange={(e) => setAthleteName(e.target.value)}
-                    placeholder="Who's in the footage?"
+                    onChange={(e) =>
+                      setAthleteName(e.target.value)
+                    }
+                    disabled={uploading}
                     maxLength={120}
+                    placeholder="Who's in the footage?"
                     className="min-h-12 w-full rounded-xl border border-white/10 bg-black px-4 text-sm text-white outline-none placeholder:text-white/25 focus:border-smc-gold/50"
                   />
                 </div>
               </div>
 
-              <label className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-smc-gold/25 bg-smc-gold/[0.035] p-6 text-center transition hover:border-smc-gold/50">
+              <label
+                className={`flex min-h-[150px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-smc-gold/25 bg-smc-gold/[0.035] p-6 text-center transition ${
+                  uploading
+                    ? "cursor-not-allowed opacity-50"
+                    : "cursor-pointer hover:border-smc-gold/50"
+                }`}
+              >
                 <span className="text-4xl">⬆</span>
 
-                <span className="mt-3 text-sm font-black text-white">
-                  Choose Photos & Videos
+                <span className="mt-3 text-sm font-black">
+                  Choose Photos &amp; Videos
                 </span>
 
                 <span className="mt-2 text-xs text-white/40">
-                  Multiple files supported · 1 GB maximum per file
+                  Multiple files supported · Up to{" "}
+                  {formatSize(
+                    Math.min(
+                      invitation.maxFileSizeBytes,
+                      MAX_FILE_SIZE
+                    )
+                  )}{" "}
+                  per file
                 </span>
 
                 <input
                   type="file"
                   accept="image/*,video/*"
                   multiple
+                  disabled={uploading}
                   className="hidden"
                   onChange={(e) => {
                     handleFiles(e.target.files)
@@ -254,65 +512,135 @@ export default function MediaGuestPage({
                 />
               </label>
 
-              {selectedFiles.length > 0 && (
+              {items.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs font-bold text-white/60">
-                    {selectedFiles.length} selected files
+                    {items.length} selected files
                   </p>
 
-                  {selectedFiles.map((file, index) => (
+                  {items.map((item) => (
                     <div
-                      key={`${file.name}-${index}`}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"
+                      key={item.id}
+                      className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"
                     >
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-bold text-white">
-                          {file.type.startsWith("video/")
-                            ? "🎥"
-                            : "📷"}{" "}
-                          {file.name}
-                        </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-bold">
+                            {item.file.type.startsWith("video/")
+                              ? "🎥"
+                              : "📷"}{" "}
+                            {item.file.name}
+                          </p>
 
-                        <p className="mt-1 text-[10px] text-white/40">
-                          {formatSize(file.size)}
-                        </p>
+                          <p className="mt-1 text-[10px] text-white/40">
+                            {formatSize(item.file.size)} ·{" "}
+                            {statusLabel[item.status]}
+                          </p>
+                        </div>
+
+                        {item.status === "ready" &&
+                          !uploading && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeFile(item.id)
+                              }
+                              className="shrink-0 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300"
+                            >
+                              Remove
+                            </button>
+                          )}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index)}
-                        className="shrink-0 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300"
-                      >
-                        Remove
-                      </button>
+                      {(item.status === "uploading" ||
+                        item.status === "verifying" ||
+                        item.status === "complete") && (
+                        <div className="mt-3">
+                          <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className="h-full rounded-full bg-smc-gold transition-all duration-200"
+                              style={{
+                                width: `${item.progress}%`,
+                              }}
+                            />
+                          </div>
+                          <p className="mt-1 text-right text-[10px] text-smc-gold">
+                            {item.progress}%
+                          </p>
+                        </div>
+                      )}
+
+                      {item.error && (
+                        <p className="mt-2 text-xs text-red-300">
+                          {item.error}
+                        </p>
+                      )}
                     </div>
                   ))}
+
+                  {completedCount > 0 && (
+                    <p className="text-xs font-bold text-smc-gold">
+                      {completedCount} file(s) submitted for
+                      review.
+                    </p>
+                  )}
                 </div>
               )}
 
               <div className="rounded-xl border border-smc-gold/15 bg-smc-gold/[0.04] p-3">
                 <p className="text-xs font-bold text-smc-gold">
-                  Private & Original Quality
+                  Private &amp; Original Quality
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-white/45">
-                  Your files will be sent privately to Steve Moran
-                  Coaching for review and potential use in competition
-                  highlights and promotional content.
+                  Your files will be sent privately to Steve
+                  Moran Coaching for review and potential use
+                  in competition highlights and promotional
+                  content.
                 </p>
               </div>
 
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-3 text-xs text-red-300"
+                >
+                  {error}
+                </p>
+              )}
+
+              {finished && (
+                <div className="rounded-xl border border-smc-gold/30 bg-smc-gold/[0.08] p-4 text-center">
+                  <p className="font-black text-smc-gold">
+                    Upload Complete!
+                  </p>
+                  <p className="mt-2 text-xs text-white/60">
+                    Your footage has been submitted for review.
+                    Thank you for sharing!
+                  </p>
+                </div>
+              )}
+
               <button
                 type="button"
-                disabled
-                className="min-h-12 w-full cursor-not-allowed rounded-xl bg-smc-gold px-5 py-3 text-sm font-black uppercase tracking-[0.1em] text-black opacity-45"
+                onClick={handleUpload}
+                disabled={
+                  uploading ||
+                  !uploaderName.trim() ||
+                  !items.some(
+                    (item) => item.status === "ready"
+                  )
+                }
+                className="min-h-12 w-full rounded-xl bg-smc-gold px-5 py-3 text-sm font-black uppercase tracking-[0.1em] text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
               >
-                Upload Footage — Coming Next
+                {uploading
+                  ? "Uploading Footage..."
+                  : "Upload Footage"}
               </button>
 
               <p className="text-center text-[11px] text-white/30">
-                Uploads will be enabled once secure storage
-                authorisation is connected.
+                Files are uploaded privately and submitted for
+                review before appearing in the Media Manager.
               </p>
             </section>
           </>
